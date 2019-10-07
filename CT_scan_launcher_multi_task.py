@@ -73,7 +73,7 @@ parser.add_argument('--layers', type=int, default=5,
 parser.add_argument('--features_root', type=int, default=32,
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=18,
+parser.add_argument('--batch_size', type=int, default=28,
                     help='')
 
 parser.add_argument('--data_augmentation', type=bool, default=False,
