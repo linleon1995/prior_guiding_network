@@ -39,7 +39,7 @@ HU_WINDOW = [-180, 250]
 HU_WINDOW = [-125,275]
 N_CLASS = 14
 CLASS_LIST = np.arange(1, 14)
-CLASS_LIST = [1,2,3,4,5,6,7]
+#CLASS_LIST = [1,2,3,4,5,6,7]
 
 parser = argparse.ArgumentParser()
 
@@ -73,7 +73,7 @@ parser.add_argument('--layers', type=int, default=5,
 parser.add_argument('--features_root', type=int, default=32,
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=28,
+parser.add_argument('--batch_size', type=int, default=32,
                     help='')
 
 parser.add_argument('--data_augmentation', type=bool, default=False,
@@ -192,9 +192,6 @@ def launch():
                                 ny=WIDTH,
                                 channels=data_provider.channels, 
                                 n_class=data_provider.n_class, 
-                                layers=FLAGS.layers, 
-                                features_root=FLAGS.features_root,
-            #                    cost="cross_entropy",
                                 cost="mean_dice_coefficient", 
                                 norm=True,
                                 pretrained=None,
@@ -208,6 +205,7 @@ def launch():
                                 seq_length=FLAGS.seq_length,
 #                                data_aug='resize_and_crop'
                                 )
+    
     kwargs={"learning_rate": FLAGS.learning_rate, "power": FLAGS.power, "epochs": FLAGS.epochs}
     path = FLAGS.output_path if FLAGS.restore else create_training_path(FLAGS.output_path)
     

@@ -68,22 +68,34 @@ LABEL_SHAPE = [1, 256, 256, N_CLASS]
 #def display_attntion_on_image(img, attention, size=256):
     
     
+def display_segmentation(x_test, y_test, pred, n_class):
+    fig, (ax11, ax12, ax13) = plt.subplots(1,3)
 
-def display_segmentation(x_test, y_test, total_pred, n_class):
-    for i in range(len(x_test)):
-        print('sample: {}'.format(i))
-        fig, (ax11, ax12, ax13) = plt.subplots(1,3)
+    ax11.imshow(x_test[0,...,0], 'gray')
+    ax11.set_axis_off()     
 
-        ax11.imshow(x_test[i][0,...,0], 'gray')
-        ax11.set_axis_off()     
+    ax12.imshow(np.argmax(y_test[0], -1), vmin=0, vmax=n_class-1)
+    ax12.set_axis_off()
 
-        ax12.imshow(np.argmax(y_test[i][0], -1), vmin=0, vmax=n_class-1)
-        ax12.set_axis_off()
-
-        ax13.imshow(total_pred[i][0,...,0], vmin=0, vmax=n_class-1)
-        ax13.set_axis_off()
-        plt.show()
-        plt.close(fig)
+    ax13.imshow(pred[0], vmin=0, vmax=n_class-1)
+    ax13.set_axis_off()
+    plt.show()
+    
+#def display_segmentation(x_test, y_test, total_pred, n_class):
+#    for i in range(len(x_test)):
+#        print('sample: {}'.format(i))
+#        fig, (ax11, ax12, ax13) = plt.subplots(1,3)
+#
+#        ax11.imshow(x_test[i][0,...,0], 'gray')
+#        ax11.set_axis_off()     
+#
+#        ax12.imshow(np.argmax(y_test[i][0], -1), vmin=0, vmax=n_class-1)
+#        ax12.set_axis_off()
+#
+#        ax13.imshow(total_pred[i][0,...,0], vmin=0, vmax=n_class-1)
+#        ax13.set_axis_off()
+#        plt.show()
+#        plt.close(fig)
         
         
 def get_non_zero_idx(subject, n_class):
