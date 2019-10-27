@@ -11,6 +11,15 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
+def plot_histogram(path):
+    pass
+
+def plot_box_diagram(path):
+    pass
+
+def save_evaluation():
+    pass
+
 def compute_mean_dsc(total_cm):
       """Compute the mean intersection-over-union via the confusion matrix."""
       sum_over_row = np.sum(total_cm, axis=0).astype(float)

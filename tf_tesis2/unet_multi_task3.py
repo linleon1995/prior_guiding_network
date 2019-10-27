@@ -63,7 +63,7 @@ def _average_gradients(tower_grads):
   return average_grads
 
 
-class Unet(object):
+class Build_Model(object):
     """
     A unet implementation
     
@@ -89,6 +89,7 @@ class Unet(object):
         self.summaries = kwargs.get("summaries", True)
         self.z_flag = model_flag['zlevel_classify']
         self.angle_flag = model_flag['rotate_module']
+        self.is_transform = kwargs.get("is_transform", True)
         self.nx = nx
         self.ny = ny
         
@@ -123,7 +124,7 @@ class Unet(object):
 #            tf.summary.image('summary_predict', get_image_summary(self.pred_for_show))
             
 #            for k in range(self.n_class):
-#                tf.summary.image('prior_transform_{}'.format(k), get_image_summary(colorize(self.prior_transform[0:1,...,k:k+1], cmap='viridis')))
+#                tf.summary.image('prior_transform_{}'.format(k), get_image_summary(colorize(self.guidance[0:1,...,k:k+1], cmap='viridis')))
             
 #            for k in range(self.n_class):
 #                tf.summary.image('predict_class_{}'.format(k), get_image_summary(colorize(self.predicter[0:1,...,k:k+1], cmap='viridis')))
@@ -174,58 +175,59 @@ class Unet(object):
         self.accuracy = 1-self.seg_loss
         return total_loss
 
+
     def _model(self, cost_kwargs, kwargs):
         """
         """
-        output, layer_dict = crn_atrous_encoder_sep(self.x, self.n_class, self.z_class, self.batch_size, self.seq_length, is_training=True )
+        output, layer_dict = crn_atrous_encoder_sep(self.x, 
+                                                    self.n_class, 
+                                                    self.z_class, 
+                                                    self.batch_size, 
+                                                    self.seq_length, 
+                                                    is_training=self.is_training )
 
         self.z_output = output['z_output']
-#        self.z_pred = self.z_output
-#        self.z_pred = tf.nn.softmax(self.z_output, dim=1)
         self.z_pred = tf.nn.sigmoid(self.z_output)
-        
-        
-            
-        if self.prior is not None:
-#            self.prior_transform = self.y
-            indices = tf.cast(tf.floor(self.z_pred), tf.int32)
-            prior_transform = self.indexing(self.prior, indices)
-            self.prior_transform  = tf.one_hot(indices=prior_transform,
-                                depth=int(self.n_class),
-                                on_value=1,
-                                off_value=0,
-                                axis=-1,
-                                )
 
+        # indexing prior by predict the z-level of input    
+        if self.prior is not None:
+            indices = tf.cast(tf.floor(self.z_pred), tf.int32)
+            guidance = self.indexing(self.prior, indices)
+            self.guidance  = tf.one_hot(indices=guidance,
+                                               depth=int(self.n_class),
+                                                on_value=1,
+                                                off_value=0,
+                                                axis=-1,)
+        else:
+            self.guidance = self.y
             # TODO: modify transform_global_prior function
-#            self.prior_transform = self.transform_global_prior(self.prior)
-#            self.foreground = self.prior_transform[...,1:]
-        
-        # temporal information (bi GRU)
-        if self.seq_length is not None:
-            conv_output = tf.split(layer_dict['pool4'], self.seq_length, axis=0)
-            with tf.variable_scope("RNN"):
-                rnn_output = module.bidirectional_GRU(features=conv_output,
-                                                  batch_size=self.batch_size,
-                                                  nx=self.nx//8,
-                                                  ny=self.ny//8,
-                                                  n_class=self.n_class,
-                                                  seq_length=self.seq_length,
-                                                  is_training=True)
+#            self.guidance = self.transform_global_prior(self.prior)
+#            self.foreground = self.guidance[...,1:]
+
+        if self.is_transform:
+            self.guidance_transformed = self.transform_func(self.guidance)
+
+#         # temporal information (bi GRU)
+#         if self.seq_length is not None:
+#             conv_output = tf.split(layer_dict['pool4'], self.seq_length, axis=0)
+#             with tf.variable_scope("RNN"):
+#                 rnn_output = module.bidirectional_GRU(features=conv_output,
+#                                                   batch_size=self.batch_size,
+#                                                   nx=self.nx//8,
+#                                                   ny=self.ny//8,
+#                                                   n_class=self.n_class,
+#                                                   seq_length=self.seq_length,
+#                                                   is_training=True)
     
-#                self.logits = conv2d(rnn_output, [1,1,32,self.n_class], activate=None, scope="logits", bn_flag=False)
-#                self.logits = rnn_output
-            layer_dict['pool4'] = rnn_output
-            
-#        output, layer_dict, _ = unet_prior_guide_prof_decoder( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_decoder( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_atrous_decoder_sep( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
-        output, layer_dict, _ = crn_atrous_decoder_sep2( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_decoder_sep_new_aggregation( output, self.prior_transform, self.n_class, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_decoder_sep( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_decoder_sep_com( output, self.prior_transform, self.n_class, self.batch_size, layer_dict, is_training=True )
-#        output, layer_dict, _ = crn_decoder_sep_resnet50( output, self.prior_transform, self.batch_size, layer_dict, is_training=True )
+# #                self.logits = conv2d(rnn_output, [1,1,32,self.n_class], activate=None, scope="logits", bn_flag=False)
+# #                self.logits = rnn_output
+#             layer_dict['pool4'] = rnn_output
+
+        output, layer_dict, _ = crn_atrous_decoder_sep( output, self.guidance_transformed, self.batch_size, layer_dict, is_training=self.is_training )
+#        output, layer_dict, _ = crn_atrous_decoder_sep2( output, guidance_transformed, self.batch_size, layer_dict, is_training=self.is_training )
+
         return output, layer_dict
+
 
     def _loss_utils(self, logits, labels, cost_name, cost_kwargs):
         """
@@ -375,23 +377,9 @@ class Unet(object):
         return loss
     
     
-    def transform_global_prior(self, prior):
-#        if self.z_flag:
-        prior = tf.reshape(prior, [self.z_class, -1])
-        prior_transform = tf.matmul(self.z_pred, prior)
-        prior_transform = tf.reshape(prior_transform, [self.batch_size, 512,512,self.n_class])
-        if self.angle_flag:
-            self.theta = self.angle_label
-            batch_grids = stn.affine_grid_generator(self.ny, self.nx, self.theta)
-            x_s = batch_grids[:, 0, :, :]
-            y_s = batch_grids[:, 1, :, :]
-        
-            background = stn.bilinear_sampler(1-prior_transform[...,0:1], x_s, y_s)
-            background = -(background-1)
-            foreground = stn.bilinear_sampler(prior_transform[...,1:], x_s, y_s)
-            prior_transform = tf.concat([background, foreground], -1)
-            
-        return prior_transform
+    def transform_func(self, guidance):
+        #spatial trnsform network
+        return guidance
     
     def indexing(self, prior, z):
         return tf.gather(params=prior, indices=z[:,0])
@@ -667,7 +655,7 @@ class Trainer(object):
                                                                              self.net.total_loss,
 #                                                                             self.net.z_output,
 #                                                                             self.net.angle_output,
-                                                                             self.net.prior_transform,
+                                                                             self.net.guidance,
 #                                                                             self.net.label_exist,
 #                                                                             self.net.pred_for_show,
 #                                                                             self.net.g1,

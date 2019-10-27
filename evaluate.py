@@ -33,12 +33,8 @@ import argparse
 load_nibabel_data = prior_generate.load_nibabel_data
 
 
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_001/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_005/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_007/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_010/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_011/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_016/model.ckpt"
+MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_017/model.ckpt"
+MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_022/model.ckpt"
 
 RAW_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw_frames/raw/'
 MASK_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw_frames/label/'
@@ -57,7 +53,7 @@ CLASS_LIST = np.arange(1,14)
 #CLASS_LIST = [6]
 N_CLASS=len(CLASS_LIST)+1
 N_OBSERVE_SUBJECT = 5
-OBSERVE_SUBJECT_LIST = [25,26,27]
+OBSERVE_SUBJECT_LIST = [25,26]
 
 
 
@@ -96,7 +92,7 @@ parser.add_argument("--z-class", type=int, default=Z_CLASS,
 parser.add_argument("--shuffle", type=bool, default=SHUFFLE,
                     help="...")
 
-parser.add_argument("--display_flag", type=bool, default=True,
+parser.add_argument("--display_flag", type=bool, default=False,
                     help="...")
 
 parser.add_argument('--only_foreground', type=bool, default=False,
@@ -163,7 +159,7 @@ def main():
                                 seq_length=FLAGS.seq_length,
 #                                data_aug='resize_and_crop'
                                 )
-
+    
     # output
     output = net.output
     logits = output['output_map']
@@ -181,20 +177,20 @@ def main():
     z_label = tf.cast(z_label, tf.float32)
 
     # TODO: 
-    if FLAGS.seq_length is not None:
-        conv_output = tf.split(layer_dict['pool4'], FLAGS.seq_length, axis=0)
-        with tf.variable_scope("RNN"):
-            rnn_output = module.bidirectional_GRU(features=conv_output,
-                                              batch_size=1,
-                                              nx=WIDTH//8,
-                                              ny=HEIGHT//8,
-                                              n_class=FLAGS.n_class,
-                                              seq_length=FLAGS.seq_length,
-                                              is_training=False)
-
-#                self.logits = conv2d(rnn_output, [1,1,32,self.n_class], activate=None, scope="logits", bn_flag=False)
-#                self.logits = rnn_output
-        layer_dict['pool4'] = rnn_output
+#    if FLAGS.seq_length is not None:
+#        conv_output = tf.split(layer_dict['pool4'], FLAGS.seq_length, axis=0)
+#        with tf.variable_scope("RNN"):
+#            rnn_output = module.bidirectional_GRU(features=conv_output,
+#                                              batch_size=1,
+#                                              nx=WIDTH//8,
+#                                              ny=HEIGHT//8,
+#                                              n_class=FLAGS.n_class,
+#                                              seq_length=FLAGS.seq_length,
+#                                              is_training=False)
+#
+##                self.logits = conv2d(rnn_output, [1,1,32,self.n_class], activate=None, scope="logits", bn_flag=False)
+##                self.logits = rnn_output
+#        layer_dict['pool4'] = rnn_output
             
     # confusion matrix for segmentation result
     label = tf.argmax(net.y, -1)
@@ -237,7 +233,6 @@ def main():
 
         # visualization
         if FLAGS.display_flag:
-            print(np.shape(image), np.shape(label), np.shape(pred))
             display_segmentation(image, label, pred, FLAGS.n_class)
 
         # save image
