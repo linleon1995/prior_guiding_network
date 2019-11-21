@@ -9,9 +9,9 @@ Created on Sat Jan 12 16:27:56 2019
 import tensorflow as tf
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-from tf_tesis2  import unet_multi_task3
+# from tf_tesis2  import unet_multi_task3
 from tf_tesis2.eval_utils import compute_mean_dsc, compute_mean_iou, compute_accuracy, load_model, plot_confusion_matrix
-from tf_tesis2.dense_crf import crf_inference
+# from tf_tesis2.dense_crf import crf_inference
 #from tf_tesis2.network import unet, unet_multi_task_fine, unet_multi_task_fine_newz, unet_prior_guide, unet_prior_guide2, unet_prior_guide_encoder, unet_prior_guide_decoder
 #from tf_tesis2.network import unet_prior_guide2, unet_prior_guide_encoder, unet_prior_guide_decoder
 #from tf_unet_multi_task  import util_multi_task 

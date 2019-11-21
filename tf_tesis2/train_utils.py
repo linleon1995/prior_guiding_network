@@ -8,8 +8,85 @@ Created on Tue Jun 18 14:12:37 2019
 
 import tensorflow as tf
 import numpy as np
-
+import matplotlib.pyplot as plt
     
+
+def get_network(network_name, preprocess_images,
+                preprocessed_images_dtype=tf.float32, arg_scope=None):
+  """Gets the network.
+  Args:
+    network_name: Network name.
+    preprocess_images: Preprocesses the images or not.
+    preprocessed_images_dtype: The type after the preprocessing function.
+    arg_scope: Optional, arg_scope to build the network. If not provided the
+      default arg_scope of the network would be used.
+  Returns:
+    A network function that is used to extract features.
+  Raises:
+    ValueError: network is not supported.
+  """
+  if network_name not in networks_map:
+    raise ValueError('Unsupported network %s.' % network_name)
+  arg_scope = arg_scope or arg_scopes_map[network_name]()
+  def _identity_function(inputs, dtype=preprocessed_images_dtype):
+    return tf.cast(inputs, dtype=dtype)
+  if preprocess_images:
+    preprocess_function = _PREPROCESS_FN[network_name]
+  else:
+    preprocess_function = _identity_function
+  func = networks_map[network_name]
+  @functools.wraps(func)
+  def network_fn(inputs, *args, **kwargs):
+    with slim.arg_scope(arg_scope):
+      return func(preprocess_function(inputs, preprocessed_images_dtype),
+                  *args, **kwargs)
+  return network_fn
+
+
+def colorize(value, vmin=None, vmax=None, cmap=None):
+    """
+    A utility function for TensorFlow that maps a grayscale image to a matplotlib
+    colormap for use with TensorBoard image summaries.
+    By default it will normalize the input value to the range 0..1 before mapping
+    to a grayscale colormap.
+    Arguments:
+      - value: 2D Tensor of shape [height, width] or 3D Tensor of shape
+        [height, width, 1].
+      - vmin: the minimum value of the range used for normalization.
+        (Default: value minimum)
+      - vmax: the maximum value of the range used for normalization.
+        (Default: value maximum)
+      - cmap: a valid cmap named for use with matplotlib's `get_cmap`.
+        (Default: 'gray')
+    Example usage:
+    ```
+    output = tf.random_uniform(shape=[256, 256, 1])
+    output_color = colorize(output, vmin=0.0, vmax=1.0, cmap='viridis')
+    tf.summary.image('output', output_color)
+    ```
+    
+    Returns a 3D tensor of shape [height, width, 3].
+    """
+
+    # normalize
+    vmin = tf.reduce_min(value) if vmin is None else vmin
+    vmax = tf.reduce_max(value) if vmax is None else vmax
+    value = (value - vmin) / (vmax - vmin) # vmin..vmax
+
+    # squeeze last dim if it exists
+    value = tf.squeeze(value, axis=-1)
+
+    # quantize
+    indices = tf.to_int32(tf.round(value * 255))
+
+    # gather
+    cm = plt.cm.get_cmap(cmap if cmap is not None else 'gray')
+    colors = tf.constant(cm.colors, dtype=tf.float32)
+    value = tf.gather(colors, indices)
+  
+    value = tf.cast(value*255, tf.uint8)
+    return value
+
     
 def add_auxilary_z_loss(logits,
                         labels,

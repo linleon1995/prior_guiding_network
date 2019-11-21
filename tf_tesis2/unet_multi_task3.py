@@ -23,11 +23,12 @@ VGG_MEAN = [103.939, 116.779, 123.68]
 #from tf_tesis2.layer_multi_task import (weight_variable, weight_variable_deconv, bias_variable, 
 #                            conv2d, deconv2d, upsampling2d, max_pool, crop_and_concat, pixel_wise_softmax_2,
 #                            cross_entropy, batch_norm, softmax, fc_layer, new_conv_layer_bn, new_conv_layer, upsampling_layer)
-from tf_tesis2.network import (crn_encoder_sep, crn_decoder_sep, crn_atrous_encoder_sep, crn_atrous_decoder_sep, crn_atrous_decoder_sep2, 
-                               crn_encoder_sep_com, crn_decoder_sep_com, crn_encoder_sep_resnet50, crn_decoder_sep_resnet50,
-                               crn_encoder_sep_new_aggregation, crn_decoder_sep_new_aggregation, crn_encoder, crn_decoder)
+from tf_tesis2.network import (crn_resnetv50_encoder, crn_resnetv50_decoder, 
+                               crn_atrous_encoder_sep, crn_atrous_decoder_sep, 
+                               crn_atrous_decoder_sep2, crn_atrous_decoder_sep3)
+
 from tf_tesis2 import stn
-from tf_tesis2.dense_crf import crf_inference
+# from tf_tesis2.dense_crf import crf_inference
 from scipy.misc import imresize, imrotate
 from tf_tesis2.utils import (conv2d)
 from tf_tesis2 import train_utils, module, input_preprocess
@@ -37,7 +38,7 @@ PI_ON_180 = 0.017453292519943295
 # TODO: get_optimizer and loss
 # TODO: tensorboard
 # TODO: build folder??
-
+colorize = train_utils.colorize
 
 def _average_gradients(tower_grads):
   """Calculates average of gradient for each shared variable across all towers.
@@ -73,8 +74,8 @@ class Build_Model(object):
     :param cost_kwargs: (optional) kwargs passed to the cost function. See Unet._loss_utils for more options
     """
     
-    def __init__(self, model_flag, nx, ny, channels=1, n_class=2, cost="cross_entropy", prior=None, 
-                 batch_size=None, seq_length=None, cost_kwargs={}, **kwargs):
+    def __init__(self, nx, ny, channels=1, n_class=2, cost="cross_entropy", prior=None, 
+                 batch_size=None, is_training=True, seq_length=None, cost_kwargs={}, **kwargs):
         tf.reset_default_graph()
 
         self.seq_length = seq_length
@@ -83,62 +84,40 @@ class Build_Model(object):
             self.batch_size = batch_size*self.seq_length
         else:
             self.batch_size = batch_size
-        self.prior = tf.convert_to_tensor(prior)
+        
         self.z_class = kwargs.get("z_class", 5)
-        self.data_aug = kwargs.get("data_aug", None)       
-        self.summaries = kwargs.get("summaries", True)
-        self.z_flag = model_flag['zlevel_classify']
-        self.angle_flag = model_flag['rotate_module']
+        # TODO: move summaries from model to trainer
+        self.z_flag = kwargs.get("z_flag", True)
+        self.guidance_flag = kwargs.get("guidance_flag", True)
         self.is_transform = kwargs.get("is_transform", True)
+        self.is_training = is_training
         self.nx = nx
         self.ny = ny
         
         self.x = tf.placeholder("float", shape=[None, self.nx, self.ny, channels], name='x')
         self.y = tf.placeholder("float", shape=[None, self.nx, self.ny, n_class], name='y')
         self.keep_prob = tf.placeholder(tf.float32, name='keep_prob') #dropout (keep probability)
-        self.is_training = tf.placeholder(tf.bool)
+        
 
         self.seq_length = seq_length
 #        if self.z_flag: self.z_label = tf.placeholder("int32", shape=[None, self.n_class], name='z_label')
         if self.z_flag: self.z_label = tf.placeholder("int32", shape=[None, 1], name='z_label')
-        if self.angle_flag: self.angle_label = tf.placeholder("float", shape=[None, 2, 3], name='angle_label')
+        if prior is not None:
+            self.prior = tf.convert_to_tensor(prior)
+        else:
+            self.prior = prior
 
+        # build up network
         self.output, self.layer_dict = self._model(cost_kwargs, kwargs)
         self.logits = self.output['output_map']
         self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         
-        # TODO: we don't need loss when doing evaluate
-#        if self.is_training:
-        self.total_loss = self._get_loss(cost, cost_kwargs, kwargs)
-        self.gradients_node = tf.gradients(self.total_loss, self.variables)
+        if self.is_training:
+            self.total_loss = self._get_loss(cost, cost_kwargs, kwargs)
+            self.gradients_node = tf.gradients(self.total_loss, self.variables)
         
-        if self.summaries:
-#            self.y_for_show = colorize(tf.expand_dims(tf.argmax(self.y[0:1], 3), 3), cmap='viridis')
-#            self.pred_for_show = colorize(tf.expand_dims(tf.argmax(self.predicter[0:1], 3), 3), cmap='viridis')
-#            print(y_for_show, pred_for_show, 30*'w')
-#            y_for_show = tf.multiply(tf.divide(tf.expand_dims(tf.argmax(self.y[0:1], 3), 3), n_class), 255)
-#            pred_for_show = tf.multiply(tf.divide(tf.expand_dims(tf.argmax(self.predicter[0:1], 3), 3), n_class), 255)
 
-#            tf.summary.image('summary_raw', get_image_summary(self.x[0:1,...,0:1]))
-#            tf.summary.image('summary_label', get_image_summary(self.y_for_show))
-#            tf.summary.image('summary_predict', get_image_summary(self.pred_for_show))
-            
-#            for k in range(self.n_class):
-#                tf.summary.image('prior_transform_{}'.format(k), get_image_summary(colorize(self.guidance[0:1,...,k:k+1], cmap='viridis')))
-            
-#            for k in range(self.n_class):
-#                tf.summary.image('predict_class_{}'.format(k), get_image_summary(colorize(self.predicter[0:1,...,k:k+1], cmap='viridis')))
-                
-            for k in self.layer_dict.keys():
-                tf.summary.image('intermedia_{}'.format(k), get_image_summary(self.layer_dict[k][...,0:1]))
-            
-            for k in self.layer_dict.keys():
-                tf.summary.histogram("histogram_{}".format(k), self.layer_dict[k])
-                
- 
-        
-        
-        
+
     def _get_loss(self, cost, cost_kwargs, kwargs):
         if self.seq_length is not None:
             labels = self.y
@@ -155,21 +134,21 @@ class Build_Model(object):
             lambda_z = kwargs.get("lambda_z", 1e-2)
             total_loss += lambda_z * self.z_cost
 
-        if kwargs.get("lambda_guidance", None) is not None:
+        if self.guidance_flag:
             # get all guidance
-            guidance = {}
-            for layer_name in self.output:
-                if "guidance" in layer_name:
-                    guidance[layer_name] = self.output[layer_name]
+            self.guidance_dict = {}
+            for layer_name in self.layer_dict:
+                if "guidance" in layer_name and layer_name not in self.output:
+                    self.guidance_dict[layer_name] = self.layer_dict[layer_name]
 
             # calcuate guidance loss
             self.guidance_loss = 0
-            for g in guidance.values():
+            for g in self.guidance_dict.values():
                 ny_g = g.get_shape()[1]
                 nx_g = g.get_shape()[2]
                 ys = tf.image.resize_bilinear(self.y, [ny_g, nx_g])
                 self.guidance_loss += self._loss_utils(g, ys, cost, cost_kwargs)
-            lambda_guidance = kwargs.get("lambda_guidance", None)
+            lambda_guidance = kwargs.get("lambda_guidance", 1e-1)
             total_loss += lambda_guidance * self.guidance_loss
 
         self.accuracy = 1-self.seg_loss
@@ -179,20 +158,33 @@ class Build_Model(object):
     def _model(self, cost_kwargs, kwargs):
         """
         """
-        output, layer_dict = crn_atrous_encoder_sep(self.x, 
+        output, layer_dict = crn_resnetv50_encoder(self.x, 
                                                     self.n_class, 
                                                     self.z_class, 
                                                     self.batch_size, 
-                                                    self.seq_length, 
+                                                    affine_flag=self.is_transform,
+                                                    z_flag=self.z_flag,
+                                                    seq_length=self.seq_length, 
                                                     is_training=self.is_training )
+        
+#        output, layer_dict = crn_atrous_encoder_sep(self.x, 
+#                                                    self.n_class, 
+#                                                    self.z_class, 
+#                                                    self.batch_size, 
+#                                                    affine_flag=self.is_transform,
+#                                                    z_flag=self.z_flag,
+#                                                    seq_length=self.seq_length, 
+#                                                    is_training=self.is_training )
 
-        self.z_output = output['z_output']
-        self.z_pred = tf.nn.sigmoid(self.z_output)
+        if self.z_flag: 
+            self.z_output = output['z_output']
+            self.z_pred = tf.nn.sigmoid(self.z_output)
 
         # indexing prior by predict the z-level of input    
         if self.prior is not None:
             indices = tf.cast(tf.floor(self.z_pred), tf.int32)
             guidance = self.indexing(self.prior, indices)
+            guidance = tf.cast(guidance, tf.int32)
             self.guidance  = tf.one_hot(indices=guidance,
                                                depth=int(self.n_class),
                                                 on_value=1,
@@ -205,8 +197,10 @@ class Build_Model(object):
 #            self.foreground = self.guidance[...,1:]
 
         if self.is_transform:
-            self.guidance_transformed = self.transform_func(self.guidance)
-
+            theta = output["theta"]
+            self.guidance_transform = self.transform_func(self.guidance, theta)
+        else:
+            self.guidance_transform = self.guidance
 #         # temporal information (bi GRU)
 #         if self.seq_length is not None:
 #             conv_output = tf.split(layer_dict['pool4'], self.seq_length, axis=0)
@@ -223,9 +217,18 @@ class Build_Model(object):
 # #                self.logits = rnn_output
 #             layer_dict['pool4'] = rnn_output
 
-        output, layer_dict, _ = crn_atrous_decoder_sep( output, self.guidance_transformed, self.batch_size, layer_dict, is_training=self.is_training )
-#        output, layer_dict, _ = crn_atrous_decoder_sep2( output, guidance_transformed, self.batch_size, layer_dict, is_training=self.is_training )
+#        output, layer_dict, _ = crn_atrous_decoder_sep( output, self.guidance_transform, self.batch_size, layer_dict, is_training=self.is_training )
+    #    output, layer_dict, _ = crn_atrous_decoder_sep2( output, guidance_transformed, self.batch_size, layer_dict, is_training=self.is_training )
+        output, layer_dict, _ = crn_resnetv50_decoder( output, self.guidance_transform, self.batch_size, layer_dict, is_training=self.is_training )
+#        output, layer_dict, _ = crn_atrous_decoder_sep3( output, self.guidance_transform, 
+#                                                 self.batch_size, layer_dict, 
+#                                                 is_training=self.is_training,
+#                                                 n_class=self.n_class)
 
+#        for v in tf.trainable_variables():
+#            if "Encode" in v.name:
+#                print(30*"o")
+#                print(v.name, v)
         return output, layer_dict
 
 
@@ -372,14 +375,14 @@ class Build_Model(object):
         if regularizer is not None:
             regularizers = sum([tf.nn.l2_loss(variable) for variable in self.variables])
             loss += (regularizer * regularizers)
-
-            
         return loss
     
     
-    def transform_func(self, guidance):
+    def transform_func(self, guidance, theta):
         #spatial trnsform network
-        return guidance
+        guidance = tf.cast(guidance, tf.float32)
+        guidance_transform = stn.spatial_transformer_network(guidance, theta)
+        return guidance_transform
     
     def indexing(self, prior, z):
         return tf.gather(params=prior, indices=z[:,0])
@@ -406,7 +409,7 @@ class Build_Model(object):
             saver.restore(sess, tf.train.latest_checkpoint(model_path))
             
             y_dummy = np.empty((x_test.shape[0], x_test.shape[1], x_test.shape[2], self.n_class))
-            prediction,logits = sess.run([self.predicter, self.logits], feed_dict={self.x: x_test, self.y: y_dummy, self.keep_prob: 1., self.net.is_training: is_training})
+            prediction,logits = sess.run([self.predicter, self.logits], feed_dict={self.x: x_test, self.y: y_dummy, self.keep_prob: 1.})
             
         return prediction, logits
     
@@ -452,15 +455,16 @@ class Trainer(object):
     
     verification_batch_size = 4
     
-    def __init__(self, net, batch_size=1, norm_grads=False, optimizer="momentum", opt_kwargs={}):
+    def __init__(self, net, batch_size=1, norm_grads=False, summaries=True, optimizer="momentum", opt_kwargs={}):
         self.net = net
         self.batch_size = batch_size
         self.norm_grads = norm_grads
+        self.summaries = summaries
         self.optimizer = optimizer
         self.opt_kwargs = opt_kwargs
         self.power = opt_kwargs.pop("power", 0.7)
         self.epochs = opt_kwargs.pop("epochs", 100)
-        
+
     def _get_optimizer(self, training_iters, global_step):
         if self.optimizer == "momentum":
             learning_rate = self.opt_kwargs.pop("learning_rate", 0.2)
@@ -504,26 +508,44 @@ class Trainer(object):
 #        global_step = tf.train.get_or_create_global_step()
         
         self.norm_gradients_node = tf.Variable(tf.constant(0.0, shape=[len(self.net.gradients_node)]))
+        self.optimizer = self._get_optimizer(training_iters, global_step)
 
-        if self.net.summaries and self.norm_grads:
-            tf.summary.histogram('norm_grads', self.norm_gradients_node)
-        if self.net.summaries:
+        if self.summaries:
+            # TODO: how many summaries we need for validate?
+            # scalar summary
             tf.summary.scalar('loss', self.net.total_loss)
-            tf.summary.scalar('dsc_loss', self.net.seg_loss)
+            tf.summary.scalar('seg_loss', self.net.seg_loss)
             if self.net.z_flag:
                 tf.summary.scalar('z_loss', self.net.z_cost)
-#            if self.net.angle_flag:
-#                tf.summary.scalar('angle_loss', self.net.angle_loss)
-    #        tf.summary.scalar('cross_entropy', self.net.cross_entropy)
-#            tf.summary.scalar('guidance_loss', self.net.guidance_loss)
             tf.summary.scalar('accuracy', self.net.accuracy)
+            self.summary_loss = tf.summary.merge_all()
+            tf.summary.scalar('learning_rate', self.learning_rate_node)
 
-        self.optimizer = self._get_optimizer(training_iters, global_step)
-        tf.summary.scalar('learning_rate', self.learning_rate_node)
+            # image summary
+            y_for_show = colorize(tf.expand_dims(tf.argmax(self.net.y[0:1], 3), 3), cmap='viridis')
+            pred_for_show = colorize(tf.expand_dims(tf.argmax(tf.nn.softmax(self.net.logits[0:1]), 3), 3), cmap='viridis')
+            tf.summary.image('summary_raw', self.net.x[0:1,...,0:1])
+            tf.summary.image('summary_label', y_for_show)
+            tf.summary.image('summary_pred', pred_for_show)
 
-        self.summary_op = tf.summary.merge_all()        
+            for k in range(self.net.n_class):
+                tf.summary.image('guidance{}'.format(k), colorize(self.net.guidance[0:1,...,k:k+1], cmap='viridis'))
+            
+#            for k in range(self.n_class):
+#                tf.summary.image('predict_class_{}'.format(k), get_image_summary(colorize(self.predicter[0:1,...,k:k+1], cmap='viridis')))
+                
+            for k in self.net.layer_dict.keys():
+                tf.summary.image('intermedia_{}'.format(k), colorize(self.net.layer_dict[k][0:1,...,0:1], cmap='plasma'))
+            
+            # histogram summary
+            for k in self.net.layer_dict.keys():
+                tf.summary.histogram("histogram_{}".format(k), self.net.layer_dict[k])
+            if self.norm_grads:
+                tf.summary.histogram('norm_grads', self.norm_gradients_node)
+
+            self.summary_op = tf.summary.merge_all()    
+
         init = tf.global_variables_initializer()
-        
         self.prediction_path = prediction_path
         abs_prediction_path = os.path.abspath(self.prediction_path)
         output_path = os.path.abspath(output_path)
@@ -585,8 +607,8 @@ class Trainer(object):
             
 #            pred_shape = self.store_prediction(sess, test_x, test_y, "_init")
             
-            summary_writer = tf.summary.FileWriter(output_path, graph=sess.graph)
-
+            summary_writer1 = tf.summary.FileWriter(os.path.join(output_path, 'train'), graph=sess.graph)
+            summary_writer2 = tf.summary.FileWriter(os.path.join(output_path, 'validate'), graph=sess.graph)
             logging.info("Start optimization")
             
             avg_gradients = None
@@ -621,71 +643,85 @@ class Trainer(object):
                 
                 for v_step in range(valid_iters):
                     test_x, test_y, test_z, test_angle, test_class_gt = valid_provider(self.batch_size)
-                    _feed_dict = {self.net.x: test_x, 
-                                  self.net.y: test_y, 
-                                  self.net.keep_prob: dropout, 
-                                  self.net.is_training: is_training,
-                                  }
-                    if self.net.z_flag: _feed_dict[self.net.z_label] = test_z 
-                    if self.net.angle_flag: _feed_dict[self.net.angle_label] = test_angle
-                    valid_loss += sess.run(self.net.total_loss, feed_dict=_feed_dict)
+                    self.validate_feed_dict = {self.net.x: test_x, 
+                                                self.net.y: test_y, 
+                                                self.net.keep_prob: dropout,
+                                                }
+                    if self.net.z_flag: self.validate_feed_dict[self.net.z_label] = test_z 
+                    valid_loss += sess.run(self.net.total_loss, feed_dict=self.validate_feed_dict)
  
                 for step in range((epoch*training_iters), ((epoch+1)*training_iters)):
                     batch_x, batch_y, batch_z, batch_angle, batch_class_gt = data_provider(self.batch_size)
-                    _feed_dict = {self.net.x: batch_x, 
+                    self.train_feed_dict = {self.net.x: batch_x, 
                                   self.net.y: batch_y, 
-                                  self.net.keep_prob: dropout, 
-                                  self.net.is_training: is_training,
+                                  self.net.keep_prob: dropout,
                                   }
-                    if self.net.z_flag: _feed_dict[self.net.z_label] = batch_z
-                    if self.net.angle_flag: _feed_dict[self.net.angle_label] = batch_angle
-#                    if self.net.class_flag: _feed_dict[self.net.class_label] = batch_class_gt
+                    if self.net.z_flag: self.train_feed_dict[self.net.z_label] = batch_z
 
 
                         
                     pred, _, dsc_loss, lr, loss, \
                     prior = sess.run((
-                                                                            self.net.logits, 
-                                                                            self.optimizer, 
-                                                                             self.net.seg_loss, 
-                                                                             self.learning_rate_node, 
+                                    self.net.logits, 
+                                    self.optimizer, 
+                                     self.net.seg_loss, 
+                                     self.learning_rate_node, 
 #                                                                             self.net.gradients_node,
 #                                                                             self.net.z_cost,
 #                                                                             self.net.angle_loss,
-                                                                             self.net.total_loss,
+                                     self.net.total_loss,
 #                                                                             self.net.z_output,
 #                                                                             self.net.angle_output,
-                                                                             self.net.guidance,
+                                     self.net.guidance_dict,
 #                                                                             self.net.label_exist,
 #                                                                             self.net.pred_for_show,
 #                                                                             self.net.g1,
 #                                                                             self.net.g1,
 #                                                                             self.net.g1,
-                                                                             ), 
-                                                                          feed_dict=_feed_dict,
-                                                                          )
-    
-#                    if self.net.summaries:
-#                        tf.summary.image('summary_raw_01', get_image_summary(self.net.x))
-#                        tf.summary.image('summary_label_01', get_image_summary(tf.expand_dims(tf.argmax(self.net.y, 3),3)))
-#                        tf.summary.image('summary_predict_01', get_image_summary(tf.expand_dims(tf.argmax(self.net.predicter, 3),3)))
+                                     ), 
+                                  feed_dict=self.train_feed_dict,
+                                  )
+
+                    # if step%1 == 0:
+                        # print(yyy.shape)
+                        # print(np.max(yyy), np.min(yyy), np.median(yyy))
+                        # print(yyy[0,0,0], yyy[0,0,1], yyy[0,0,2])
+                        # plt.imshow(yyy)
+                        # plt.show()
+#                         self.show_prediction(batch_x, batch_y, batch_z, pred, output_path, display=True)
+# #                        plt.imshow(pp[0])
+#                         plt.show()
                         
-                    if step%40 == 0:
-                        self.show_prediction(batch_x, batch_y, batch_z, pred, output_path, display=True)
-#                        plt.imshow(pp[0])
-                        plt.show()
+#                         plt.subplot(131)
+#                         plt.imshow(prior["guidance1"][0,...,0])
+#                         plt.subplot(132)
+#                         plt.imshow(prior["guidance2"][0,...,0])
+#                         plt.subplot(133)
+#                         plt.imshow(prior["guidance3"][0,...,0])
+#                         plt.show()
+                        
+#                         plt.subplot(131)
+#                         plt.imshow(prior["guidance1"][0,...,6])
+#                         plt.subplot(132)
+#                         plt.imshow(prior["guidance2"][0,...,6])
+#                         plt.subplot(133)
+#                         plt.imshow(prior["guidance3"][0,...,6])
+#                         plt.show()
                         
 #                        plt.subplot(131)
-#                        plt.imshow(g1[0,...,1])
+#                        g1=sess.run(tf.cast(tf.image.resize_bilinear(self.net.y, [128,128]), tf.int32), 
+#                                  feed_dict=_feed_dict,)
+#                        plt.imshow(g1[0,...,0])
 #                        plt.subplot(132)
-#                        plt.imshow(g2[0,...,1])
+#                        g2=sess.run(tf.cast(tf.image.resize_bilinear(self.net.y, [64,64]), tf.int32), 
+#                                  feed_dict=_feed_dict,)
+#                        plt.imshow(g2[0,...,0])
 #                        plt.subplot(133)
-#                        plt.imshow(g3[0,...,1])
-#                        plt.show()
-#                        plt.imshow(label_exist[0,0])
+#                        g3=sess.run(tf.cast(tf.image.resize_bilinear(self.net.y, [32,32]), tf.int32), 
+#                                  feed_dict=_feed_dict,)
+#                        plt.imshow(g3[0,...,0])
 #                        plt.show()
                         
-
 #                        plt.imshow(1/(1+np.exp(-class_output[0:1])))
 #                        plt.show()
                         
@@ -701,7 +737,7 @@ class Trainer(object):
 #                        self.norm_gradients_node.assign(norm_gradients).eval()
                     
                     if step % display_step == 0:
-                        self.output_minibatch_stats(sess, summary_writer, step, batch_x, batch_y, batch_z, batch_angle, batch_class_gt)
+                        self.output_minibatch_stats(sess, summary_writer1, summary_writer2, step)
                         
                     total_loss += loss
                     dsc_total_loss += dsc_loss
@@ -755,7 +791,8 @@ class Trainer(object):
 #                angle_loss_list.append(angle_total_loss/training_iters)
 ##                class_loss_list.append(class_total_loss/training_iters)
 #                
-                display_loss([total_loss_list, valid_loss_list], 'loss', ['train', 'validate'], output_path=output_path)
+                # display_loss([total_loss_list, valid_loss_list], 'loss', ['train', 'validate'], output_path=output_path)
+
 #                display_loss([mb_total_loss_list], 'mb_loss', ['mb_loss'], output_path=output_path)
 #                display_loss([dsc_loss_list], 'dsc_loss', ['dsc_loss'], output_path=output_path)
 ##                display_loss([dsc_loss_list, seed_loss_list], 'dsc_loss & seed_loss', ['dsc_loss', 'reference_loss'], output_path=output_path)
@@ -773,8 +810,9 @@ class Trainer(object):
 
     def show_prediction(self, batch_x, batch_y, batch_z, pred, output_path, display=True):
 #        print(batch_x[0,0,0,0],30*'-')
-        fig = plt.figure()
         plt.ion()
+        plt.figure()
+        
         plt.subplot(131)
         if batch_x.shape[-1]==3:
             plt.imshow(batch_x[0])
@@ -785,19 +823,20 @@ class Trainer(object):
         plt.subplot(133)
         plt.imshow(np.float32(np.argmax(pred[0], axis=-1)), vmin=0, vmax=self.net.n_class-1)
         if display:
+            # plt.ioff()
             plt.show()
             
-        plt.subplot(131)
-        plt.imshow(pred[0,...,0])
-        plt.subplot(132)
-        plt.imshow(pred[0,...,1])
-        plt.subplot(133)
-        plt.imshow(pred[0,...,2])
+        # plt.subplot(131)
+        # plt.imshow(pred[0,...,0])
+        # plt.subplot(132)
+        # plt.imshow(pred[0,...,1])
+        # plt.subplot(133)
+        # plt.imshow(pred[0,...,2])
     
-        plt.savefig(output_path+'_pred'+'.png')
-        plt.ioff()
-        if display:
-            plt.show()
+        # plt.savefig(output_path+'_pred'+'.png')
+        # # plt.ioff()
+        # if display:
+        #     plt.show()
         
         
     def store_prediction(self, batch_y, prediction, loss):
@@ -809,25 +848,22 @@ class Trainer(object):
     def output_epoch_stats(self, epoch, total_loss, training_iters, lr):
         logging.info("Epoch {:}, Average loss: {:.4f}, learning rate: {:.4f}".format(epoch, (total_loss / training_iters), lr))
     
-    def output_minibatch_stats(self, sess, summary_writer, step, batch_x, batch_y, batch_z, batch_angle, batch_class_gt, is_training=False):
+    def output_minibatch_stats(self, sess, summary_writer1, summary_writer2, step, is_training=False):
         # Calculate batch loss and accuracy
-        _feed_dict = {self.net.x: batch_x, 
-                      self.net.y: batch_y, 
-                      self.net.keep_prob: 1, 
-                      self.net.is_training: is_training}
-        if self.net.z_flag: _feed_dict[self.net.z_label] = batch_z
-        if self.net.angle_flag: _feed_dict[self.net.angle_label] = batch_angle
-        summary_str, loss, acc, predictions = sess.run([self.summary_op, 
-                                                            self.net.seg_loss, 
-                                                            self.net.accuracy, 
-                                                            self.net.logits], 
-                                                           feed_dict=_feed_dict)
-        summary_writer.add_summary(summary_str, step)
-        summary_writer.flush()
+        summary_str, loss, acc, predictions = sess.run([self.summary_op,
+                                                        self.net.seg_loss, 
+                                                        self.net.accuracy, 
+                                                        self.net.logits], 
+                                                        feed_dict=self.train_feed_dict)
+        summary_loss = sess.run(self.summary_loss, feed_dict=self.validate_feed_dict)                                                
+        summary_writer1.add_summary(summary_str, step)
+        summary_writer1.flush()
+        summary_writer2.add_summary(summary_loss, step)
+        summary_writer2.flush()
         logging.info("Iter {:}, Minibatch Loss= {:.4f}, Training Accuracy= {:.4f}, Minibatch error= {:.1f}%".format(step,
                                                                                                             loss,
                                                                                                             acc,
-                                                                                                            error_rate(predictions, batch_y)))
+                                                                                                            error_rate(predictions, self.train_feed_dict[self.net.y])))
     def acc_and_loss(self, _mb_loss, _loss, _v_loss, _a_loss, output_path, _z_mb_loss, _z_loss, display=True):
         print('-'*30)
         print('Plotting...')
@@ -923,23 +959,6 @@ def error_rate(predictions, labels):
         np.sum(np.argmax(predictions, 3) == np.argmax(labels, 3)) /
         (predictions.shape[0]*predictions.shape[1]*predictions.shape[2]))
 
-
-def get_image_summary(img, idx=0):
-    """
-    Make an image summary for 4d tensor image with index idx
-    """
-    
-    V = tf.slice(img, (0, 0, 0, idx), (1, -1, -1, 1))
-    V -= tf.reduce_min(V)
-    V /= tf.reduce_max(V)
-    V *= 255
-    
-    img_w = tf.shape(img)[1]
-    img_h = tf.shape(img)[2]
-    V = tf.reshape(V, tf.stack((img_w, img_h, 1)))
-    V = tf.transpose(V, (2, 0, 1))
-    V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
-    return V   
 
 def display_loss(loss, loss_title, loss_name, output_path=None):
     if output_path is not None and not os.path.exists(output_path):

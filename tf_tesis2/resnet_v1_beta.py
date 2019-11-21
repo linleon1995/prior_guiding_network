@@ -162,7 +162,7 @@ def resnet_v1_beta(inputs,
     end_points_collection = sc.original_name_scope + '_end_points'
     with slim.arg_scope([slim.conv2d, bottleneck,
                          resnet_utils.stack_blocks_dense],
-                        outputs_collections=end_points_collection):
+                        outputs_collections=end_points_collection,):
       if is_training is not None:
         arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
       else:
@@ -175,6 +175,8 @@ def resnet_v1_beta(inputs,
           output_stride /= 4
         net = root_block_fn(net)
         net = slim.max_pool2d(net, 3, stride=2, padding='SAME', scope='pool1')
+#        net = slim.conv2d(net, 64, [1, 1], activation_fn=None,
+#                            normalizer_fn=slim.batch_norm, scope='test')
         net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
 
         if global_pool:

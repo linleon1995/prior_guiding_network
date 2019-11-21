@@ -13,12 +13,8 @@ from tf_tesis2  import unet_multi_task3, module, prior_generate
 from tf_tesis2.eval_utils import (compute_mean_dsc, compute_mean_iou, compute_accuracy, load_model, 
                                 plot_confusion_matrix, save_evaluation, plot_box_diagram, plot_histogram)
 from tf_tesis2.visualize_utils import display_segmentation
-from tf_tesis2.dense_crf import crf_inference
+# from tf_tesis2.dense_crf import crf_inference
 #from tf_tesis2.network import unet, unet_multi_task_fine, unet_multi_task_fine_newz, unet_prior_guide, unet_prior_guide2, unet_prior_guide_encoder, unet_prior_guide_decoder
-from tf_tesis2.network import (crn_encoder_sep, crn_decoder_sep, crn_atrous_encoder_sep, crn_atrous_decoder_sep, 
-                               crn_encoder_sep_com, crn_decoder_sep_com, crn_encoder_sep_resnet50, crn_decoder_sep_resnet50,
-                               crn_encoder_sep_new_aggregation, crn_decoder_sep_new_aggregation, crn_encoder, crn_decoder, crn_atrous_decoder_sep2)
-
 import numpy as np
 import CT_scan_util_multi_task
 import matplotlib.pyplot as plt
@@ -33,12 +29,16 @@ import argparse
 load_nibabel_data = prior_generate.load_nibabel_data
 
 
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_017/model.ckpt"
-MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_022/model.ckpt"
+MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_005/model.ckpt"
+MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_023/model.ckpt"
+#MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_022/model.ckpt"
+#MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_025/model.ckpt"
+#MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_027/model.ckpt"
+#MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_000/model.ckpt"
+#MODEL_PATH = "/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/tesis_trained/run_001/model.ckpt"
 
 RAW_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw_frames/raw/'
 MASK_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw_frames/label/'
-MODEL_FLAG = {'zlevel_classify': True, 'rotate_module': True, 'class_classify': True, 'crf': False}
 MASK_SUBJECT_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw/label/'
 OUTPUT_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/eval/'
 IGNORE_LABEL = 255
@@ -46,6 +46,7 @@ HEIGHT = 256
 WIDTH = 256
 Z_CLASS = 60
 SUBJECT_LIST = np.arange(25,30)
+#SUBJECT_LIST = np.arange(3)
 SHUFFLE = False
 IMG_SIZE = 256
 HU_WINDOW = [-125, 275]
@@ -54,7 +55,7 @@ CLASS_LIST = np.arange(1,14)
 N_CLASS=len(CLASS_LIST)+1
 N_OBSERVE_SUBJECT = 5
 OBSERVE_SUBJECT_LIST = [25,26]
-
+#OBSERVE_SUBJECT_LIST = [0]
 
 
 parser = argparse.ArgumentParser()
@@ -105,7 +106,22 @@ parser.add_argument("--save-eval", type=str, default=True,
                     help="...")
 
 parser.add_argument("--max-observe-subject", type=int, default=5,
-                    help="...")               
+                    help="...")            
+
+parser.add_argument('--is_transform', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--gt_for_guidance', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--show-guidance', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--z-flag', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--guidance-flag', type=bool, default=True,
+                    help='')
 
 
 def transform_global_prior(args, prior, z_pred):
@@ -141,8 +157,11 @@ def main():
                                       )
 
     # Restore model from checkpoint
-    ref_model = load_nibabel_data(FLAGS.mask_subject_path, processing_list=np.arange(1))[0]
-    net = unet_multi_task3.Unet(model_flag=MODEL_FLAG,
+    if FLAGS.gt_for_guidance:
+        ref_model = None
+    else:
+        ref_model = load_nibabel_data(FLAGS.mask_subject_path, processing_list=np.arange(1))[0]
+    net = unet_multi_task3.Build_Model(
                                 nx=HEIGHT,
                                 ny=WIDTH,
                                 channels=data_provider.channels, 
@@ -158,6 +177,10 @@ def main():
                                 lambda_guidance = FLAGS.lambda_guidance,
                                 seq_length=FLAGS.seq_length,
 #                                data_aug='resize_and_crop'
+                                is_transform=FLAGS.is_transform,
+                                is_training=False,
+                                z_flag=FLAGS.z_flag,
+                                guidance_flag=FLAGS.guidance_flag
                                 )
     
     # output
@@ -165,16 +188,17 @@ def main():
     logits = output['output_map']
     raw_output = tf.nn.softmax(logits)
     prediction = tf.argmax(raw_output, dimension=3)
-    z_pred = output['z_output']
+    if FLAGS.z_flag:
+        z_pred = output['z_output']
 
     
-    z_label = tf.one_hot(indices=net.z_label,
-                         depth=int(FLAGS.z_class),
-                         on_value=1,
-                         off_value=0,
-                         axis=-1,
-                         )
-    z_label = tf.cast(z_label, tf.float32)
+        # z_label = tf.one_hot(indices=net.z_label,
+        #                      depth=int(FLAGS.z_class),
+        #                      on_value=1,
+        #                      off_value=0,
+        #                      axis=-1,
+        #                      )
+        z_label = tf.cast(net.z_label, tf.float32)
 
     # TODO: 
 #    if FLAGS.seq_length is not None:
@@ -196,6 +220,14 @@ def main():
     label = tf.argmax(net.y, -1)
     cm = tf.confusion_matrix(tf.reshape(label, [-1,]), tf.reshape(prediction, [-1,]), num_classes=FLAGS.n_class)
 
+    if FLAGS.z_flag:
+        mse_of_z = tf.losses.mean_squared_error(z_label, z_pred)
+
+    # guidance
+    if FLAGS.show_guidance:
+        guidance = net.guidance
+        guidance_transform = net.guidance_transform
+        
     # Set up tf session and initialize variables.  
     sess = tf.Session()
     init = tf.global_variables_initializer()
@@ -211,26 +243,34 @@ def main():
     else:
         raise ValueError("model checkpoint not exist")
 
-    # TODO: 
-    # Iterate over training steps.
-    trainable_vars = {}
-    for v in  tf.trainable_variables():
-        trainable_vars[v.name] = v
-
+    
+        
     cm_total = 0
     DSC_slice = []
-    total_image, total_label, total_pred = {}, {}, {}
+    total_image, total_label, total_pred, total_guidance = {}, {}, {}, {}
+    total_z_eval = 0
     for slice_idx in data_provider.data_files:
         print("subject: {}, slice: {}".format(*slice_idx))
         image, label, z_label, _, _= data_provider(1)
-        feed_dict = {net.x: image, net.y: label, net.keep_prob: 1., net.is_training: False, net.z_label: z_label}
+        feed_dict = {net.x: image, 
+                      net.y: label, 
+                      net.keep_prob: 1., 
+                      }
+        if FLAGS.z_flag: feed_dict[net.z_label] = z_label
         slice_key = "s" + str(slice_idx[0]) + "f" + str(slice_idx[1])
 
         # DSC for each slice
         cm_slice, pred = sess.run([cm, prediction], feed_dict)
         cm_total += cm_slice
         DSC_slice.append(compute_mean_dsc(cm_slice))
-
+        
+        if FLAGS.z_flag:
+            mse = sess.run(mse_of_z, feed_dict)
+            total_z_eval += mse
+            
+        if FLAGS.show_guidance:
+            total_guidance[slice_key] = sess.run(guidance_transform, feed_dict)
+            
         # visualization
         if FLAGS.display_flag:
             display_segmentation(image, label, pred, FLAGS.n_class)
@@ -245,16 +285,28 @@ def main():
             total_label[slice_key] = label
             if slice_idx[0] in OBSERVE_SUBJECT_LIST:
                 total_pred[slice_key] = pred
-
+                
+#    # TODO: 
+#    # Iterate over training steps.
+#    trainable_vars = {}
+#    for v in  tf.global_variables():
+#        if"Encoder" in v.name:
+#            trainable_vars[v.name] = v
+#            print(30*"*")
+#            print(v.name, v)
+        
     # plot confusion_matrix        
     plot_confusion_matrix(cm_total, classes=np.arange(FLAGS.n_class), normalize=True,
                           title='Confusion matrix, without normalization')
     plt.show()
-    
-        
+
     mIoU_total = compute_mean_iou(cm_total)
     DSC_total = compute_mean_dsc(cm_total)          
     Acc_total = compute_accuracy(cm_total)
+
+    if FLAGS.z_flag:
+        total_z_eval /= len(DSC_slice)
+        print("MSE of z: {}".format(total_z_eval))
 
     if FLAGS.save_eval:
         # plot histogram of DSC
@@ -264,10 +316,12 @@ def main():
         plot_box_diagram(path=FLAGS.output_path)      
     
     if len(OBSERVE_SUBJECT_LIST) < FLAGS.max_observe_subject:
-        return DSC_slice, mIoU_total, DSC_total, Acc_total, total_pred, total_image, total_label
+        return DSC_slice, mIoU_total, DSC_total, Acc_total, total_pred, total_image, total_label, total_guidance
     else:
-        return DSC_slice, mIoU_total, DSC_total, Acc_total
+        return DSC_slice, mIoU_total, DSC_total, Acc_total, total_guidance
 
+def check_value():
+    return
 # def plot_func(x):
 #     for i in range(32):
 #         print(i)
@@ -308,8 +362,8 @@ if __name__ == '__main__':
     eval = main()
     # total_mIoU, total_acc, total_DSC, sum_cm, z_acc = eval
                     
-    # if FLAGS.display_flag:         
-    #     display_segmentation(x_test, y_test, total_pred, args.n_class)
+    if FLAGS.display_flag:         
+        display_segmentation(x_test, y_test, total_pred, args.n_class)
 
 
     

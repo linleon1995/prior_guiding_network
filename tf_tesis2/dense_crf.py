@@ -5,8 +5,8 @@ import glob
 import json
 import time
 import numpy as np 
-import skimage
-import skimage.io as imgio
+# import skimage
+# import skimage.io as imgio
 import pydensecrf.densecrf as dcrf
 from pydensecrf.utils import compute_unary, create_pairwise_bilateral, \
     create_pairwise_gaussian, softmax_to_unary

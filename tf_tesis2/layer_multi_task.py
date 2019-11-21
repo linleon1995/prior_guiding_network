@@ -21,241 +21,10 @@ from __future__ import print_function, division, absolute_import, unicode_litera
 
 import tensorflow as tf
 import numpy as np
-from tf_tesis2.module import (nonlocal_dot)
+# from tf_tesis2.module import (nonlocal_dot)
 from tf_tesis2.utils import (conv2d, global_avg_pool, fc_layer)
 
 
-
-
-def SRAM_prof(in_node, guidance, nonlocal_flag, name='SRAM', is_training=True):
-    with tf.variable_scope(name):
-        channels = in_node.get_shape().as_list()[-1]
-        n_class = guidance.get_shape().as_list()[-1]
-        
-        conv1 = new_conv_layer_bn( in_node, [3,3,channels,channels*n_class], "conv1", is_training )
-#        conv2 = new_conv_layer_bn( conv1, [3,3,channels*n_class,channels*n_class], "conv2", is_training )
-        
-#        guidance_tile = tf.tile(guidance, [1,1,1,channels])
-#        output = in_node + tf.multiply(conv2, guidance_tile)
-        guided_list = [conv1[...,channels*c:channels*(c+1)] * tf.tile(guidance[...,c:c+1], [1,1,1,channels]) for c in range(n_class)]
-        guid_f = tf.concat(guided_list, axis=-1)
-#        if nonlocal_flag:
-#            guided_list.append(guid_f)
-#            guid_f, fg = nonlocal_dot(guid_f, in_dims=channels*n_class, raeduced_ratio=8, at_map=True)
-#            guided_list.append(fg)
-#            guided_list.append(guid_f)           
-        output = in_node + new_conv_layer_bn(guid_f, [1,1,channels*n_class,channels], "guid_f", is_training )
-#        output = in_node + tf.add_n(guided_list)
-    return output, conv1, guided_list
-
-
-def RM_prof(in_node, feature, guidance, stage, activate=None, out_filter=32, classifer=False, name='Refining_Module', is_training=True):
-    with tf.variable_scope(name):
-        in_node_shape = in_node.get_shape().as_list()
-        s = in_node_shape[1]
-        channels = in_node_shape[-1]
-        n_class = guidance.get_shape().as_list()[-1]
-        
-#        conv_r1 = new_conv_layer_bn( in_node, [3,3,channels,out_filter*(n_class-1)], "conv_r1_1", is_training )
-        conv_r1 = new_conv_layer_bn( in_node, [1,7,channels,out_filter], "conv_r1_1", is_training )
-        conv_r1 = new_conv_layer_bn( conv_r1, [7,1,out_filter,out_filter], "conv_r1_2", is_training )
-        
-        nonlocal_flag = False
-#        if stage < 4:
-#            nonlocal_flag=True
-            
-        attention1, conv1, guided_list1 = SRAM_prof(conv_r1, guidance, False, 'SRAM_1', is_training)
-        fusion = tf.add(attention1, feature)
-#        attention2, conv2, guided_list2 = SRAM_prof(fusion, guidance, nonlocal_flag, 'SRAM_2', is_training)
-        if nonlocal_flag:
-            guided_list1.append(fusion)
-            guid_f, fg = nonlocal_dot(fusion, in_dims=32, raeduced_ratio=1, at_map=True)
-            guided_list1.append(fg)
-            guided_list1.append(guid_f) 
-        conv_r2 = tf.image.resize_bilinear(fusion, [2*s, 2*s], name='new_guidance')
-        
-        if classifer:
-            new_guidance = new_conv_layer_bn(conv_r2, [1,1,out_filter,n_class], "conv_r2", is_training )
-        else:
-            new_guidance = new_conv_layer_bn(conv_r2, [3,3,out_filter,n_class], "conv_r2", is_training )
-            
-#        if classifer:
-#            conv_r2 = new_conv_layer_bn( attention2, [1,1,out_filter,n_class], "conv_r2", is_training )
-#        else:
-#            conv_r2 = new_conv_layer_bn( attention2, [3,3,out_filter,n_class], "conv_r2", is_training )
-        
-        if activate is not None:    
-            new_guidance = activate(new_guidance)
-            
-        new_feature = tf.image.resize_bilinear(fusion, [2*s, 2*s], name='new_feature')   
-    return new_feature, new_guidance, conv_r1, attention1, guided_list1, fusion, fusion, fusion, conv1
-
-
-def feature_combine(attention, feature, name, is_training):
-    out_channels = attention.get_shape().as_list()[-1]
-
-    f = tf.concat([attention, feature], -1)
-    fusion = new_conv_layer_bn(f, [1,1,out_channels*2,out_channels], name, is_training )
-    
-#    fusion = tf.reduce_sum(attention, feature)
-    return fusion
-
-
-def SRAM_new_aggregation(in_node, guidance, is_gamma=False, name='SRAM', is_training=True):
-    with tf.variable_scope(name):
-        channels = in_node.get_shape().as_list()[-1]
-
-        conv1 = conv2d( in_node, [3,3,channels,channels], activate=tf.nn.relu, scope="conv1", is_training=is_training )
-        conv2 = conv2d( conv1, [3,3,channels,channels], activate=tf.nn.relu, scope="conv2", is_training=is_training )
-        
-        if is_gamma:
-            gamma = tf.Variable(0, dtype=tf.float32)
-            output = in_node + gamma*tf.multiply(conv2, guidance)
-        else:
-            output = in_node + tf.multiply(conv2, guidance)
-
-    return output, [conv1,conv2]
-
-
-def RM_new_aggregation(in_node, feature, guidance, activate=None, out_filter=32, classifier=False, upsample=True, name='Refining_Module', is_training=True):
-    with tf.variable_scope(name):
-        in_node_shape = in_node.get_shape().as_list()
-        s = in_node_shape[1]
-        channels = in_node_shape[-1]
-        n_class = guidance.get_shape().as_list()[-1]
-        
-        # feature embedding
-        conv_r1 = conv2d( in_node, [1,7,channels,out_filter], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training )
-        conv_r1 = conv2d( conv_r1, [7,1,out_filter,out_filter], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training )
-        f=[]
-        vis=[]
-        
-        # template guiding
-        for i in range(n_class):
-            if not is_training:
-                attention1, conv = SRAM_new_aggregation(conv_r1, guidance[...,i*out_filter:(i+1)*out_filter], name='SRAM1', is_training=is_training)
-            else:
-                attention1, _ = SRAM_new_aggregation(conv_r1, guidance[...,i*out_filter:(i+1)*out_filter], name='SRAM1', is_training=is_training)
-            if not is_training:
-                vis.append(conv)
-                vis.append(attention1)  
-            f.append(attention1)
-        if not is_training:
-            vis.append(conv_r1)
-            all_guid_f = tf.concat(f, -1)
-        
-        # new feature
-#        embedding = conv2d(attention1, [3,3,out_filter*n_class,out_filter], activate=tf.nn.relu, scope="embedding", is_training=is_training )
-        fusion = tf.add(attention1, feature)
-        
-        ###
-        if not is_training:
-            attention2, conv = SRAM_new_aggregation(fusion, guidance, name='SRAM2', is_training=is_training)
-        else:
-            attention2, _ = SRAM_new_aggregation(fusion, guidance, name='SRAM2', is_training=is_training) 
-        new_feature = conv2d(attention2, [3,3,out_filter,out_filter], activate=tf.nn.relu, scope="embedding2", is_training=is_training )
-
-        # new guidance
-        new_guidance = attention2
-        
-        if upsample:
-            new_feature = tf.image.resize_bilinear(new_feature, [2*s, 2*s], name='new_feature')        
-            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
-    return new_feature, new_guidance, f, vis
-
-
-#def RM_new_aggregation(in_node, feature, guidance, activate=None, out_filter=32, classifier=False, upsample=True, name='Refining_Module', is_training=True):
-#    with tf.variable_scope(name):
-#        in_node_shape = in_node.get_shape().as_list()
-#        s = in_node_shape[1]
-#        channels = in_node_shape[-1]
-##        n_class = guidance.get_shape().as_list()[-1]
-#        
-#        # feature embedding
-#        conv_r1 = conv2d( in_node, [1,7,channels,out_filter], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training )
-#        conv_r1 = conv2d( conv_r1, [7,1,out_filter,out_filter], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training )
-#        f=[]
-#        vis=[]
-#        
-#        # template guiding
-#        if not is_training:
-#            attention1, conv = SRAM_new_aggregation(conv_r1, guidance, name='SRAM1', is_training=is_training)
-#        else:
-#            attention1, _ = SRAM_new_aggregation(conv_r1, guidance, name='SRAM1', is_training=is_training)
-#        if not is_training:
-#            vis.append(conv)
-#            vis.append(attention1)  
-##        f.append(attention1)
-#        if not is_training:
-#            vis.append(conv_r1)
-##        all_guid_f = tf.concat(f, -1)
-#        
-#        # new feature
-##        embedding = conv2d(attention1, [3,3,out_filter*n_class,out_filter], activate=tf.nn.relu, scope="embedding", is_training=is_training )
-#        fusion = tf.add(attention1, feature)
-#        
-#        ###
-#        if not is_training:
-#            attention2, conv = SRAM_new_aggregation(fusion, guidance, name='SRAM2', is_training=is_training)
-#        else:
-#            attention2, _ = SRAM_new_aggregation(fusion, guidance, name='SRAM2', is_training=is_training) 
-#        new_feature = conv2d(attention2, [3,3,out_filter,out_filter], activate=tf.nn.relu, scope="embedding2", is_training=is_training )
-#
-#        # new guidance
-#        new_guidance = attention2
-#        
-#        if upsample:
-#            new_feature = tf.image.resize_bilinear(new_feature, [2*s, 2*s], name='new_feature')        
-#            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
-#    return new_feature, new_guidance, f, vis
-
-
-
-def RM_ori(in_node, feature, guidance, activate=None, out_filter=32, classifier=False, upsample=True, name='Refining_Module', is_training=True):
-    with tf.variable_scope(name):
-        in_node_shape = in_node.get_shape().as_list()
-        s = in_node_shape[1]
-        channels = in_node_shape[-1]
-        n_class = guidance.get_shape().as_list()[-1]
-        
-        # feature embedding
-        conv_r1 = conv2d( in_node, [1,7,channels,out_filter], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training )
-        conv_r1 = conv2d( conv_r1, [7,1,out_filter,out_filter], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training )
-        f=[]
-        vis=[]
-        
-        # template guiding
-        for i in range(n_class):
-            if not is_training:
-                attention1, conv = SRAM(conv_r1, guidance[...,i:i+1], name='SRAM_'+str(i), is_training=is_training)
-            else:
-                attention1, _ = SRAM(conv_r1, guidance[...,i:i+1], name='SRAM_'+str(i), is_training=is_training)
-            if not is_training:
-                vis.append(conv)
-                vis.append(attention1)  
-        if not is_training:
-            vis.append(conv_r1)
-
-        
-        # new feature
-        fusion = tf.add(attention1, feature)
-        
-        ###
-        for i in range(n_class):
-            if not is_training:
-                new_feature, conv = SRAM(fusion, guidance[...,i:i+1], name='SRAM2_'+str(i), is_training=is_training)
-            else:
-                new_feature, _ = SRAM(fusion, guidance[...,i:i+1], name='SRAM2_'+str(i), is_training=is_training)    
-
-        # new guidance
-            new_guidance = conv2d(new_feature, [1,1,out_filter,n_class], activate=activate, scope="fusion", is_training=is_training )
-        else:
-            new_guidance = conv2d(new_feature, [3,3,out_filter,n_class], activate=activate, scope="fusion", is_training=is_training )
-        
-        if upsample:
-            new_feature = tf.image.resize_bilinear(new_feature, [2*s, 2*s], name='new_feature')        
-            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
-    return new_feature, new_guidance, f, vis
 
 
 def rm(in_node,
@@ -267,7 +36,7 @@ def rm(in_node,
        upsample=True,
        further_attention=False,
        class_features=False,
-       low_high_fusion='summation',
+       low_high_fusion='later',
        each_class_fusion='concat_and_conv',
        name='rm',
        is_training=True,
@@ -280,8 +49,8 @@ def rm(in_node,
         num_class = guidance.get_shape().as_list()[3]
         
         # feature embedding
-        conv_r1 = conv2d(in_node, [3,3,channels,num_filters], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training)
-        conv_r1 = conv2d(conv_r1, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training)
+        conv_r1 = conv2d(in_node, [1,7,channels,num_filters], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training)
+        conv_r1 = conv2d(conv_r1, [7,1,num_filters,num_filters], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training)
         
         feature_list = []
         for i in range(num_class):
@@ -302,8 +71,12 @@ def rm(in_node,
                     elif low_high_fusion == 'concat_and_conv':
                         fusion = tf.concat([attention1, feature], axis=3)
                         fusion = conv2d(fusion, [3,3,num_filters*2,num_filters], activate=tf.nn.relu, scope="fusion", is_training=is_training)
-                
+                    elif low_high_fusion == 'later':
+                        fusion = attention1
+                        
                 feature_list.append(fusion)
+        if low_high_fusion == 'later':
+            feature_list.append(feature)
         
         # feature fusion in different class
         if class_features:
@@ -311,22 +84,28 @@ def rm(in_node,
         else:
             if each_class_fusion == 'concat_and_conv':
                 new_feature = tf.concat(feature_list, axis=3)
-                new_feature = conv2d(new_feature, [3,3,num_filters*num_class,num_filters], activate=tf.nn.relu, scope="class_fusion", is_training=is_training)
+                if low_high_fusion == 'later':
+                    new_feature = conv2d(new_feature, [3,3,num_filters*(num_class+1),num_filters], activate=tf.nn.relu, scope="class_fusion", is_training=is_training)
+                else:
+                    new_feature = conv2d(new_feature, [3,3,num_filters*num_class,num_filters], activate=tf.nn.relu, scope="class_fusion", is_training=is_training)
             elif each_class_fusion == 'summation':
                 new_feature = tf.add_n(feature_list)
                 
         # Final output, get guidance and feature in next stage
         if classifier:
-            kernel_size = 1            
+            kernel_size = 1 
+            activate_func=None
         else:
             kernel_size = 3
+            activate_func=tf.nn.relu
         
-        output_filters = new_feature.get_shape().as_list()[3]
-        new_guidance = conv2d(new_feature, [kernel_size,kernel_size,output_filters,num_class], activate=None, scope="new_feature", is_training=is_training)
         if upsample:
-            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
+#            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
             new_feature = tf.image.resize_bilinear(new_feature, [2*s, 2*s], name='new_feature')
-    
+            
+        output_filters = new_feature.get_shape().as_list()[3]
+        new_guidance = conv2d(new_feature, [kernel_size,kernel_size,output_filters,num_class], activate=activate_func, scope="new_feature", is_training=is_training)
+        
     if end_points is not None:            
         return new_feature, new_guidance, end_points
     else:
@@ -343,8 +122,8 @@ def sram(in_node,
     """Single Residual Attention Module"""
     with tf.variable_scope(scope):
         channels = in_node.get_shape().as_list()[3]
-        conv1 = conv2d(in_node, [1,7,channels,channels], activate=tf.nn.relu, scope="conv1", is_training=is_training)     
-        conv2 = conv2d(conv1, [7,1,channels,channels], activate=tf.nn.relu, scope="conv2", is_training=is_training)
+        conv1 = conv2d(in_node, [3,3,channels,channels], activate=tf.nn.relu, scope="conv1", is_training=is_training)     
+        conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, scope="conv2", is_training=is_training)
         
         guidance_tile = tf.tile(guidance, [1,1,1,channels])
         

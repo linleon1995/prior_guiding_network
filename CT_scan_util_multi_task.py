@@ -168,7 +168,7 @@ class MedicalDataProvider(BaseDataProvider):
         
         self.n_frames = [len(glob.glob(raw_path+'subject'+str(subject).zfill(4)+'/*.nii.gz')) for subject in subject_list]
         self.only_foreground = only_foreground
-        with open('nonzero_subject_idx.pickle', 'rb') as file:
+        with open('/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/nonzero_subject_idx.pickle', 'rb') as file:
             nonzero_subject_idx = pickle.load(file)
         self.nonzero_subject_idx = [nonzero_subject_idx[idx] for idx in subject_list]
         self.seq_length = seq_length
