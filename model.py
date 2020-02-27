@@ -269,7 +269,7 @@ def get_guidance(features,
 
   guidance = prior_seg
   if affine_transform:
-    theta = extract_non_images(images, output_dims=6, scope='theta_extractor')
+    theta = extract_non_images(features, output_dims=6, scope='theta_extractor')
     guidance = spatial_transformer_network(guidance, theta)
 
   if deformable_transform:

@@ -23,11 +23,11 @@ def refinement_network(features,
     """
     """
     # TODO: necessary for using batch_size??
-    output = {}
     # TODO: check guidance shape. The shape [?,256,256,1] should cause error
     # TODO:remove features variable?
     # TODO:upsample link to output_strides
     # TODO: correct variable scope for feature calling during evaluation
+    output = {}
     with tf.variable_scope(scope, 'refinement_network') as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
         with slim.arg_scope([slim.conv2d],

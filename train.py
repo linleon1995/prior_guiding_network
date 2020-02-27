@@ -457,9 +457,6 @@ def _average_gradients(tower_grads):
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads, variables = zip(*grad_and_vars)
-    print(grads, 30*'o')
-    if None in grads:
-      print(30*'x')
     grad = tf.reduce_mean(tf.stack(grads, axis=0), axis=0)
 
     # All vars are of the same value, using the first tower here.

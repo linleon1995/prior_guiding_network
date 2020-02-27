@@ -11,7 +11,7 @@ q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
 
 
     
-def fc_layer(inputs, 
+def fc_layer(x, 
              layer_size,
              _std,
              reuse=None,
@@ -34,21 +34,17 @@ def fc_layer(inputs,
   Returns:
     Computed features after split separable conv2d.
   """
+    # TODO: tf.layers.dense()?  SEnet-Tensorflow github
     input_size, output_size = layer_size
-    # shape = tf.shape(inputs)
-    # dim = tf.reduce_prod( shape[1:] )
-    # x = tf.reshape(inputs, [-1, dim])
-    # x = tf.layers.flatten(inputs)
-    x = inputs
     with tf.variable_scope(scope, "fc_layer"):
         w = tf.get_variable(
                 "W",
                 initializer=tf.truncated_normal(shape=[input_size, output_size], stddev=_std))
-        # w = w / tf.sqrt(input_size/2)
-        # b = tf.get_variable(
-        #         "b",
-        #         initializer=tf.constant(0.1, shape=[output_size]))
-        output = tf.matmul(x, w, name='fc')
+        w = w / tf.sqrt(input_size/2)
+        b = tf.get_variable(
+                "b",
+                initializer=tf.constant(0.1, shape=[output_size]))
+        output = tf.add(tf.matmul(x, w, name='fc'), b)
     return output
 
 

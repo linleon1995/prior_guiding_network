@@ -174,8 +174,8 @@ def extract_features(images,
 
 def extract_non_images(inputs, 
                        output_dims, 
-                       num_layers=2, 
-                       decreasing_root=2, 
+                       num_layers=3, 
+                       decreasing_root=8, 
                        global_pool='average',
                        scope=None):
   """
