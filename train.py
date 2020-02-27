@@ -285,41 +285,41 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
   output = output_dict[common.OUTPUT_TYPE]
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
-  # if common.Z_LABEL in samples:
-  #   samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
-  # else:
-  #   samples[common.Z_LABEL] = None
+  if common.Z_LABEL in samples:
+    samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
+  else:
+    samples[common.Z_LABEL] = None
 
-  # if common.PRIOR_IMGS in output_dict:
-  #   prior_img = output_dict[common.PRIOR_IMGS]
-  # else:
-  #   prior_img = None
+  if common.PRIOR_IMGS in output_dict:
+    prior_img = output_dict[common.PRIOR_IMGS]
+  else:
+    prior_img = None
 
-  # if common.PRIOR_SEGS in output_dict:
-  #   prior_seg = output_dict[common.PRIOR_SEGS]
-  # else:
-  #   prior_seg = None
+  if common.PRIOR_SEGS in output_dict:
+    prior_seg = output_dict[common.PRIOR_SEGS]
+  else:
+    prior_seg = None
 
-  # if common.OUTPUT_Z in output_dict:
-  #   z_pred = output_dict[common.OUTPUT_Z]
-  # else:
-  #   z_pred = None
+  if common.OUTPUT_Z in output_dict:
+    z_pred = output_dict[common.OUTPUT_Z]
+  else:
+    z_pred = None
     
-  # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
-  # if len(guidance_dict) == 0:
-  #   guidance_dict = None
+  guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
+  if len(guidance_dict) == 0:
+    guidance_dict = None
 
-  # # Log the summary
-  # _log_summaries(samples[common.IMAGE],
-  #                samples[common.LABEL],
-  #                outputs_to_num_classes['semantic'],
-  #                output_dict[common.OUTPUT_TYPE],
-  #                z_label=samples[common.Z_LABEL],
-  #                z_pred=z_pred,
-  #                prior_imgs=prior_img,
-  #                prior_segs=prior_seg,
-  #                guidance=guidance_dict,
-  #                guidance_original=output_dict['original_guidance'])
+  # Log the summary
+  _log_summaries(samples[common.IMAGE],
+                 samples[common.LABEL],
+                 outputs_to_num_classes['semantic'],
+                 output_dict[common.OUTPUT_TYPE],
+                 z_label=samples[common.Z_LABEL],
+                 z_pred=z_pred,
+                 prior_imgs=prior_img,
+                 prior_segs=prior_seg,
+                 guidance=guidance_dict,
+                 guidance_original=output_dict['original_guidance'])
   return output_dict, layers_dict
 
 
