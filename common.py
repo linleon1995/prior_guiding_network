@@ -14,7 +14,7 @@ parser.add_argument('--fine_tune_batch_norm', type=bool, default=True,
 parser.add_argument('--model_variant', type=str, default='resnet_v1_50_beta',
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,

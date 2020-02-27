@@ -52,7 +52,41 @@ def plot_histogram(path):
     pass
 
 def plot_box_diagram(path):
-    pass
+    # spread = np.random.rand(50) * 100
+    # center = np.ones(25) * 50
+    # flier_high = np.random.rand(10) * 100 + 100
+    # flier_low = np.random.rand(10) * -100
+    # data = np.concatenate((spread, center, flier_high, flier_low))
+    
+    # # Fixing random state for reproducibility
+    # # np.random.seed(19680801)
+
+    fig1, ax = plt.subplots(1,4)
+    # ax1.set_title('Basic Plot')
+    # ax1.boxplot(data)
+    
+    # 设置图形的显示风格
+    # plt.style.use('ggplot')
+
+    # 设置中文和负号正常显示
+    plt.rcParams['font.sans-serif'] = 'Microsoft YaHei'
+    plt.rcParams['axes.unicode_minus'] = False
+
+    # 绘图：整体乘客的年龄箱线图
+    ax[0].boxplot(x = np.arange(2,20), # 指定绘图数据
+                patch_artist=False, # 要求用自定义颜色填充盒形图，默认白色填充
+                showmeans=True, # 以点的形式显示均值
+                boxprops = {'color':'black'}, # 设置箱体属性，填充色和边框色
+                flierprops = {'marker':'o','markerfacecolor':'red','color':'black'}, # 设置异常值属性，点的形状、填充色和边框色
+                meanprops = {'marker':'D','markerfacecolor':'indianred'}, # 设置均值点的属性，点的形状、填充色
+                medianprops = {'linestyle':'-','color':'orange'}) # 设置中位数线的属性，线的类型和颜色
+    # 设置y轴的范围
+    plt.ylim(0,85)
+
+    # 去除箱线图的上边框与右边框的刻度标签
+    plt.tick_params(top='off', right='off', left='off')
+    # 显示图形
+    plt.show()
 
 def save_evaluation():
     pass
@@ -89,7 +123,7 @@ def compute_mean_dsc(total_cm):
           0)
       m_dsc = float(m_dsc)
       print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
-      return m_dsc
+      return m_dsc, dscs
   
     
 def compute_mean_iou(total_cm):

@@ -28,7 +28,7 @@ def refinement_network(features,
     # TODO:remove features variable?
     # TODO:upsample link to output_strides
     # TODO: correct variable scope for feature calling during evaluation
-    with tf.variable_scope(scope, 'refinement_network', [features]) as sc:
+    with tf.variable_scope(scope, 'refinement_network') as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
         with slim.arg_scope([slim.conv2d],
             outputs_collections=end_points_collection):
@@ -53,9 +53,10 @@ def refinement_network(features,
                 feature1, guidance1, end_points = output
             else:
                 feature1, guidance1 = output
-            h, w = layers_dict["low_level3"].get_shape().as_list()[1:3]
-            guidance1_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
-            guidance1_a = tf.nn.softmax(guidance1) + guidance1_gt
+            # h, w = layers_dict["low_level3"].get_shape().as_list()[1:3]
+            # guidance1_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
+            # guidance1_a = tf.nn.softmax(guidance1) + guidance1_gt
+            guidance1_a = tf.nn.softmax(guidance1)
 
             output = rm(layers_dict["low_level3"],
                                                 feature1,
@@ -69,10 +70,11 @@ def refinement_network(features,
                 feature2, guidance2, end_points = output
             else:
                 feature2, guidance2 = output
-            h, w = layers_dict["low_level2"].get_shape().as_list()[1:3]
-            guidance2_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
-            guidance2_a = tf.nn.softmax(guidance2) + guidance2_gt
-
+            # h, w = layers_dict["low_level2"].get_shape().as_list()[1:3]
+            # guidance2_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
+            # guidance2_a = tf.nn.softmax(guidance2) + guidance2_gt
+            guidance2_a = tf.nn.softmax(guidance2)
+            
             output = rm(layers_dict["low_level2"],
                                                 feature2,
                                                 guidance2_a,
@@ -84,10 +86,11 @@ def refinement_network(features,
                 feature3, guidance3, end_points = output
             else:
                 feature3, guidance3 = output
-            h, w = layers_dict["low_level1"].get_shape().as_list()[1:3]
-            guidance3_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
-            guidance3_a = tf.nn.softmax(guidance3) + guidance3_gt
-
+            # h, w = layers_dict["low_level1"].get_shape().as_list()[1:3]
+            # guidance3_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
+            # guidance3_a = tf.nn.softmax(guidance3) + guidance3_gt
+            guidance3_a = tf.nn.softmax(guidance3)
+            
             output = rm(layers_dict["low_level1"],
                                                 feature3,
                                                 guidance3_a,

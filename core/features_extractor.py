@@ -192,13 +192,17 @@ def extract_non_images(inputs,
   # TODO: raise if input dims smaller than output_dims
   with tf.variable_scope(scope, 'non_image_extractor') as sc:
     net = inputs
+    # net = slim.conv2d(inputs, output_dims, [1, 1], stride=1, scope='segmentations')
     if global_pool == 'average':
       net = tf.reduce_mean(net, [1, 2], name='global_avg_pool', keep_dims=False)
     elif global_pool == 'max':
       net = tf.reduce_max(net, [1, 2], name='global_max_pool', keepp_dims=False)
     else:
       ValueError("Unkonwn global_pool Keyword")
-    
+    # outputs = net
+    # TODO: activation??
+    # outputs = fc_layer(net, [2048, output_dims], _std=1, reuse=tf.AUTO_REUSE, scope='_'.join(['fc', str(0)]))
+    # outputs = tf.reduce_mean(net, axis=1, keep_dims=True)
     for i in range(num_layers):
       # TODO:
       # print(net, 30*'o')

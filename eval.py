@@ -27,7 +27,7 @@ import model
 from datasets import data_generator
 from utils import eval_utils
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 EVAL_CROP_SIZE = [256,256]
 # EVAL_CROP_SIZE = [512,512]
@@ -41,6 +41,9 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-20374'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_028/model.ckpt-30251'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_030/model.ckpt-21684'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-31676'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-40000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-40000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
@@ -82,6 +85,9 @@ parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--display_box_plot', type=bool, default=False,
                     help='')
 
 # Dataset settings.
@@ -176,6 +182,7 @@ def main(unused_argv):
     image_placeholder = tf.placeholder(tf.float32, shape=[1,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
     label_placeholder = tf.placeholder(tf.int32, shape=[None,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
     num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
+    
     placeholder_dict = {common.IMAGE: image_placeholder,
                         common.LABEL: label_placeholder,
                         common.NUM_SLICES: num_slices_placeholder}
@@ -206,9 +213,10 @@ def main(unused_argv):
       placeholder_dict[common.PRIOR_SEGS] = None
 
     if 'prior_slices' in samples:
-      prior_slices = samples['prior_slices']
+      prior_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
+      placeholder_dict['prior_slices'] = prior_slices_placeholder
     else:
-      prior_slices = None
+      placeholder_dict['prior_slices'] = None
 
 
     output_dict, layers_dict = model.pgb_network(
@@ -219,7 +227,7 @@ def main(unused_argv):
                   prior_segs=placeholder_dict[common.PRIOR_SEGS],
                   num_classes=dataset.num_of_classes,
                   num_slices=placeholder_dict[common.NUM_SLICES],
-                  prior_slices=prior_slices,
+                  prior_slices=placeholder_dict['prior_slices'],
                   batch_size=FLAGS.eval_batch_size,
                   z_label_method=FLAGS.z_label_method,
                   guidance_dilation=FLAGS.guidance_dilation,
@@ -240,12 +248,18 @@ def main(unused_argv):
     predictions = tf.cast(predictions, tf.int32)
     pred_flat = tf.reshape(predictions, shape=[-1,])
 
-    labels = tf.squeeze(samples[common.LABEL], axis=3)
+    labels = tf.squeeze(placeholder_dict[common.LABEL], axis=3)
+    label_onehot = tf.one_hot(indices=labels,
+                              depth=dataset.num_of_classes,
+                              on_value=1,
+                              off_value=0,
+                              axis=3)
+    num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     labels_flat = tf.reshape(labels, shape=[-1,])
 
     guidance = output_dict[common.GUIDANCE]
     if common.OUTPUT_Z in output_dict:
-      z_mse = tf.losses.mean_squared_error(samples[common.Z_LABEL], output_dict[common.OUTPUT_Z])
+      z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
       
     # Define the evaluation metric.
     predictions_tag = 'miou'
@@ -289,30 +303,30 @@ def main(unused_argv):
     # Build up Pyplot displaying tool
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
                                                         is_showfig=False,
-                                                        is_savefig=
-                                                        False,
+                                                        is_savefig=True,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
     # plt.ion()
     # Start Evaluate
     # TODO: smaples repeat, but remove next line will cause OutRangeError
-    samples = dataset.get_one_shot_iterator().get_next()
+    # TODO: The order of subject
+    # samples = dataset.get_one_shot_iterator().get_next()
     for i in range(668):
-        print('sample {}'.format(i))
-        
-        # TODO: print("subject: {}, slice: {}".format(*slice_idx))
-        
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-
+        print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
+        # plt.imshow(data[common.PRIOR_SEGS][0,...,100])
+        # plt.show()
+          
         # Segmentation Evaluation
         cm_slice, pred = sess.run([cm, predictions], feed_dict=_feed_dict)
-        DSC_slice.append(eval_utils.compute_mean_dsc(cm_slice))
+        _, dscs = eval_utils.compute_mean_dsc(cm_slice)
+        DSC_slice.append(dscs)
         cm_total += cm_slice
 
         show_seg_results.display_figure(FLAGS.eval_split+'_pred{}'.format(i),
                                         [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]])
-
+        foreground_pixel = sess.run(num_fg_pixel, _feed_dict)
         # Z-information Evaluation
         if common.OUTPUT_Z in output_dict:
           eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
@@ -324,7 +338,6 @@ def main(unused_argv):
         if FLAGS.vis_guidance:
           guid_dict = sess.run(guidance_dict, feed_dict=_feed_dict)
           
-
         # Features Visualization
         if FLAGS.vis_features:
           # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
@@ -372,17 +385,26 @@ def main(unused_argv):
     # print('Mean IoU: {:.3f}'.format(mIoU.eval(session=sess)))
 
 
-    eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
-                          title='Confusion matrix, without normalization')
-    cm_wo_background = cm_total
-    mean_iou = eval_utils.compute_mean_iou(cm_wo_background)
-    dice_score = eval_utils.compute_mean_dsc(cm_wo_background)
-    pixel_acc = eval_utils.compute_accuracy(cm_wo_background)
-
+    mean_iou = eval_utils.compute_mean_iou(cm_total)
+    mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
+    pixel_acc = eval_utils.compute_accuracy(cm_total)
+    # TODO: save instead of showing
+    # eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
+    #                                  title='Confusion matrix, without normalization')
+    
     if common.Z_LABEL in samples:
+      
       total_eval_z /= 668
       print("MSE of z prediction {}".format(total_eval_z))
     
+    if FLAGS.display_box_plot:
+        show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
+                                                            is_showfig=False,
+                                                            is_savefig=False,
+                                                            subplot_split=(1,1),
+                                                            type_list=['plot'])
+        # box_plot_figure(DSC_slice)
+        
     # tf.contrib.tfprof.model_analyzer.print_model_analysis(
     #     tf.get_default_graph(),
     #     tfprof_options=tf.contrib.tfprof.model_analyzer.
@@ -400,5 +422,8 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
+    
+    
+    
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)

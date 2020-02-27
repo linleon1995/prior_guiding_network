@@ -38,16 +38,17 @@ def fc_layer(inputs,
     # shape = tf.shape(inputs)
     # dim = tf.reduce_prod( shape[1:] )
     # x = tf.reshape(inputs, [-1, dim])
-    x = tf.layers.flatten(inputs)
-    with tf.variable_scope(scope, reuse=reuse):
+    # x = tf.layers.flatten(inputs)
+    x = inputs
+    with tf.variable_scope(scope, "fc_layer"):
         w = tf.get_variable(
                 "W",
                 initializer=tf.truncated_normal(shape=[input_size, output_size], stddev=_std))
-        w = w / tf.sqrt(input_size/2)
-        b = tf.get_variable(
-                "b",
-                initializer=tf.constant(0.1, shape=[output_size]))
-        output = tf.nn.bias_add( tf.matmul(x, w, name='fc'), b)
+        # w = w / tf.sqrt(input_size/2)
+        # b = tf.get_variable(
+        #         "b",
+        #         initializer=tf.constant(0.1, shape=[output_size]))
+        output = tf.matmul(x, w, name='fc')
     return output
 
 

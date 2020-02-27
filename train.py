@@ -18,7 +18,7 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 colorize = train_utils.colorize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
 
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
@@ -185,6 +185,7 @@ parser.add_argument('--num_prior_samples', type=int, default=None,
 
 parser.add_argument('--fusion_rate', type=float, default=0.2,
                     help='')
+
 # Dataset settings.
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
@@ -284,41 +285,41 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
   output = output_dict[common.OUTPUT_TYPE]
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
-  if common.OUTPUT_Z in samples:
-    samples[common.OUTPUT_Z] = tf.identity(samples[common.OUTPUT_Z], name=common.OUTPUT_Z)
-  else:
-    samples[common.OUTPUT_Z] = None
+  # if common.Z_LABEL in samples:
+  #   samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
+  # else:
+  #   samples[common.Z_LABEL] = None
 
-  if common.PRIOR_IMGS in output_dict:
-    prior_img = output_dict[common.PRIOR_IMGS]
-  else:
-    prior_img = None
+  # if common.PRIOR_IMGS in output_dict:
+  #   prior_img = output_dict[common.PRIOR_IMGS]
+  # else:
+  #   prior_img = None
 
-  if common.PRIOR_SEGS in output_dict:
-    prior_seg = output_dict[common.PRIOR_SEGS]
-  else:
-    prior_seg = None
+  # if common.PRIOR_SEGS in output_dict:
+  #   prior_seg = output_dict[common.PRIOR_SEGS]
+  # else:
+  #   prior_seg = None
 
-  if common.OUTPUT_Z in output_dict:
-    z_pred = output_dict[common.OUTPUT_Z]
-  else:
-    z_pred = None
+  # if common.OUTPUT_Z in output_dict:
+  #   z_pred = output_dict[common.OUTPUT_Z]
+  # else:
+  #   z_pred = None
     
-  guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
-  if len(guidance_dict) == 0:
-    guidance_dict = None
+  # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
+  # if len(guidance_dict) == 0:
+  #   guidance_dict = None
 
-  # Log the summary
-  _log_summaries(samples[common.IMAGE],
-                 samples[common.LABEL],
-                 outputs_to_num_classes['semantic'],
-                 output_dict[common.OUTPUT_TYPE],
-                 z_label=samples[common.Z_LABEL],
-                 z_pred=z_pred,
-                 prior_imgs=prior_img,
-                 prior_segs=prior_seg,
-                 guidance=guidance_dict,
-                 guidance_original=output_dict['original_guidance'])
+  # # Log the summary
+  # _log_summaries(samples[common.IMAGE],
+  #                samples[common.LABEL],
+  #                outputs_to_num_classes['semantic'],
+  #                output_dict[common.OUTPUT_TYPE],
+  #                z_label=samples[common.Z_LABEL],
+  #                z_pred=z_pred,
+  #                prior_imgs=prior_img,
+  #                prior_segs=prior_seg,
+  #                guidance=guidance_dict,
+  #                guidance_original=output_dict['original_guidance'])
   return output_dict, layers_dict
 
 
@@ -340,7 +341,8 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       s2 = it2.get_next()
     else:
       s2 = None
-    output_dict, layers_dict = _build_deeplab(samples, {common.OUTPUT_TYPE: num_of_classes}, model_options, ignore_label, s2)
+    output_dict, layers_dict = _build_deeplab(samples, {common.OUTPUT_TYPE: num_of_classes}, 
+                                              model_options, ignore_label, s2)
 
   loss_dict = {common.OUTPUT_TYPE: 'mean_dice_coefficient'}
   if common.OUTPUT_Z in output_dict:
@@ -358,7 +360,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                   transformed_loss_decay=FLAGS.transformed_loss_decay,
                                   guidance_loss_decay=FLAGS.guidance_loss_decay)
   seg_loss = losses[0]
-  losses = [seg_loss]
+  
   for loss in losses:
     tf.summary.scalar('Losses/%s' % loss.op.name, loss)
 
@@ -455,6 +457,9 @@ def _average_gradients(tower_grads):
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads, variables = zip(*grad_and_vars)
+    print(grads, 30*'o')
+    if None in grads:
+      print(30*'x')
     grad = tf.reduce_mean(tf.stack(grads, axis=0), axis=0)
 
     # All vars are of the same value, using the first tower here.
@@ -505,7 +510,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
         total_seg_loss += seg_loss
         grads = optimizer.compute_gradients(loss)
         tower_grads.append(grads)
-
+        
         # Retain the summaries from the first tower.
         # if not i:
           # TODO:
