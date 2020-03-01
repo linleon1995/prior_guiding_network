@@ -70,10 +70,12 @@ def pgb_network(images,
                 prior_slices=None,
                 batch_size=None,
                 z_label_method=None,
-                guidance_dilation=False,
+                zero_guidance=False,
                 fusion_rate=None,
                 is_training=None,
-                scope=None):
+                scope=None,
+                # **kwargs,
+                ):
   """
   VoxelMorph: A Learning Framework for Deformable Medical Image Registration
   Args:
@@ -82,13 +84,19 @@ def pgb_network(images,
   Returns:
     segmentations:
   """
-  output_dict = {}
-  
   if model_options.affine_transform:
     assert prior_segs is not None
 
   if model_options.deformable_transform:
     assert prior_segs is not None and prior_imgs is not None
+    
+  output_dict = {}
+  # images = kwargs.pop(common.IMAGE, None)
+  # labels = kwargs.pop(common.LABEL, None)
+  # prior_imgs = kwargs.pop(common.PRIOR_IMGS, None)
+  # prior_segs = kwargs.pop(common.PRIOR_SEGS, None)
+  # labels = kwargs.pop(common.IMAGE, None)
+  # labels = kwargs.pop(common.IMAGE, None)
     
   with tf.variable_scope(scope, 'pgb_network') as sc:
 #    features, layers_dict = plain_encoder(images, is_training=is_training)
@@ -139,6 +147,8 @@ def pgb_network(images,
 
       guidance = tf.one_hot(
         tf.squeeze(labels, 3), num_classes, on_value=1.0, off_value=0.0)
+      if zero_guidance:
+        guidance = tf.zeros_like(guidance)
       z_pred = None      
 
     # TODO: 

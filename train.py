@@ -25,7 +25,7 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_015/model.ckpt-9310'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-36235'
 
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
@@ -138,6 +138,10 @@ parser.add_argument('--last_layers_contain_logits_only', type=bool, default=True
 
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
+
+parser.add_argument('--zero_guidance', type=bool, default=True,
+                    help='')
+
 
 # learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
@@ -276,6 +280,7 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
                 batch_size=clone_batch_size,
                 z_label_method=FLAGS.z_label_method,
                 fusion_rate=FLAGS.fusion_rate,
+                zero_guidance=FLAGS.zero_guidance,
                 # weight_decay=FLAGS.weight_decay,
                 is_training=True,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,

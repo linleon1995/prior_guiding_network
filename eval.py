@@ -36,14 +36,13 @@ ATROUS_RATES = None
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-19702'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_014/model.ckpt-19330'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-20374'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_028/model.ckpt-30251'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_030/model.ckpt-21684'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-31676'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-40000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-40000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-36235'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-40000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-29382'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
@@ -78,10 +77,10 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--guidance_dilation', type=bool, default=True,
+parser.add_argument('--zero_guidance', type=bool, default=True,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=bool, default=True,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -230,7 +229,7 @@ def main(unused_argv):
                   prior_slices=placeholder_dict['prior_slices'],
                   batch_size=FLAGS.eval_batch_size,
                   z_label_method=FLAGS.z_label_method,
-                  guidance_dilation=FLAGS.guidance_dilation,
+                  zero_guidance=FLAGS.zero_guidance,
                   fusion_rate=FLAGS.fusion_rate,
                   # weight_decay=FLAGS.weight_decay,
                   is_training=False,
@@ -303,7 +302,7 @@ def main(unused_argv):
     # Build up Pyplot displaying tool
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
                                                         is_showfig=False,
-                                                        is_savefig=True,
+                                                        is_savefig=False,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
     # plt.ion()
@@ -315,8 +314,6 @@ def main(unused_argv):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
-        # plt.imshow(data[common.PRIOR_SEGS][0,...,100])
-        # plt.show()
           
         # Segmentation Evaluation
         cm_slice, pred = sess.run([cm, predictions], feed_dict=_feed_dict)
@@ -342,11 +339,6 @@ def main(unused_argv):
         if FLAGS.vis_features:
           # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
           pass
-
-
-
-
-
 
         # activate = np.sum(features["resnet_feature"], axis=1)
         # activate = np.sum(activate, axis=1)
