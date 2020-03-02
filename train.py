@@ -24,7 +24,7 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-36235'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-40000'
 
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
@@ -36,7 +36,8 @@ TRAIN_CROP_SIZE = [256,256]
 # TODO: dropout
 # TODO: Multi-Scale Training
 # TODO: flags.DEFINE_multi_integer
-
+# TODO: Solve Warning in new tensorflow version
+# TODO: tf.gather problem
 def create_training_path(train_logdir):
     # TODO: Check whether empty of last folder before creating new one
     idx = 0
