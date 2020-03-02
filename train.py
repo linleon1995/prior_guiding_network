@@ -18,8 +18,7 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 colorize = train_utils.colorize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -30,27 +29,24 @@ DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
 
-TRAIN_SUBJECT = np.arange(25)
-VALID_SUBJECT = np.arange(25, 30)
-
-HU_WINDOW = [-180, 250]
 HU_WINDOW = [-125, 275]
-N_CLASS = 14
-CLASS_LIST = np.arange(1, 14)
-#CLASS_LIST = [1,2,3,4,5,6,7]
+TRAIN_CROP_SIZE = [256,256]
+# TRAIN_CROP_SIZE = [512, 512]
+
 # TODO: dropout
 # TODO: Multi-Scale Training
 # TODO: flags.DEFINE_multi_integer
-TRAIN_CROP_SIZE = [256,256]
-# TRAIN_CROP_SIZE = [512, 512]
 
 def create_training_path(train_logdir):
     # TODO: Check whether empty of last folder before creating new one
     idx = 0
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
     while os.path.exists(path):
+        if len(os.listdir(path)) == 0:
+            break
         idx += 1
         path = os.path.join(train_logdir, "run_{:03d}".format(idx))
+
     os.makedirs(path)
     return path
 
@@ -142,6 +138,35 @@ parser.add_argument('--z_label_method', type=str, default='regression',
 parser.add_argument('--zero_guidance', type=bool, default=True,
                     help='')
 
+parser.add_argument('--num_prior_samples', type=int, default=None,
+                    help='')
+
+parser.add_argument('--fusion_rate', type=float, default=0.2,
+                    help='')
+
+parser.add_argument('--affine_transform', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--deformable_transform', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--save_summaries_images', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--z_loss_decay', type=float, default=1e-4,
+                    help='')
+
+parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
+                    help='')
+
+parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
+                    help='')
+
+parser.add_argument('--regularization_decay', type=float, default=5e-4,
+                    help='')
+
+parser.add_argument('--model_variant', type=str, default=None,
+                    help='')
 
 # learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
@@ -168,28 +193,6 @@ parser.add_argument('--slow_start_learning_rate', type=float, default=1e-4,
 parser.add_argument('--momentum', type=float, default=0.9,
                     help='')
 
-
-parser.add_argument('--save_summaries_images', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--z_loss_decay', type=float, default=1e-4,
-                    help='')
-
-parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
-                    help='')
-
-parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
-                    help='')
-
-parser.add_argument('--regularization_decay', type=float, default=5e-4,
-                    help='')
-
-parser.add_argument('--num_prior_samples', type=int, default=None,
-                    help='')
-
-parser.add_argument('--fusion_rate', type=float, default=0.2,
-                    help='')
-
 # Dataset settings.
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
@@ -199,37 +202,6 @@ parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
 
 parser.add_argument('--output_stride', type=int, default=8,
                     help='')
-
-# TODO: undefined variables
-# FLAGS.model_variant
-
-
-class SaveAtEnd(tf.train.SessionRunHook):
-    '''a training hook for saving the final variables'''
-
-    def __init__(self, filename, variables):
-        '''hook constructor
-
-        Args:
-            filename: where the model will be saved
-            variables: the variables that will be saved'''
-
-        self.filename = filename
-        self.variables = variables
-
-    def begin(self):
-        '''this will be run at session creation'''
-
-        #pylint: disable=W0201
-        self._saver = tf.train.Saver(self.variables, sharded=True)
-
-    def end(self, session):
-        '''this will be run at session closing'''
-
-        self._saver.save(session, self.filename)
-
-
-
 
 
 def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label, s2=None):
@@ -271,6 +243,8 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
+                affine_transform=FLAGS.affine_transform,
+                deformable_transform=FLAGS.deformable_transform,
                 labels=samples[common.LABEL],
                 prior_imgs=samples[common.PRIOR_IMGS],
                 prior_segs=samples[common.PRIOR_SEGS],
@@ -356,8 +330,8 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     elif FLAGS.z_label_method == 'classification':
       loss_dict[common.OUTPUT_Z] = 'cross_entropy_zlabel'
 
-  # TODO: other voxel_morph loss
-  # TODO: repeated  Clone name
+  # TODO: Other voxel_morph loss
+  # TODO: Repeated clone name --> clone_0/Losses/clone_0/guidance_loss/mean_dice_coefficient
   losses = train_utils.get_losses(output_dict, layers_dict,
                                   samples,
                                   loss_dict=loss_dict,
@@ -387,7 +361,6 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     num_of_classes: The number of classes of the dataset.
     output: Output of the model. Its shape is [batch_size, height, width].
   """
-  # TODO: add my own summaries
   # Add summaries for model variables.
   for model_var in tf.model_variables():
     tf.summary.histogram(model_var.op.name, model_var)
@@ -406,17 +379,14 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
     tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
 
-  # TODO: do correctly
-
+  # TODO: parameterization
   if prior_imgs is not None:
     tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
 
   if prior_segs is not None:
-    # TODO: summary_prior_segs[...,6]
     tf.summary.image('samples/%s' % 'prior_segs6', colorize(prior_segs[...,6:7], cmap='viridis'))
     tf.summary.image('samples/%s' % 'prior_segs7', colorize(prior_segs[...,7:8], cmap='viridis'))
 
-  # TODO: guidance_dilation
   if guidance is not None:
     tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
@@ -489,8 +459,6 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
       FLAGS.training_number_of_steps, FLAGS.learning_power,
       FLAGS.slow_start_step, FLAGS.slow_start_learning_rate)
 
-
-  # TODO: AdamOptimizer
   optimizer = tf.train.AdamOptimizer(learning_rate)
   # optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
 
@@ -571,8 +539,6 @@ def main(unused_argv):
     tf.gfile.MakeDirs(FLAGS.train_logdir)
     tf.logging.info('Training on %s set', FLAGS.train_split)
 
-    # TODO: model_options
-    
     path = FLAGS.train_logdir
     parameters_dict = vars(FLAGS)
     with open(os.path.join(path, 'logging.txt'), 'w') as f:
@@ -591,22 +557,16 @@ def main(unused_argv):
 
             path =  '/home/acm528_02/Jing_Siang/data/Synpase_raw/'
 
-            # TODO:
-            model_options = common.ModelOptions(
-              outputs_to_num_classes=14,
-              crop_size=TRAIN_CROP_SIZE,
-              output_stride=FLAGS.output_stride)
-            
             dataset = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name=FLAGS.train_split,
                 dataset_dir=FLAGS.dataset_dir,
-                model_options=model_options,
+                affine_transform=FLAGS.affine_transform,
+                deformable_transform=FLAGS.deformable_transform,
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
                 z_label_method=FLAGS.z_label_method,
                 z_class=FLAGS.z_class,
-                # only_foreground
                 crop_size=TRAIN_CROP_SIZE,
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -621,6 +581,11 @@ def main(unused_argv):
                 repeat_data=True,
                 num_prior_samples=FLAGS.num_prior_samples)
 
+            model_options = common.ModelOptions(
+              outputs_to_num_classes=dataset.num_of_classes,
+              crop_size=TRAIN_CROP_SIZE,
+              output_stride=FLAGS.output_stride)
+            
             # TODO: it2
             # if import_prior_imgs or import_prior_segs:
             #   iterator, it2 = dataset.get_one_shot_iterator()

@@ -36,8 +36,6 @@ ATROUS_RATES = None
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_030/model.ckpt-21684'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-31676'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-40000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-40000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-36235'
@@ -140,7 +138,6 @@ def main(unused_argv):
                 HU_window=HU_WINDOW,
                 z_label_method=FLAGS.z_label_method,
                 z_class=60,
-                # only_foreground
                 crop_size=EVAL_CROP_SIZE,
                 min_resize_value=EVAL_CROP_SIZE[0],
                 max_resize_value=EVAL_CROP_SIZE[0],
@@ -305,12 +302,9 @@ def main(unused_argv):
                                                         is_savefig=False,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
-    # plt.ion()
     # Start Evaluate
-    # TODO: smaples repeat, but remove next line will cause OutRangeError
     # TODO: The order of subject
-    # samples = dataset.get_one_shot_iterator().get_next()
-    for i in range(668):
+    for i in range(dataset.splits_to_sizes):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))

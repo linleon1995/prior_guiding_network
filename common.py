@@ -14,12 +14,6 @@ parser.add_argument('--fine_tune_batch_norm', type=bool, default=True,
 parser.add_argument('--model_variant', type=str, default='resnet_v1_50_beta',
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
-                    help='')
-
-parser.add_argument('--deformable_transform', type=bool, default=False,
-                    help='')
-
 parser.add_argument('--batch_norm_decay', type=float, default=0.9997,
                     help='')
 
@@ -57,8 +51,6 @@ class ModelOptions(
         'multi_grid',
         'model_variant',
         'fine_tune_batch_norm',
-        'affine_transform',
-        'deformable_transform',
         'batch_norm_decay',
         'decoder_type'
     ])):
@@ -114,8 +106,6 @@ class ModelOptions(
         MULTI_GRID,
         FLAGS.model_variant,
         FLAGS.fine_tune_batch_norm,
-        FLAGS.affine_transform,
-        FLAGS.deformable_transform,
         FLAGS.batch_norm_decay,
         FLAGS.decoder_type)
     
