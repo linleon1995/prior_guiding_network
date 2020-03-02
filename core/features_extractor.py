@@ -172,7 +172,7 @@ def extract_features(images,
   return features, end_points
 
 
-def extract_non_images(inputs, 
+def global_extractor(inputs, 
                        output_dims, 
                        num_layers=3, 
                        decreasing_root=8, 

@@ -15,6 +15,7 @@ conv2d = utils.conv2d
 
 def refinement_network(features,
                        guidance,
+                       output_stride,
                        batch_size,
                        layers_dict,
                        embed=32,
@@ -24,8 +25,6 @@ def refinement_network(features,
     """
     # TODO: necessary for using batch_size??
     # TODO: check guidance shape. The shape [?,256,256,1] should cause error
-    # TODO:remove features variable?
-    # TODO:upsample link to output_strides
     # TODO: correct variable scope for feature calling during evaluation
     output = {}
     with tf.variable_scope(scope, 'refinement_network') as sc:
@@ -40,13 +39,20 @@ def refinement_network(features,
                 end_points = None
             else:
                 end_points = {}
-
+                
+            if output_stride == 8:
+                upsample_flags = False
+            elif output_stride == 16:
+                upsample_flags = True
+            else:
+                ValueError("Unkonwn Number of Output Strides")
+                
             output = rm(in_node=layers_dict["low_level4"],
                                     feature=zero_tensor,
                                     guidance=guidance_in,
                                     end_points=end_points,
                                     num_filters=embed,
-                                    upsample=False,
+                                    upsample=upsample_flags,
                                     scope='RM_4',
                                     is_training=is_training)
             if end_points is not None:
@@ -63,7 +69,6 @@ def refinement_network(features,
                                                 guidance1_a,
                                                 end_points=end_points,
                                                 num_filters=embed,
-                                                # upsample=False,
                                                 scope='RM_3',
                                                 is_training=is_training)
             if end_points is not None:

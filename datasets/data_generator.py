@@ -50,7 +50,8 @@ class Dataset(object):
                  dataset_name,
                  split_name,
                  dataset_dir,
-                 model_options, 
+                 affine_transform,
+                 deformable_transform, 
                  batch_size,
                  crop_size,
                  HU_window,
@@ -76,9 +77,9 @@ class Dataset(object):
             raise ValueError('The specified dataset is not supported yet.')
         self.dataset_name = dataset_name
         
-        splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
+        self.splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
 
-        if split_name not in splits_to_sizes:
+        if split_name not in self.splits_to_sizes:
           raise ValueError('data split name %s not recognized' % split_name)
       
         if model_variant is None:
@@ -87,7 +88,8 @@ class Dataset(object):
       
         self.split_name = split_name
         self.dataset_dir = dataset_dir
-        self.model_options=model_options
+        self.affine_transform = affine_transform
+        self.deformable_transform = deformable_transform
         self.batch_size = batch_size
         self.crop_size = crop_size
         self.min_resize_value = min_resize_value
@@ -197,7 +199,7 @@ class Dataset(object):
         # TODO: clear sample problem
         path = self.dataset_dir.split('tfrecord')[0]
         
-        if self.model_options.affine_transform and self.model_options.deformable_transform:
+        if self.affine_transform and self.deformable_transform:
           prior_imgs = train_utils.load_nibabel_data(
             path+'raw/', processing_list=np.arange(1))[0]
           prior_imgs = np.swapaxes(np.swapaxes(prior_imgs, 0, 2), 0, 1)
@@ -217,7 +219,7 @@ class Dataset(object):
         else:
           prior_imgs = None
           
-        if self.model_options.affine_transform:                                  
+        if self.affine_transform:                                  
           prior_segs = train_utils.load_nibabel_data(
             path+'label/', processing_list=np.arange(1))[0]
           prior_segs = np.swapaxes(np.swapaxes(prior_segs, 0, 2), 0, 1)
@@ -237,7 +239,7 @@ class Dataset(object):
         else:
           prior_segs = None 
         
-        if self.model_options.affine_transform and self.model_options.deformable_transform:
+        if self.affine_transform and self.deformable_transform:
           assert prior_imgs_slices == prior_segs_slices 
             
         # Preprocessing for images, label and z_label
