@@ -225,7 +225,7 @@ def get_guidance(features,
 
   guidance = prior_seg
   if affine_transform:
-    theta = extract_non_images(features, output_dims=6, scope='theta_extractor')
+    theta = global_extractor(features, output_dims=6, scope='theta_extractor')
     guidance = spatial_transformer_network(guidance, theta)
 
   if deformable_transform:
@@ -236,7 +236,18 @@ def get_guidance(features,
                                           moving_segs=guidance,
                                           is_training=is_training)  
   return guidance
-
+if __name__ == "__main__":
+    import nibabel as nib
+    import matplotlib.pyplot as plt
+    a = nib.load("/home/acm528_02/Jing_Siang/project/Tensorflow/nnU-net/nnUNet/nnunet/prostate_42.nii.gz").get_data()
+    b = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/img0035.nii.gz").get_data()
+    c = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_019.nii.gz").get_data()
+    d = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_004.nii.gz").get_data()
+    c=3
+    f, ax=plt.subplots(1,2)
+    ax[0].imshow(a[...,0])
+    ax[1].imshow(b[...,0])
+    plt.show()
 
 
 

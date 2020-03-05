@@ -269,20 +269,20 @@ def rm(in_node,
             elif each_class_fusion == 'summation':
                 new_feature = tf.add_n(feature_list)
 
-        # Final output, get guidance and feature in next stage
-        if classifier:
-            kernel_size = 1
-            activate_func=None
-        else:
-            kernel_size = 3
-            activate_func=tf.nn.relu
+        # # Final output, get guidance and feature in next stage
+        # if classifier:
+        #     kernel_size = 1
+        #     activate_func=None
+        # else:
+        #     kernel_size = 3
+        #     activate_func=tf.nn.relu
 
         if upsample:
 #            new_guidance = tf.image.resize_bilinear(new_guidance, [2*s, 2*s], name='new_guidance')
             new_feature = tf.image.resize_bilinear(new_feature, [2*s, 2*s], name='new_feature')
 
         output_filters = new_feature.get_shape().as_list()[3]
-        new_guidance = conv2d(new_feature, [kernel_size,kernel_size,output_filters,num_class], activate=activate_func, scope="new_guidance", is_training=is_training)
+        new_guidance = conv2d(new_feature, [1,1,output_filters,num_class], activate=None, scope="new_guidance", is_training=is_training)
 
     if end_points is not None:
         return new_feature, new_guidance, end_points

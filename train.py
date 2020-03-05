@@ -24,7 +24,7 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-40000'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
 
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
@@ -106,7 +106,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=40000,
+parser.add_argument('--training_number_of_steps', type=int, default=80000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -145,7 +145,7 @@ parser.add_argument('--num_prior_samples', type=int, default=None,
 parser.add_argument('--fusion_rate', type=float, default=0.2,
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -154,7 +154,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--save_summaries_images', type=bool, default=True,
                     help='')
 
-parser.add_argument('--z_loss_decay', type=float, default=1e-4,
+parser.add_argument('--z_loss_decay', type=float, default=1.0,
                     help='')
 
 parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
@@ -333,6 +333,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
 
   # TODO: Other voxel_morph loss
   # TODO: Repeated clone name --> clone_0/Losses/clone_0/guidance_loss/mean_dice_coefficient
+  # TODO: loss summaries without decay
   losses = train_utils.get_losses(output_dict, layers_dict,
                                   samples,
                                   loss_dict=loss_dict,
@@ -388,21 +389,21 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('samples/%s' % 'prior_segs6', colorize(prior_segs[...,6:7], cmap='viridis'))
     tf.summary.image('samples/%s' % 'prior_segs7', colorize(prior_segs[...,7:8], cmap='viridis'))
 
-  if guidance is not None:
-    tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
+  # if guidance is not None:
+  #   tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
   
    
   if z_label is not None and z_pred is not None:
@@ -628,7 +629,7 @@ def main(unused_argv):
             save_summaries_hook = tf.train.SummarySaverHook(save_steps=10,
                                                             output_dir=FLAGS.train_logdir,
                                                             summary_op=summary_op)
-
+            # TODO: Save checkpoint in step
             with tf.train.MonitoredTrainingSession(
                 master=FLAGS.master,
                 is_chief=(FLAGS.task == 0),
