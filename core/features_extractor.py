@@ -192,24 +192,24 @@ def global_extractor(inputs,
   """
   # TODO: raise if input dims smaller than output_dims
   with tf.variable_scope(scope, 'non_image_extractor') as sc:
-    # net = inputs
-    # # net = slim.conv2d(inputs, output_dims, [1, 1], stride=1, scope='segmentations')
-    # if global_pool == 'average':
-    #   net = tf.reduce_mean(net, [1, 2], name='global_avg_pool', keep_dims=False)
-    # elif global_pool == 'max':
-    #   net = tf.reduce_max(net, [1, 2], name='global_max_pool', keepp_dims=False)
-    # else:
-    #   ValueError("Unkonwn global_pool Keyword")
+    net = inputs
+    # net = slim.conv2d(inputs, output_dims, [1, 1], stride=1, scope='segmentations')
+    if global_pool == 'average':
+      net = tf.reduce_mean(net, [1, 2], name='global_avg_pool', keep_dims=False)
+    elif global_pool == 'max':
+      net = tf.reduce_max(net, [1, 2], name='global_max_pool', keepp_dims=False)
+    else:
+      ValueError("Unkonwn global_pool Keyword")
     
-    with slim.arg_scope([slim.conv2d]):
-      if is_training is not None:
-        arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
-      else:
-        arg_scope = slim.arg_scope([])
-      with arg_scope:
-        net = slim.conv2d(inputs, 1, [1, 1], stride=1, scope='embed')
+    # with slim.arg_scope([slim.conv2d]):
+    #   if is_training is not None:
+    #     arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
+    #   else:
+    #     arg_scope = slim.arg_scope([])
+    #   with arg_scope:
+    #     net = slim.conv2d(inputs, 1, [1, 1], stride=1, scope='embed')
         
-    net = tf.compat.v1.layers.flatten(net)
+    # net = tf.compat.v1.layers.flatten(net)
 
     for i in range(num_layers):
       dims = net.get_shape().as_list()[1]

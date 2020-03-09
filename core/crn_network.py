@@ -301,8 +301,14 @@ def sram(in_node,
         channels = in_node.get_shape().as_list()[3]
         conv1 = conv2d(in_node, [3,3,channels,channels], activate=tf.nn.relu, scope="conv1", is_training=is_training)
         conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, scope="conv2", is_training=is_training)
-
         guidance_tile = tf.tile(guidance, [1,1,1,channels])
+        # guidance_filters = guidance.get_shape().as_list()[3]
+        # if guidance_filters == 1:
+        #     guidance_tile = tf.tile(guidance, [1,1,1,channels])
+        # elif guidance_filters == channels:
+        #     guidance_tile = guidance
+        # else:
+        #     raise ValueError("Unknow guidance filters number")
 
         if is_gamma:
             gamma = tf.Variable(0, dtype=tf.float32)

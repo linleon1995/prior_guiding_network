@@ -31,6 +31,7 @@ def pgb_network(images,
                 prior_slices=None,
                 batch_size=None,
                 z_label_method=None,
+                z_label=None,
                 z_class=None,
                 zero_guidance=False,
                 fusion_rate=None,
@@ -86,7 +87,8 @@ def pgb_network(images,
                                                z_classes=z_class,
                                                prior_imgs=prior_imgs,
                                                prior_segs=prior_segs, 
-                                               z_label_method=z_label_method)
+                                               z_label_method=z_label_method,
+                                               z_label=z_label)
       if prior_img is not None:
         output_dict[common.PRIOR_IMGS] = prior_img
         
@@ -139,7 +141,7 @@ def pgb_network(images,
 
 
 def get_prior(features, batch_size, num_classes, num_slices, prior_slices, 
-              z_classes, prior_imgs, prior_segs, z_label_method, scope=None):
+              z_classes, prior_imgs, prior_segs, z_label_method, z_label, scope=None):
   """
   VoxelMorph: A Learning Framework for Deformable Medical Image Registration
   Args:
@@ -154,8 +156,9 @@ def get_prior(features, batch_size, num_classes, num_slices, prior_slices,
   # TODO: dimension check
   with tf.variable_scope(scope, 'prior_network') as sc:
     if z_label_method == 'regression':
-      z_logits = global_extractor(features, output_dims=1, scope='z_info_extractor')
-      z_pred = tf.nn.sigmoid(z_logits)
+      z_pred = tf.expand_dims(z_label, axis=1)
+      # z_logits = global_extractor(features, output_dims=1, scope='z_info_extractor')
+      # z_pred = tf.nn.sigmoid(z_logits)
       indices = tf.cast(tf.multiply(tf.cast(prior_slices, tf.float32), z_pred), tf.int32)
       
       # TODO: gather correctly
@@ -236,18 +239,18 @@ def get_guidance(features,
                                           moving_segs=guidance,
                                           is_training=is_training)  
   return guidance
-if __name__ == "__main__":
-    import nibabel as nib
-    import matplotlib.pyplot as plt
-    a = nib.load("/home/acm528_02/Jing_Siang/project/Tensorflow/nnU-net/nnUNet/nnunet/prostate_42.nii.gz").get_data()
-    b = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/img0035.nii.gz").get_data()
-    c = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_019.nii.gz").get_data()
-    d = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_004.nii.gz").get_data()
-    c=3
-    f, ax=plt.subplots(1,2)
-    ax[0].imshow(a[...,0])
-    ax[1].imshow(b[...,0])
-    plt.show()
+# if __name__ == "__main__":
+#     import nibabel as nib
+#     import matplotlib.pyplot as plt
+#     a = nib.load("/home/acm528_02/Jing_Siang/project/Tensorflow/nnU-net/nnUNet/nnunet/prostate_42.nii.gz").get_data()
+#     b = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/img0035.nii.gz").get_data()
+#     c = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_019.nii.gz").get_data()
+#     d = nib.load("/home/acm528_02/Jing_Siang/data/Synpase_raw/raw/la_004.nii.gz").get_data()
+#     c=3
+#     f, ax=plt.subplots(1,2)
+#     ax[0].imshow(a[...,0])
+#     ax[1].imshow(b[...,0])
+#     plt.show()
 
 
 

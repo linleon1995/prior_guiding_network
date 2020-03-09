@@ -18,7 +18,7 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 colorize = train_utils.colorize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 2"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -43,8 +43,8 @@ def create_training_path(train_logdir):
     idx = 0
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
     while os.path.exists(path):
-        if len(os.listdir(path)) == 0:
-            break
+        # if len(os.listdir(path)) == 0:
+        #     break
         idx += 1
         path = os.path.join(train_logdir, "run_{:03d}".format(idx))
 
@@ -59,9 +59,6 @@ parser.add_argument('--train_logdir', type=str, default=create_training_path(LOG
                     help='')
 
 parser.add_argument('--prior-dir', type=str, default=PRIOR_PATH,
-                    help='')
-
-parser.add_argument('--epochs', type=int, default=140,
                     help='')
 
 parser.add_argument('--batch_size', type=int, default=12,
@@ -121,7 +118,10 @@ parser.add_argument('--task', type=int, default=0,
 parser.add_argument('--log_steps', type=int, default=10,
                     help='')
 
-parser.add_argument('--save_summaries_secs', type=int, default=1200,
+parser.add_argument('--save_summaries_secs', type=int, default=None,
+                    help='')
+
+parser.add_argument('--save_checkpoint_steps', type=int, default=5000,
                     help='')
 
 parser.add_argument('--save_interval_secs', type=int, default=1800,
@@ -136,7 +136,7 @@ parser.add_argument('--last_layers_contain_logits_only', type=bool, default=True
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--zero_guidance', type=bool, default=True,
+parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--num_prior_samples', type=int, default=None,
@@ -148,7 +148,7 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
-parser.add_argument('--deformable_transform', type=bool, default=False,
+parser.add_argument('--deformable_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--save_summaries_images', type=bool, default=True,
@@ -161,9 +161,6 @@ parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
                     help='')
 
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
-                    help='')
-
-parser.add_argument('--regularization_decay', type=float, default=5e-4,
                     help='')
 
 parser.add_argument('--model_variant', type=str, default=None,
@@ -254,6 +251,7 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
                 prior_slices=prior_slices,
                 batch_size=clone_batch_size,
                 z_label_method=FLAGS.z_label_method,
+                z_label=samples[common.Z_LABEL],
                 fusion_rate=FLAGS.fusion_rate,
                 zero_guidance=FLAGS.zero_guidance,
                 # weight_decay=FLAGS.weight_decay,
@@ -629,7 +627,8 @@ def main(unused_argv):
             save_summaries_hook = tf.train.SummarySaverHook(save_steps=10,
                                                             output_dir=FLAGS.train_logdir,
                                                             summary_op=summary_op)
-            # TODO: Save checkpoint in step
+            
+            
             with tf.train.MonitoredTrainingSession(
                 master=FLAGS.master,
                 is_chief=(FLAGS.task == 0),
@@ -637,9 +636,10 @@ def main(unused_argv):
                 scaffold=scaffold,
                 checkpoint_dir=FLAGS.train_logdir,
                 log_step_count_steps=FLAGS.log_steps,
-                save_summaries_steps=FLAGS.save_summaries_secs,
-                save_checkpoint_secs=FLAGS.save_interval_secs,
-                hooks=[stop_hook, save_summaries_hook]) as sess:
+                save_summaries_steps=100,
+                # save_checkpoint_secs=FLAGS.save_interval_secs,
+                save_checkpoint_steps=FLAGS.save_checkpoint_steps,
+                hooks=[stop_hook]) as sess:
                 while not sess.should_stop():
                     sess.run([train_tensor])
 

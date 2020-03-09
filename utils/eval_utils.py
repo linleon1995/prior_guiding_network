@@ -18,27 +18,38 @@ class Build_Pyplot_Subplots(object):
         self.is_showfig = is_showfig
         self.is_savefig = is_savefig
         self.type_list = type_list
-
-        # TODO: title list and plot_type length check
+        self.num_plot = np.prod(self.ax.shape)
+        assert self.num_plot == len(type_list)
         # TODO: color_map
-        # TODO: condition of is_showfig and is)savefig
-        
-        # TODO: display specific images
-        # TODO: vmin and vmax
-        # TODO: correct string combination
+        # TODO: condition of is_showfig and issavefig
         # TODO: remove coreordinate
-        
+        # TODO: Solve subplots(2,2)--> ax is a numpy array not suitble for using for loop directly
+        # TODO: Make a judgement about existence of directory
     def set_title(self, title_list):
+        assert self.num_plot == len(title_list)
         for sub_ax, title in zip(self.ax, title_list):
             sub_ax.set_title(title)
 
-    def display_figure(self, file_name, value_list, saved_format='.png'):
-        # TODO: check value_list length
-        for sub_ax, plot_type, value in zip(self.ax, self.type_list, value_list):
+    def set_axis_off(self,):
+        for sub_ax in self.ax:
+            sub_ax.set_axis_off()
+            
+    def display_figure(self, file_name, value_list, parameters=None, saved_format='.png'):
+        # TODO: Check existence of parameters
+        assert self.num_plot == len(value_list)
+        assert self.num_plot == len(parameters)
+        for sub_ax, plot_type, value, p in zip(self.ax, self.type_list, value_list, parameters):
+
             if plot_type == "plot":
-                sub_ax.plot(*value)
+                if p is not None:
+                    sub_ax.plot(*value, **p)
+                else:
+                    sub_ax.plot(*value)
             elif plot_type == "img":
-                sub_ax.imshow(value)
+                if p is not None:
+                    sub_ax.imshow(value, **p)
+                else:
+                    sub_ax.imshow(value)
             else:
                 raise ValueError("Unkown ploting type")
         if self.is_showfig:

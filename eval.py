@@ -16,6 +16,7 @@
 See model.py for more details and usage.
 """
 
+import os
 import argparse
 import os
 import numpy as np
@@ -42,6 +43,10 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-40000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-29382'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-40000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
@@ -76,7 +81,13 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--zero_guidance', type=bool, default=True,
+parser.add_argument('--affine_transform', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--deformable_transform', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--vis_guidance', type=bool, default=True,
@@ -134,7 +145,8 @@ def main(unused_argv):
                 dataset_name=FLAGS.dataset,
                 split_name=FLAGS.eval_split,
                 dataset_dir=FLAGS.dataset_dir,
-                model_options=model_options,
+                affine_transform=FLAGS.affine_transform,
+                deformable_transform=FLAGS.deformable_transform,
                 batch_size=FLAGS.eval_batch_size,
                 HU_window=HU_WINDOW,
                 z_label_method=FLAGS.z_label_method,
@@ -219,6 +231,8 @@ def main(unused_argv):
     output_dict, layers_dict = model.pgb_network(
                   placeholder_dict[common.IMAGE],
                   model_options=model_options,
+                  affine_transform=FLAGS.affine_transform,
+                  deformable_transform=FLAGS.deformable_transform,
                   labels=placeholder_dict[common.LABEL],
                   prior_imgs=placeholder_dict[common.PRIOR_IMGS],
                   prior_segs=placeholder_dict[common.PRIOR_SEGS],
@@ -299,13 +313,13 @@ def main(unused_argv):
 
     # Build up Pyplot displaying tool
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
-                                                        is_showfig=False,
+                                                        is_showfig=True,
                                                         is_savefig=False,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
     # Start Evaluate
     # TODO: The order of subject
-    for i in range(dataset.splits_to_sizes):
+    for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
@@ -316,9 +330,27 @@ def main(unused_argv):
         DSC_slice.append(dscs)
         cm_total += cm_slice
 
+        # TODO: display specific images
+        parameters = [None]
+        parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
+        show_seg_results.set_axis_off()
+        show_seg_results.set_title(3*["a"])
         show_seg_results.display_figure(FLAGS.eval_split+'_pred{}'.format(i),
-                                        [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]])
-        foreground_pixel = sess.run(num_fg_pixel, _feed_dict)
+                                        [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
+                                        parameters=parameters)
+        # if i==75:
+        #   _, aa = plt.subplots(2,2)
+        #   aa[0,0].set_axis_off()
+        #   aa[0,1].set_axis_off()
+        #   aa[1,0].set_axis_off()
+        #   aa[1,1].set_axis_off()
+        #   aa[0,0].imshow(data[common.IMAGE][0,...,0])
+        #   aa[0,1].imshow(pred[0])
+        #   aa[1,0].imshow(pred[0])
+        #   aa[1,1].imshow(pred[0])
+        #   plt.show()
+        # foreground_pixel = sess.run(num_fg_pixel, _feed_dict)
+        
         # Z-information Evaluation
         if common.OUTPUT_Z in output_dict:
           eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
@@ -328,7 +360,19 @@ def main(unused_argv):
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
+          if not os.path.isdir(FLAGS.eval_logdir+"guidance"):
+            os.mkdir(FLAGS.eval_logdir+"guidance")
+          show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
+                                                            is_showfig=False,
+                                                            is_savefig=True,
+                                                            subplot_split=(1,3),
+                                                            type_list=3*['img'])
           guid_dict = sess.run(guidance_dict, feed_dict=_feed_dict)
+          show_guidance.display_figure(FLAGS.eval_split+'_guid{}'.format(i),
+                                        [guid_dict["guidance1"][0,...,2],
+                                         guid_dict["guidance2"][0,...,2],
+                                         guid_dict["guidance3"][0,...,2]])
+          
           
         # Features Visualization
         if FLAGS.vis_features:
@@ -371,7 +415,7 @@ def main(unused_argv):
     #         print('step {:d}'.format(step))
     # print('Mean IoU: {:.3f}'.format(mIoU.eval(session=sess)))
 
-
+    print(30*"=")
     mean_iou = eval_utils.compute_mean_iou(cm_total)
     mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
     pixel_acc = eval_utils.compute_accuracy(cm_total)
@@ -380,8 +424,7 @@ def main(unused_argv):
     #                                  title='Confusion matrix, without normalization')
     
     if common.Z_LABEL in samples:
-      
-      total_eval_z /= 668
+      total_eval_z /= dataset.splits_to_sizes[FLAGS.eval_split]
       print("MSE of z prediction {}".format(total_eval_z))
     
     if FLAGS.display_box_plot:
@@ -409,8 +452,5 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-    
-    
-    
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
