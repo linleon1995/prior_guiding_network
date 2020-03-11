@@ -156,9 +156,9 @@ def get_prior(features, batch_size, num_classes, num_slices, prior_slices,
   # TODO: dimension check
   with tf.variable_scope(scope, 'prior_network') as sc:
     if z_label_method == 'regression':
-      z_pred = tf.expand_dims(z_label, axis=1)
-      # z_logits = global_extractor(features, output_dims=1, scope='z_info_extractor')
-      # z_pred = tf.nn.sigmoid(z_logits)
+      # z_pred = tf.expand_dims(z_label, axis=1)
+      z_logits = global_extractor(features, output_dims=1, scope='z_info_extractor')
+      z_pred = tf.nn.sigmoid(z_logits)
       indices = tf.cast(tf.multiply(tf.cast(prior_slices, tf.float32), z_pred), tf.int32)
       
       # TODO: gather correctly

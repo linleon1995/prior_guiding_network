@@ -41,11 +41,12 @@ HU_WINDOW = [-125, 275]
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-40000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-36235'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-40000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-29382'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-40000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-29382'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-40000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
@@ -90,7 +91,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=True,
+parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -166,6 +167,7 @@ def main(unused_argv):
                 num_prior_samples=None)
 
   # TODO: make dirs?
+  # TODO: Add model name in dir to distinguish
   tf.gfile.MakeDirs(FLAGS.eval_logdir)
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
@@ -206,8 +208,8 @@ def main(unused_argv):
     if common.PRIOR_IMGS in samples:
       samples[common.PRIOR_IMGS] = tf.identity(samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
       prior_img_placeholder = tf.placeholder(tf.float32,
-                                           shape=[None, EVAL_CROP_SIZE[0]//FLAGS.output_stride,
-                                                  EVAL_CROP_SIZE[1]//FLAGS.output_stride, None])
+                                           shape=[None, EVAL_CROP_SIZE[0],
+                                                  EVAL_CROP_SIZE[1], None])
       placeholder_dict[common.PRIOR_IMGS] = prior_img_placeholder
     else:
       placeholder_dict[common.PRIOR_IMGS] = None
@@ -215,8 +217,8 @@ def main(unused_argv):
     if common.PRIOR_SEGS in samples:
       samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
       prior_seg_placeholder = tf.placeholder(tf.float32,
-                                           shape=[None, EVAL_CROP_SIZE[0]//FLAGS.output_stride,
-                                                  EVAL_CROP_SIZE[1]//FLAGS.output_stride, None])
+                                           shape=[None, EVAL_CROP_SIZE[0],
+                                                  EVAL_CROP_SIZE[1], None])
       placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
     else:
       placeholder_dict[common.PRIOR_SEGS] = None
@@ -268,7 +270,12 @@ def main(unused_argv):
     num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     labels_flat = tf.reshape(labels, shape=[-1,])
 
-    guidance = output_dict[common.GUIDANCE]
+    # guidance = output_dict[common.GUIDANCE]
+    if FLAGS.affine_transform or FLAGS.deformable_transform:
+      pp = tf.image.resize_bilinear(output_dict[common.PRIOR_SEGS], 
+                                    [EVAL_CROP_SIZE[0]//FLAGS.output_stride,EVAL_CROP_SIZE[1]//FLAGS.output_stride])
+    else:
+      pp = label_onehot                              
     if common.OUTPUT_Z in output_dict:
       z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
       
@@ -307,13 +314,25 @@ def main(unused_argv):
 
     cm_total = 0
     total_eval_z = 0
+    foreground_pixel = 0
     DSC_slice = []
     total_resnet_activate = {}
-    z_pred_label = []
+    total_z_label = []
+    total_z_pred = []
 
+    # TODO: Determine saving path while display? remove the dependency then show_guidance and show_seg_results could be the same one
+    if FLAGS.vis_guidance:
+        if not os.path.isdir(FLAGS.eval_logdir+"guidance"):
+          os.mkdir(FLAGS.eval_logdir+"guidance")
+          
+        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"guidance/",
+                                                            is_showfig=False,
+                                                            is_savefig=False,
+                                                            subplot_split=(1,3),
+                                                            type_list=3*['img'])
     # Build up Pyplot displaying tool
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
-                                                        is_showfig=True,
+                                                        is_showfig=False,
                                                         is_savefig=False,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
@@ -333,9 +352,9 @@ def main(unused_argv):
         # TODO: display specific images
         parameters = [None]
         parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
+        show_seg_results.set_title(["image", "label","prediction"])
         show_seg_results.set_axis_off()
-        show_seg_results.set_title(3*["a"])
-        show_seg_results.display_figure(FLAGS.eval_split+'_pred{}'.format(i),
+        show_seg_results.display_figure(FLAGS.eval_split+'_pred_%s' %str(i).zfill(4),
                                         [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
                                         parameters=parameters)
         # if i==75:
@@ -349,30 +368,35 @@ def main(unused_argv):
         #   aa[1,0].imshow(pred[0])
         #   aa[1,1].imshow(pred[0])
         #   plt.show()
-        # foreground_pixel = sess.run(num_fg_pixel, _feed_dict)
+        foreground_pixel += sess.run(num_fg_pixel, _feed_dict)
         
         # Z-information Evaluation
         if common.OUTPUT_Z in output_dict:
           eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
           z_label = data[common.Z_LABEL]
-          z_pred_label.append((z_label, z_pred))
+          total_z_label.append(z_label)
+          total_z_pred.append(z_pred)
           total_eval_z += eval_z
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
-          if not os.path.isdir(FLAGS.eval_logdir+"guidance"):
-            os.mkdir(FLAGS.eval_logdir+"guidance")
-          show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
-                                                            is_showfig=False,
-                                                            is_savefig=True,
-                                                            subplot_split=(1,3),
-                                                            type_list=3*['img'])
-          guid_dict = sess.run(guidance_dict, feed_dict=_feed_dict)
-          show_guidance.display_figure(FLAGS.eval_split+'_guid{}'.format(i),
-                                        [guid_dict["guidance1"][0,...,2],
-                                         guid_dict["guidance2"][0,...,2],
-                                         guid_dict["guidance3"][0,...,2]])
-          
+          if i > 200:
+            # TODO: cc, pp
+            # TODO: The situation of prior_seg not exist
+            cc = 2
+            
+            guid_dict, prior_seg = sess.run([guidance_dict, pp], feed_dict=_feed_dict)
+            show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
+            show_guidance.display_figure(FLAGS.eval_split+'_all_guid_%s' % str(i).zfill(4),
+                                          [guid_dict["guidance1"][0,...,cc],
+                                          guid_dict["guidance2"][0,...,cc],
+                                          guid_dict["guidance3"][0,...,cc]])
+            
+            show_guidance.set_title(["prediction of class {}".format(cc), "input prior", "guidance1 (32,32)"])
+            show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%s' % str(i).zfill(4),
+                                        [np.int32(data[common.LABEL][0,...,0]==cc),
+                                        prior_seg[0,...,cc],
+                                        guid_dict["guidance_in"][0,...,cc]])
           
         # Features Visualization
         if FLAGS.vis_features:
@@ -419,13 +443,23 @@ def main(unused_argv):
     mean_iou = eval_utils.compute_mean_iou(cm_total)
     mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
     pixel_acc = eval_utils.compute_accuracy(cm_total)
+    _, _ = eval_utils.precision_and_recall(cm_total)
+    print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
+
     # TODO: save instead of showing
-    # eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
-    #                                  title='Confusion matrix, without normalization')
+    eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
+                                     title='Confusion matrix, without normalization')
     
     if common.Z_LABEL in samples:
       total_eval_z /= dataset.splits_to_sizes[FLAGS.eval_split]
       print("MSE of z prediction {}".format(total_eval_z))
+      plt.plot(total_z_label, total_z_pred, ".")
+      plt.hold(True)
+      plt.plot(total_z_label, total_z_label, "r")
+      plt.title("Z labeld and prediction")
+      plt.xlabel("z_label")
+      plt.ylabel("z_prediction")
+      plt.savefig(FLAGS.eval_logdir+"z_information.png")
     
     if FLAGS.display_box_plot:
         show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,

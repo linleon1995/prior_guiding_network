@@ -35,11 +35,11 @@ class Build_Pyplot_Subplots(object):
             sub_ax.set_axis_off()
             
     def display_figure(self, file_name, value_list, parameters=None, saved_format='.png'):
-        # TODO: Check existence of parameters
         assert self.num_plot == len(value_list)
-        assert self.num_plot == len(parameters)
+        if parameters is None:
+            parameters = self.num_plot*[None]
+            
         for sub_ax, plot_type, value, p in zip(self.ax, self.type_list, value_list, parameters):
-
             if plot_type == "plot":
                 if p is not None:
                     sub_ax.plot(*value, **p)
@@ -136,7 +136,21 @@ def compute_mean_dsc(total_cm):
       print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
       return m_dsc, dscs
   
+def precision_and_recall(total_cm):
+    """"""    
+    sum_over_row = np.sum(total_cm, axis=0).astype(float)
+    sum_over_col = np.sum(total_cm, axis=1).astype(float)
+    cm_diag = np.diagonal(total_cm).astype(float)
+    precision = cm_diag / sum_over_row
+    recall = cm_diag / sum_over_col
     
+    print('Recall and Precision')
+    i = 0
+    for p, r in zip(precision, recall):
+        print('    class {}: precision: {:.4f}  recall: {:.4f}'.format(i, p, r))
+        i += 1
+    return  precision, recall
+
 def compute_mean_iou(total_cm):
       """Compute the mean intersection-over-union via the confusion matrix."""
       sum_over_row = np.sum(total_cm, axis=0).astype(float)
@@ -202,7 +216,8 @@ def load_model(saver, sess, ckpt_path):
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
                           title='Confusion matrix',
-                          cmap=plt.cm.Blues):
+                          cmap=plt.cm.Blues,
+                          savefig=True):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -225,4 +240,7 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.tight_layout()  
-    plt.show()
+    if savefig:
+        plt.savefig()
+    else:
+        plt.show()
