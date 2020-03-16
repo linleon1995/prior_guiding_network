@@ -290,12 +290,12 @@ class Dataset(object):
         # derive z_label and not used in training and evaluation.
         # TODO: [16,16] links to output_strides
         if prior_imgs is not None:
-            prior_imgs = tf.image.resize_bilinear(tf.expand_dims(prior_imgs, axis=0), [16,16])
-            prior_imgs = tf.squeeze(prior_imgs, axis=0)
+            # prior_imgs = tf.image.resize_bilinear(tf.expand_dims(prior_imgs, axis=0), [32,32])
+            # prior_imgs = tf.squeeze(prior_imgs, axis=0)
             sample[common.PRIOR_IMGS] = prior_imgs
         if prior_segs is not None:
-            prior_segs = tf.image.resize_bilinear(tf.expand_dims(prior_segs, axis=0), [32,32])
-            prior_segs = tf.squeeze(prior_segs, axis=0)
+            # prior_segs = tf.image.resize_bilinear(tf.expand_dims(prior_segs, axis=0), [32,32])
+            # prior_segs = tf.squeeze(prior_segs, axis=0)
             sample[common.PRIOR_SEGS] = prior_segs
             
         # sample.pop(common.DEPTH, None)

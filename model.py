@@ -79,36 +79,46 @@ def pgb_network(images,
                    "low_level4": features}
       
     if prior_imgs is not None or prior_segs is not None:
-      prior_img, prior_seg, z_pred = get_prior(features=layers_dict["low_level4"], 
-                                               batch_size=batch_size,
-                                               num_classes=num_classes, 
-                                               num_slices=num_slices,
-                                               prior_slices=prior_slices,
-                                               z_classes=z_class,
-                                               prior_imgs=prior_imgs,
-                                               prior_segs=prior_segs, 
-                                               z_label_method=z_label_method,
-                                               z_label=z_label)
-      if prior_img is not None:
-        output_dict[common.PRIOR_IMGS] = prior_img
+      print(prior_segs, 30*"p")
+      guidance  = tf.one_hot(indices=tf.cast(prior_segs, tf.int32),
+                              depth=num_classes,
+                              on_value=1,
+                              off_value=0,
+                              axis=3) 
+      print(guidance, 30*"p")
+      guidance = tf.reduce_mean(guidance, axis=4)
+      print(guidance, 30*"p")
+      z_pred = None
+      # prior_img, prior_seg, z_pred = get_prior(features=layers_dict["low_level4"], 
+      #                                          batch_size=batch_size,
+      #                                          num_classes=num_classes, 
+      #                                          num_slices=num_slices,
+      #                                          prior_slices=prior_slices,
+      #                                          z_classes=z_class,
+      #                                          prior_imgs=prior_imgs,
+      #                                          prior_segs=prior_segs, 
+      #                                          z_label_method=z_label_method,
+      #                                          z_label=z_label)
+      # if prior_img is not None:
+      #   output_dict[common.PRIOR_IMGS] = prior_img
         
-      if prior_seg is not None:
-        output_dict[common.PRIOR_SEGS] = prior_seg
+      # if prior_seg is not None:
+      #   output_dict[common.PRIOR_SEGS] = prior_seg
         
-      guidance = get_guidance(layers_dict["low_level4"],
-                              images,
-                              prior_img,
-                              affine_transform=affine_transform,
-                              deformable_transform=deformable_transform,
-                              prior_seg=prior_seg,
-                              is_training=is_training)
+      # guidance, x_s, theta = get_guidance(layers_dict["low_level4"],
+      #                         images,
+      #                         prior_img,
+      #                         affine_transform=affine_transform,
+      #                         deformable_transform=deformable_transform,
+      #                         prior_seg=prior_seg,
+      #                         is_training=is_training)
 
-      if deformable_transform:
-        transformed_imgs, guidance = guidance
-        output_dict['transformed_imgs'] = transformed_imgs   
+      # if deformable_transform:
+      #   transformed_imgs, guidance = guidance
+      #   output_dict['transformed_imgs'] = transformed_imgs   
                            
     else:
-
+      
       guidance = tf.one_hot(
         tf.squeeze(labels, 3), num_classes, on_value=1.0, off_value=0.0)
       if zero_guidance:
@@ -229,6 +239,7 @@ def get_guidance(features,
   guidance = prior_seg
   if affine_transform:
     theta = global_extractor(features, output_dims=6, scope='theta_extractor')
+
     guidance = spatial_transformer_network(guidance, theta)
 
   if deformable_transform:

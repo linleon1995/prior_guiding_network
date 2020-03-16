@@ -48,6 +48,8 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_016/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-80000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
@@ -82,7 +84,7 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=True,
+parser.add_argument('--affine_transform', type=bool, default=False,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -325,7 +327,7 @@ def main(unused_argv):
         if not os.path.isdir(FLAGS.eval_logdir+"guidance"):
           os.mkdir(FLAGS.eval_logdir+"guidance")
           
-        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"guidance/",
+        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"guidance2/",
                                                             is_showfig=False,
                                                             is_savefig=False,
                                                             subplot_split=(1,3),
@@ -342,7 +344,21 @@ def main(unused_argv):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
-          
+        # if i in range(50, 80, 10):
+        #   tt, xx = sess.run([theta, x_s], feed_dict=_feed_dict)
+        #   print(tt)
+        #   fig, ax = plt.subplots(2,2)
+        #   ax[0,0].imshow(xx[0][0,...,0])
+        #   ax[0,1].imshow(xx[1][0,...,0])
+        #   ax[1,0].imshow(xx[2][0,...,0])
+        #   ax[1,1].imshow(xx[3][0,...,0])
+        #   plt.show()
+        #   fig, ax = plt.subplots(2,2)
+        #   ax[0,0].imshow(xx[4][0,...,0])
+        #   ax[0,1].imshow(xx[5][0,...,0])
+        #   ax[1,0].imshow(xx[6][0,...,0])
+        #   ax[1,1].imshow(xx[7][0,...,0])
+        #   plt.show()
         # Segmentation Evaluation
         cm_slice, pred = sess.run([cm, predictions], feed_dict=_feed_dict)
         _, dscs = eval_utils.compute_mean_dsc(cm_slice)
@@ -350,7 +366,7 @@ def main(unused_argv):
         cm_total += cm_slice
 
         # TODO: display specific images
-        parameters = [None]
+        parameters = [{"cmap": "gray"}]
         parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
         show_seg_results.set_title(["image", "label","prediction"])
         show_seg_results.set_axis_off()
@@ -380,7 +396,7 @@ def main(unused_argv):
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
-          if i > 200:
+          if i in (220,221,222,223,224, 480,481,482,483,484):
             # TODO: cc, pp
             # TODO: The situation of prior_seg not exist
             cc = 2
@@ -389,14 +405,14 @@ def main(unused_argv):
             show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
             show_guidance.display_figure(FLAGS.eval_split+'_all_guid_%s' % str(i).zfill(4),
                                           [guid_dict["guidance1"][0,...,cc],
-                                          guid_dict["guidance2"][0,...,cc],
-                                          guid_dict["guidance3"][0,...,cc]])
+                                           guid_dict["guidance2"][0,...,cc],
+                                           guid_dict["guidance3"][0,...,cc]])
             
-            show_guidance.set_title(["prediction of class {}".format(cc), "input prior", "guidance1 (32,32)"])
+            show_guidance.set_title(["prediction of class {}".format(cc), "input prior", "guidance_in (32,32)"])
             show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%s' % str(i).zfill(4),
                                         [np.int32(data[common.LABEL][0,...,0]==cc),
-                                        prior_seg[0,...,cc],
-                                        guid_dict["guidance_in"][0,...,cc]])
+                                         prior_seg[0,...,cc],
+                                         guid_dict["guidance_in"][0,...,cc]])
           
         # Features Visualization
         if FLAGS.vis_features:

@@ -218,7 +218,7 @@ def global_extractor(inputs,
         net = tf.nn.relu(net)
       else:
         outputs = fc_layer(net, [dims, output_dims], _std=1, reuse=tf.AUTO_REUSE, scope='_'.join(['fc', str(i)]))
-
+  
   return outputs
   
   

@@ -18,7 +18,7 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 colorize = train_utils.colorize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -61,7 +61,7 @@ parser.add_argument('--train_logdir', type=str, default=create_training_path(LOG
 parser.add_argument('--prior-dir', type=str, default=PRIOR_PATH,
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=12,
+parser.add_argument('--batch_size', type=int, default=14,
                     help='')
 
 parser.add_argument('--z_class', type=int, default=60,
@@ -148,7 +148,7 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
-parser.add_argument('--deformable_transform', type=bool, default=True,
+parser.add_argument('--deformable_transform', type=bool, default=False,
                     help='')
 
 parser.add_argument('--save_summaries_images', type=bool, default=True,

@@ -241,6 +241,6 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
     plt.tight_layout()  
     if savefig:
-        plt.savefig()
+        plt.savefig("CM.png")
     else:
         plt.show()
