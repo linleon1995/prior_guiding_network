@@ -50,6 +50,7 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_016/model.ckpt-80000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_021/model.ckpt-80000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
@@ -84,7 +85,7 @@ parser.add_argument('--fusion_rate', type=float, default=0.2,
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -93,7 +94,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=bool, default=True,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -274,10 +275,12 @@ def main(unused_argv):
 
     # guidance = output_dict[common.GUIDANCE]
     if FLAGS.affine_transform or FLAGS.deformable_transform:
-      pp = tf.image.resize_bilinear(output_dict[common.PRIOR_SEGS], 
-                                    [EVAL_CROP_SIZE[0]//FLAGS.output_stride,EVAL_CROP_SIZE[1]//FLAGS.output_stride])
+      pp = output_dict[common.GUIDANCE]
+      # pp = tf.image.resize_bilinear(output_dict[common.PRIOR_SEGS], 
+      #                               [EVAL_CROP_SIZE[0]//FLAGS.output_stride,EVAL_CROP_SIZE[1]//FLAGS.output_stride])
     else:
-      pp = label_onehot                              
+      pp = label_onehot                   
+                 
     if common.OUTPUT_Z in output_dict:
       z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
       
@@ -327,9 +330,9 @@ def main(unused_argv):
         if not os.path.isdir(FLAGS.eval_logdir+"guidance"):
           os.mkdir(FLAGS.eval_logdir+"guidance")
           
-        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"guidance2/",
+        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"guidance/",
                                                             is_showfig=False,
-                                                            is_savefig=False,
+                                                            is_savefig=True,
                                                             subplot_split=(1,3),
                                                             type_list=3*['img'])
     # Build up Pyplot displaying tool
@@ -502,5 +505,11 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-    FLAGS, unparsed = parser.parse_known_args()
-    main(unparsed)
+    guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
+    for i in range(14):
+      plt.imshow(guidance[...,i])
+      plt.show()
+      
+    # FLAGS, unparsed = parser.parse_known_args()
+    # main(unparsed)
+    

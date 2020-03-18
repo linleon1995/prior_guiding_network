@@ -1,4 +1,6 @@
 import tensorflow as tf
+# TODO: Remove numpy dependency
+import numpy as np
 # from tensorflow.python.ops import math_ops
 from core import features_extractor, stn, voxelmorph, crn_network, utils
 import common
@@ -33,8 +35,9 @@ def pgb_network(images,
                 z_label_method=None,
                 z_label=None,
                 z_class=None,
-                zero_guidance=False,
+                guidance_type=None,
                 fusion_rate=None,
+                prior_dir=None,
                 is_training=None,
                 scope=None,
                 # **kwargs,
@@ -77,53 +80,85 @@ def pgb_network(images,
                    "low_level2": end_points["pgb_network/resnet_v1_50/block1/unit_3/bottleneck_v1/conv1"],
                    "low_level3": end_points["pgb_network/resnet_v1_50/block2/unit_4/bottleneck_v1/conv1"],
                    "low_level4": features}
-      
-    if prior_imgs is not None or prior_segs is not None:
-      print(prior_segs, 30*"p")
-      guidance  = tf.one_hot(indices=tf.cast(prior_segs, tf.int32),
-                              depth=num_classes,
-                              on_value=1,
-                              off_value=0,
-                              axis=3) 
-      print(guidance, 30*"p")
-      guidance = tf.reduce_mean(guidance, axis=4)
-      print(guidance, 30*"p")
-      z_pred = None
-      # prior_img, prior_seg, z_pred = get_prior(features=layers_dict["low_level4"], 
-      #                                          batch_size=batch_size,
-      #                                          num_classes=num_classes, 
-      #                                          num_slices=num_slices,
-      #                                          prior_slices=prior_slices,
-      #                                          z_classes=z_class,
-      #                                          prior_imgs=prior_imgs,
-      #                                          prior_segs=prior_segs, 
-      #                                          z_label_method=z_label_method,
-      #                                          z_label=z_label)
-      # if prior_img is not None:
-      #   output_dict[common.PRIOR_IMGS] = prior_img
+    
+    # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy"))
+    # guidance = tf.expand_dims(guidance, axis=0)
+    # guidance = tf.tile(guidance, [batch_size,1,1,1])  
+    
+    guidance = slim.conv2d(features,
+                           num_classes,
+                           [1, 1],
+                           stride=1,
+                           activation_fn=None,
+                           scope='input_guidance')    
+    z_pred = None
+    
+    
+    # if guidance_type == "zeros":
+    #     prior = tf.zeros_like(labels)
+    # elif guidance_type == "ground_truth":
+    #     prior = labels
+    # elif guidance_type == "training_data_fusion":
+    #     np_prior = np.load(prior_dir)
+    #     prior = tf.convert_to_tensor(np_prior)
+    # elif guidance_type == "adaptive":
+    #     prior_img, prior_seg, z_pred = get_prior(features=layers_dict["low_level4"], 
+    #                                            batch_size=batch_size,
+    #                                            num_classes=num_classes, 
+    #                                            num_slices=num_slices,
+    #                                            prior_slices=prior_slices,
+    #                                            z_classes=z_class,
+    #                                            prior_imgs=prior_imgs,
+    #                                            prior_segs=prior_segs, 
+    #                                            z_label_method=z_label_method,
+    #                                            z_label=z_label)
+    # else:
+    #     raise ValueError("Unknown guidance type")
+    
+    
+    # if prior_imgs is not None or prior_segs is not None:
+    #     guidance  = tf.one_hot(indices=tf.cast(prior_segs, tf.int32),
+    #                             depth=num_classes,
+    #                             on_value=1,
+    #                             off_value=0,
+    #                             axis=3) 
+    #     guidance = tf.reduce_mean(guidance, axis=4)
+    #     z_pred = None
+    #   # prior_img, prior_seg, z_pred = get_prior(features=layers_dict["low_level4"], 
+    #   #                                          batch_size=batch_size,
+    #   #                                          num_classes=num_classes, 
+    #   #                                          num_slices=num_slices,
+    #   #                                          prior_slices=prior_slices,
+    #   #                                          z_classes=z_class,
+    #   #                                          prior_imgs=prior_imgs,
+    #   #                                          prior_segs=prior_segs, 
+    #   #                                          z_label_method=z_label_method,
+    #   #                                          z_label=z_label)
+    #   # if prior_img is not None:
+    #   #   output_dict[common.PRIOR_IMGS] = prior_img
         
-      # if prior_seg is not None:
-      #   output_dict[common.PRIOR_SEGS] = prior_seg
+    #   # if prior_seg is not None:
+    #   #   output_dict[common.PRIOR_SEGS] = prior_seg
         
-      # guidance, x_s, theta = get_guidance(layers_dict["low_level4"],
-      #                         images,
-      #                         prior_img,
-      #                         affine_transform=affine_transform,
-      #                         deformable_transform=deformable_transform,
-      #                         prior_seg=prior_seg,
-      #                         is_training=is_training)
+    #   # guidance, x_s, theta = get_guidance(layers_dict["low_level4"],
+    #   #                         images,
+    #   #                         prior_img,
+    #   #                         affine_transform=affine_transform,
+    #   #                         deformable_transform=deformable_transform,
+    #   #                         prior_seg=prior_seg,
+    #   #                         is_training=is_training)
 
-      # if deformable_transform:
-      #   transformed_imgs, guidance = guidance
-      #   output_dict['transformed_imgs'] = transformed_imgs   
+    #   # if deformable_transform:
+    #   #   transformed_imgs, guidance = guidance
+    #   #   output_dict['transformed_imgs'] = transformed_imgs   
                            
-    else:
+    # else:
       
-      guidance = tf.one_hot(
-        tf.squeeze(labels, 3), num_classes, on_value=1.0, off_value=0.0)
-      if zero_guidance:
-        guidance = tf.zeros_like(guidance)
-      z_pred = None      
+    #   guidance = tf.one_hot(
+    #     tf.squeeze(labels, 3), num_classes, on_value=1.0, off_value=0.0)
+    #   if guidance_type:
+    #     guidance = tf.zeros_like(guidance)
+    #   z_pred = None      
 
     output_dict['original_guidance'] = guidance
     output_dict[common.GUIDANCE] = guidance

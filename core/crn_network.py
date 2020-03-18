@@ -62,7 +62,7 @@ def refinement_network(features,
             h, w = layers_dict["low_level3"].get_shape().as_list()[1:3]
             # guidance1_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
             # guidance1_a = tf.nn.softmax(guidance1) + guidance1_gt
-            guidance1_a = tf.nn.softmax(guidance1)
+            # guidance1_a = tf.nn.softmax(guidance1)
 
             output = rm(layers_dict["low_level3"],
                                                 feature1,
@@ -79,7 +79,7 @@ def refinement_network(features,
             h, w = layers_dict["low_level2"].get_shape().as_list()[1:3]
             # guidance2_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
             # guidance2_a = tf.nn.softmax(guidance2) + guidance2_gt
-            guidance2_a = tf.nn.softmax(guidance2)
+            # guidance2_a = tf.nn.softmax(guidance2)
             
             output = rm(layers_dict["low_level2"],
                                                 feature2,
@@ -96,7 +96,7 @@ def refinement_network(features,
             h, w = layers_dict["low_level1"].get_shape().as_list()[1:3]
             # guidance3_gt = tf.image.resize_bilinear(guidance, [h, w], name='guidance_in')
             # guidance3_a = tf.nn.softmax(guidance3) + guidance3_gt
-            guidance3_a = tf.nn.softmax(guidance3)
+            # guidance3_a = tf.nn.softmax(guidance3)
             
             output = rm(layers_dict["low_level1"],
                                                 feature3,
@@ -113,10 +113,10 @@ def refinement_network(features,
                 feature4, guidance4 = output
 
             layers_dict.update({
-                            "guidance_in": guidance_in,
-                            "feature1": feature1, "guidance1": guidance1_a,
-                            "feature2": feature2, "guidance2": guidance2_a,
-                            "feature3": feature3, "guidance3": guidance3_a,
+                            # "guidance_in": guidance_in,
+                            "feature1": feature1, "guidance1": guidance1,
+                            "feature2": feature2, "guidance2": guidance2,
+                            "feature3": feature3, "guidance3": guidance3,
                             "feature4": feature4, "output": guidance4,
                             })
             if not is_training:

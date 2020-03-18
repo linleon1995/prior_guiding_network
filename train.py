@@ -18,7 +18,7 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 colorize = train_utils.colorize
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_tesis2/prior/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -43,8 +43,8 @@ def create_training_path(train_logdir):
     idx = 0
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
     while os.path.exists(path):
-        # if len(os.listdir(path)) == 0:
-        #     break
+        if len(os.listdir(path)) == 0:
+            break
         idx += 1
         path = os.path.join(train_logdir, "run_{:03d}".format(idx))
 
@@ -53,48 +53,17 @@ def create_training_path(train_logdir):
 
 parser = argparse.ArgumentParser()
 
-# training configuration
-# model configuration
+# Training configuration
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
                     help='')
 
 parser.add_argument('--prior-dir', type=str, default=PRIOR_PATH,
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=14,
-                    help='')
-
-parser.add_argument('--z_class', type=int, default=60,
-                    help='')
-
-parser.add_argument('--seq-length', type=int, default=None,
-                    help='')
-
-parser.add_argument('--subject_for_prior', type=str, default='label0001.nii.gz',
-                    help='')
-
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--num_clones', type=int, default=2,
-                    help='')
-
-parser.add_argument('--min_scale_factor', type=float, default=0.75,
-                    help='')
-
-parser.add_argument('--max_scale_factor', type=float, default=1.25,
-                    help='')
-
-parser.add_argument('--scale_factor_step_size', type=float, default=0.125,
-                    help='')
-
-parser.add_argument('--min_resize_value', type=int, default=256,
-                    help='')
-
-parser.add_argument('--max_resize_value', type=int, default=256,
-                    help='')
-
-parser.add_argument('--resize_factor', type=int, default=None,
+parser.add_argument('--batch_size', type=int, default=16,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -121,6 +90,9 @@ parser.add_argument('--log_steps', type=int, default=10,
 parser.add_argument('--save_summaries_secs', type=int, default=None,
                     help='')
 
+parser.add_argument('--save_summaries_images', type=bool, default=True,
+                    help='')
+
 parser.add_argument('--save_checkpoint_steps', type=int, default=5000,
                     help='')
 
@@ -133,10 +105,19 @@ parser.add_argument('--num_ps_tasks', type=int, default=0,
 parser.add_argument('--last_layers_contain_logits_only', type=bool, default=True,
                     help='')
 
+parser.add_argument('--model_variant', type=str, default=None,
+                    help='')
+
+# Model configuration
 parser.add_argument('--z_label_method', type=str, default='regression',
                     help='')
 
-parser.add_argument('--zero_guidance', type=bool, default=False,
+parser.add_argument('--z_class', type=int, default=60,
+                    help='')
+
+# Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed) 
+# or "adaptive" witch means decide adaptively
+parser.add_argument('--guidance_type', type=str, default="training_fusion",
                     help='')
 
 parser.add_argument('--num_prior_samples', type=int, default=None,
@@ -145,14 +126,12 @@ parser.add_argument('--num_prior_samples', type=int, default=None,
 parser.add_argument('--fusion_rate', type=float, default=0.2,
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=True,
+parser.add_argument('--affine_transform', type=bool, default=False,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
                     help='')
 
-parser.add_argument('--save_summaries_images', type=bool, default=True,
-                    help='')
 
 parser.add_argument('--z_loss_decay', type=float, default=1.0,
                     help='')
@@ -163,10 +142,7 @@ parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
                     help='')
 
-parser.add_argument('--model_variant', type=str, default=None,
-                    help='')
-
-# learning rate configuration
+# Learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
                     help='')
 
@@ -201,8 +177,29 @@ parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
 parser.add_argument('--output_stride', type=int, default=8,
                     help='')
 
+parser.add_argument('--num_clones', type=int, default=2,
+                    help='')
 
-def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label, s2=None):
+parser.add_argument('--min_scale_factor', type=float, default=0.75,
+                    help='')
+
+parser.add_argument('--max_scale_factor', type=float, default=1.25,
+                    help='')
+
+parser.add_argument('--scale_factor_step_size', type=float, default=0.125,
+                    help='')
+
+parser.add_argument('--min_resize_value', type=int, default=256,
+                    help='')
+
+parser.add_argument('--max_resize_value', type=int, default=256,
+                    help='')
+
+parser.add_argument('--resize_factor', type=int, default=None,
+                    help='')
+
+
+def _build_network(samples, outputs_to_num_classes, model_options, ignore_label, s2=None):
   """Builds a clone of DeepLab.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
@@ -253,7 +250,7 @@ def _build_deeplab(samples, outputs_to_num_classes, model_options, ignore_label,
                 z_label_method=FLAGS.z_label_method,
                 z_label=samples[common.Z_LABEL],
                 fusion_rate=FLAGS.fusion_rate,
-                zero_guidance=FLAGS.zero_guidance,
+                guidance_type=FLAGS.guidance_type,
                 # weight_decay=FLAGS.weight_decay,
                 is_training=True,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
@@ -319,7 +316,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       s2 = it2.get_next()
     else:
       s2 = None
-    output_dict, layers_dict = _build_deeplab(samples, {common.OUTPUT_TYPE: num_of_classes}, 
+    output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
                                               model_options, ignore_label, s2)
 
   loss_dict = {common.OUTPUT_TYPE: 'mean_dice_coefficient'}
