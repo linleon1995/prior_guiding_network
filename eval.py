@@ -46,12 +46,19 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-80000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-80000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-50000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_016/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_021/model.ckpt-80000'
+
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_016/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_021/model.ckpt-80000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_030/model.ckpt-65000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_065/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_059/model.ckpt-15000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-15000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_079/model.ckpt-20000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
+PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 parser = argparse.ArgumentParser()
 
@@ -60,6 +67,9 @@ parser.add_argument('--master', type=str, default='',
 
 # Settings for log directories.
 parser.add_argument('--eval_logdir', type=str, default=CHECKPOINT+'eval/',
+                    help='')
+
+parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
                     help='')
 
 parser.add_argument('--checkpoint_dir', type=str, default=CHECKPOINT,
@@ -75,17 +85,26 @@ parser.add_argument('--eval_interval_secs', type=int, default=5,
 parser.add_argument('--output_stride', type=int, default=8,
                     help='')
 
+parser.add_argument('--num_prior_slice', type=int, default=5,
+                    help='')
+
+parser.add_argument('--num_subject', type=int, default=10,
+                    help='')
+
+parser.add_argument('--fusion_slice', type=int, default=3,
+                    help='')
+
+parser.add_argument('--guidance_type', type=str, default=None,
+                    help='')
+                    
 # Change to True for adding flipped images during test.
 parser.add_argument('--add_flipped_images', type=bool, default=False,
                     help='')
 
-parser.add_argument('--fusion_rate', type=float, default=0.2,
+parser.add_argument('--z_label_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_label_method', type=str, default='regression',
-                    help='')
-
-parser.add_argument('--affine_transform', type=bool, default=True,
+parser.add_argument('--affine_transform', type=bool, default=False,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -94,7 +113,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=True,
+parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -174,7 +193,7 @@ def main(unused_argv):
   tf.gfile.MakeDirs(FLAGS.eval_logdir)
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
-  with tf.Graph().as_default():
+  with tf.Graph().as_default() as graph:
     samples = dataset.get_one_shot_iterator().get_next()
 
     # Add name to input and label nodes so we can add to summary.
@@ -232,30 +251,40 @@ def main(unused_argv):
     else:
       placeholder_dict['prior_slices'] = None
 
+    guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
+    guidance = tf.expand_dims(guidance, axis=0)
 
     output_dict, layers_dict = model.pgb_network(
-                  placeholder_dict[common.IMAGE],
-                  model_options=model_options,
-                  affine_transform=FLAGS.affine_transform,
-                  deformable_transform=FLAGS.deformable_transform,
-                  labels=placeholder_dict[common.LABEL],
-                  prior_imgs=placeholder_dict[common.PRIOR_IMGS],
-                  prior_segs=placeholder_dict[common.PRIOR_SEGS],
-                  num_classes=dataset.num_of_classes,
-                  num_slices=placeholder_dict[common.NUM_SLICES],
-                  prior_slices=placeholder_dict['prior_slices'],
-                  batch_size=FLAGS.eval_batch_size,
-                  z_label_method=FLAGS.z_label_method,
-                  zero_guidance=FLAGS.zero_guidance,
-                  fusion_rate=FLAGS.fusion_rate,
-                  # weight_decay=FLAGS.weight_decay,
-                  is_training=False,
-                  # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                  )
+                placeholder_dict[common.IMAGE],
+                model_options=model_options,
+                affine_transform=FLAGS.affine_transform,
+                # deformable_transform=FLAGS.deformable_transform,
+                labels=placeholder_dict[common.LABEL],
+                # prior_imgs=placeholder_dict[common.PRIOR_IMGS],
+                prior_segs=placeholder_dict[common.PRIOR_SEGS],
+                num_class=dataset.num_of_classes,
+                # num_slices=placeholder_dict[common.NUM_SLICES],
+                prior_slice=FLAGS.num_prior_slice,
+                batch_size=FLAGS.eval_batch_size,
+                z_label_method=FLAGS.z_label_method,
+                # z_label=placeholder_dict[common.Z_LABEL],
+                z_class=FLAGS.num_prior_slice,
+                guidance_type=FLAGS.guidance_type,
+                fusion_slice=FLAGS.fusion_slice,
+                prior_dir=FLAGS.prior_dir,
+                is_training=True,
+                # weight_decay=FLAGS.weight_decay,
+                # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
+                )
+                
     guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guid' in dict_key}
     feature_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'feature' in dict_key}
     sram_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'sram' in dict_key}
 
+    var_sizes = [np.product(list(map(int, v.shape))) * v.dtype.size
+                for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
+    print(sum(var_sizes) / (1024 ** 2), 'MB')
+    
     # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
     predictions = tf.nn.softmax(logits)
@@ -338,11 +367,13 @@ def main(unused_argv):
     # Build up Pyplot displaying tool
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
                                                         is_showfig=False,
-                                                        is_savefig=False,
+                                                        is_savefig=True,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
     # Start Evaluate
     # TODO: The order of subject
+    
+    
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
@@ -369,24 +400,15 @@ def main(unused_argv):
         cm_total += cm_slice
 
         # TODO: display specific images
-        parameters = [{"cmap": "gray"}]
-        parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
-        show_seg_results.set_title(["image", "label","prediction"])
-        show_seg_results.set_axis_off()
-        show_seg_results.display_figure(FLAGS.eval_split+'_pred_%s' %str(i).zfill(4),
-                                        [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
-                                        parameters=parameters)
-        # if i==75:
-        #   _, aa = plt.subplots(2,2)
-        #   aa[0,0].set_axis_off()
-        #   aa[0,1].set_axis_off()
-        #   aa[1,0].set_axis_off()
-        #   aa[1,1].set_axis_off()
-        #   aa[0,0].imshow(data[common.IMAGE][0,...,0])
-        #   aa[0,1].imshow(pred[0])
-        #   aa[1,0].imshow(pred[0])
-        #   aa[1,1].imshow(pred[0])
-        #   plt.show()
+        if i in (60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 220,221,222,223,224, 480,481,482,483,484):
+          parameters = [{"cmap": "gray"}]
+          parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
+          show_seg_results.set_title(["image", "label","prediction"])
+          show_seg_results.set_axis_off()
+          show_seg_results.display_figure(FLAGS.eval_split+'_pred_%s' %str(i).zfill(4),
+                                          [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
+                                          parameters=parameters)
+     
         foreground_pixel += sess.run(num_fg_pixel, _feed_dict)
         
         # Z-information Evaluation
@@ -399,7 +421,7 @@ def main(unused_argv):
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
-          if i in (220,221,222,223,224, 480,481,482,483,484):
+          if i in (60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 220,221,222,223,224, 480,481,482,483,484):
             # TODO: cc, pp
             # TODO: The situation of prior_seg not exist
             cc = 2
@@ -487,7 +509,11 @@ def main(unused_argv):
                                                             subplot_split=(1,1),
                                                             type_list=['plot'])
         # box_plot_figure(DSC_slice)
-        
+    var_sizes = [np.product(list(map(int, v.shape))) * v.dtype.size
+                for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
+    print(sum(var_sizes) / (1024 ** 2), 'MB')
+    # eval_utils.compute_params_and_flops(graph)    
+    
     # tf.contrib.tfprof.model_analyzer.print_model_analysis(
     #     tf.get_default_graph(),
     #     tfprof_options=tf.contrib.tfprof.model_analyzer.
@@ -505,11 +531,11 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-    guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
-    for i in range(14):
-      plt.imshow(guidance[...,i])
-      plt.show()
+    # guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
+    # for i in range(14):
+    #   plt.imshow(guidance[...,i])
+    #   plt.show()
       
-    # FLAGS, unparsed = parser.parse_known_args()
-    # main(unparsed)
+    FLAGS, unparsed = parser.parse_known_args()
+    main(unparsed)
     

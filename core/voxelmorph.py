@@ -4,10 +4,55 @@ slim = tf.contrib.slim
 bilinear_sampler = stn.bilinear_sampler
 
 
+# def voxel_deformable_transform(inputs, 
+#                                moving_segs=None,
+#                                unet_num_layers=4,
+#                                unet_features_depth=32,
+#                                unet_output_strides=16,
+#                                unet_output_dims=2,
+#                                is_training=None,
+#                                scope=None):
+#   """
+#   VoxelMorph: A Learning Framework for Deformable Medical Image Registration
+#   Args:
+#       moving_images: A 3D images
+#       fixed_images:
+#       moving_segs:
+#       fixed_segs:
+#       model_options:
+#   Returns:
+#       transformed_images: A 3D images which transformed by registration field
+#       transformed_segs: (optional) A 3D segmentations which transformed by registration field
+#   """
+#   with tf.variable_scope(scope, 'voxelmorph') as sc:
+#     # field, layer_dict = simplify_unet(inputs=inputs, 
+#     #                                   output_dims=unet_output_dims,
+#     #                                   num_layers=unet_num_layers, 
+#     #                                   features_depth=unet_features_depth,
+#     #                                   output_strides=unet_output_strides,
+#     #                                   is_training=is_training)   
+    
+#     if is_training is not None:
+#       arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
+#     else:
+#       arg_scope = slim.arg_scope([])
+#     with arg_scope:
+#       layer_dict = {}
+#       net = inputs
+#       for layer in range(3):
+#         layer_dict['downsampling'+str(layer)] = net
+#         net = slim.conv2d(net, (layer+1)*32, [3, 3], stride=1, scope='downconv'+str(layer))
+#         net = tf.nn.relu(net)
+
+#     field = slim.conv2d(net, 2, [1, 1], stride=1, scope='field')
+        
+#     transform_segs = deformable_transform(moving_segs, field)
+#     return transform_segs
+
 def voxel_deformable_transform(moving_images, 
                                fixed_images, 
                                moving_segs=None,
-                               unet_num_layers=4,
+                               unet_num_layers=3,
                                unet_features_depth=32,
                                unet_output_strides=16,
                                unet_output_dims=2,
@@ -39,16 +84,16 @@ def voxel_deformable_transform(moving_images,
 
     if moving_segs is not None:
       transformed_segs = deformable_transform(moving_segs, field)
-      return transformed_images, transformed_segs
+      return transformed_images, transformed_segs, field
     else:
-      return transformed_images
+      return transformed_images, field
     
     
 def simplify_unet(inputs, 
                   output_dims, 
-                  num_layers=4, 
+                  num_layers=3, 
                   features_depth=32, 
-                  output_strides=16, 
+                  output_strides=8, 
                   is_training=None,
                   scope=None,):
   """
@@ -81,30 +126,34 @@ def simplify_unet(inputs,
         layer_dict = {}
         net = inputs
         for layer in range(num_layers):
-          if layer == 0:
-            depth = 16
-          else:
-            depth = features_depth
-          layer_dict['downsampling'+str(layer)] = net
-          net = slim.conv2d(net, features_depth, [1, 1], stride=1, scope='downconv'+str(layer))
+          # if layer == 0:
+          #   depth = features_depth//2
+          # else:
+          #   depth = features_depth
+          
+          net = slim.conv2d(net, features_depth, [3, 3], stride=1, scope='downconv'+str(layer))
           net = tf.nn.relu(net)
-          if layer < num_layers-1:
-            net = tf.nn.max_pool(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool'+str(layer))
-          else:
-            layer_dict['intermedia'] = net
+          layer_dict['downsampling'+str(layer)] = net
+          net = tf.nn.max_pool(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool'+str(layer))
+          
+          # if layer < num_layers-1:
+          #   net = tf.nn.max_pool(net, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool'+str(layer))
+          #   layer_dict['downsampling'+str(layer)] = net
+          # else:
+          #   layer_dict['intermedia'] = net
         
         for layer in range(num_layers-1,-1,-1):
-          layer_dict['upsampling'+str(layer)] = net
-          net = tf.concat([net, layer_dict['upsampling'+str(layer)]], axis=3)
-          net = slim.conv2d(net, features_depth, [1, 1], stride=1, scope='upconv'+str(layer))
-          net = tf.nn.relu(net)
           new_h = 2 * net.get_shape().as_list()[1]
           new_w = 2 * net.get_shape().as_list()[2]
           net = tf.image.resize_bilinear(net, [new_h, new_w], name='bilinear'+str(layer))
-          
-        net = slim.conv2d(net, features_depth//2, [1, 1], stride=1, scope='conv_output1')
+          net = tf.concat([net, layer_dict['downsampling'+str(layer)]], axis=3)
+          net = slim.conv2d(net, features_depth, [3, 3], stride=1, scope='upconv'+str(layer))
+          net = tf.nn.relu(net)
+          layer_dict['upsampling'+str(layer)] = net
+
+        net = slim.conv2d(net, features_depth//2, [3, 3], stride=1, scope='conv_output1')
         net = tf.nn.relu(net)
-        net = slim.conv2d(net, features_depth//2, [1, 1], stride=1, scope='conv_output2')
+        net = slim.conv2d(net, features_depth//2, [3, 3], stride=1, scope='conv_output2')
         net = tf.nn.relu(net)
         outputs = slim.conv2d(net, output_dims, [1, 1], stride=1, scope='outputs') 
         # Convert end_points_collection into a dictionary of end_points.
@@ -127,88 +176,12 @@ def deformable_transform(input_fmap, transform_field):
     transformed_images: A 3D images which transformed by registration field
     transformed_segs: (optional) A 3D segmentations which transformed by registration field
   """
-  # TODO: general expression
-  # def _2d_transform(input_fmp, transform_field):
-  #   x_s = transform_field[:, 0, :, :]
-  #   y_s = transform_field[:, 1, :, :]
-  #   out_fmap = bilinear_sampler(input_fmap, x_s, y_s)
-  #   return out_fmap
-  
-  # def _3d_transform(input_fmp, transform_field):  
-  #   x_s = transform_field[:, 0, :, :]
-  #   y_s = transform_field[:, 1, :, :]
-  #   z_s = transform_field[:, 2, :, :]
-  #   out_fmap = bilinear_sampler_multi_dims(input_fmap, x=x_s, y=y_s, z=z_s)
-  #   return out_fmap
-
-  # c = tf.equal(tf.rank(input_fmap), 4)
-  # out_fmap = tf.cond(c, lambda: _2d_transform(input_fmap, transform_field), lambda: _3d_transform(input_fmap, transform_field))
-    
-  x_s = transform_field[:, 0, :, :]
-  y_s = transform_field[:, 1, :, :]
+  x_s = transform_field[:, :, :, 0]
+  y_s = transform_field[:, :, :, 1]
   out_fmap = bilinear_sampler(input_fmap, x_s, y_s)
   return out_fmap
 
 
-
-
-# def deformable_transformer_network(input_fmap, transform_field, out_dims=None, **kwargs):
-#     """
-#     Spatial Transformer Network layer implementation as described in [1].
-#     The layer is composed of 3 elements:
-#     - localization_net: takes the original image as input and outputs
-#       the parameters of the affine transformation that should be applied
-#       to the input image.
-#     - affine_grid_generator: generates a grid of (x,y) coordinates that
-#       correspond to a set of points where the input should be sampled
-#       to produce the transformed output.
-#     - bilinear_sampler: takes as input the original image and the grid
-#       and produces the output image using bilinear interpolation.
-#     Input
-#     -----
-#     - input_fmap: output of the previous layer. Can be input if spatial
-#       transformer layer is at the beginning of architecture. Should be
-#       a tensor of shape (B, H, W, C).
-#     - theta: affine transform tensor of shape (B, 6). Permits cropping,
-#       translation and isotropic scaling. Initialize to identity matrix.
-#       It is the output of the localization network.
-#     Returns
-#     -------
-#     - out_fmap: transformed input feature map. Tensor of size (B, H, W, C).
-#     Notes
-#     -----
-#     [1]: 'Spatial Transformer Networks', Jaderberg et. al,
-#          (https://arxiv.org/abs/1506.02025)
-#     """
-#     # TODO: input can be arbituary dimensions
-#     # out_dims??
-#     # grab input dimensions
-#     # B = tf.shape(input_fmap)[0]
-#     # H = tf.shape(input_fmap)[1]
-#     # W = tf.shape(input_fmap)[2]
-#     # if data_dims == 3:
-#     #   D = tf.shape(input_fmap)[3]
-    
-
-#     # # generate grids of same size or upsample/downsample if specified
-#     # if out_dims:
-#     #     out_H = out_dims[0]
-#     #     out_W = out_dims[1]
-#     #     batch_grids = deformable_grid_generator(out_H, out_W, transform_field)
-#     # else:
-#     #     batch_grids = deformable_grid_generator(H, W, transform_field)
-
-#     # x_s = batch_grids[:, 0, :, :]
-#     # y_s = batch_grids[:, 1, :, :]
-    
-
-#     # sample input with grid to get output
-#     x_s = transform_field[:, 0, :, :]
-#     y_s = transform_field[:, 1, :, :]
-#     z_s = transform_field[:, 2, :, :]
-#     out_fmap = bilinear_sampler_multi_dims(input_fmap, x=x_s, y=y_s, z=z_s)
-
-#     return out_fmap
 
 
 

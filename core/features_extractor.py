@@ -172,55 +172,6 @@ def extract_features(images,
   return features, end_points
 
 
-def global_extractor(inputs, 
-                       output_dims, 
-                       num_layers=3, 
-                       decreasing_root=8, 
-                       global_pool='average',
-                       scope=None,
-                       is_training=True):
-  """
-  Args:
-    inputs:
-    output_dims
-    num_layers:
-    decreasing_root:
-    global_pool='average:
-  Returns:
-  Raises:
-
-  """
-  # TODO: raise if input dims smaller than output_dims
-  with tf.variable_scope(scope, 'non_image_extractor') as sc:
-    net = inputs
-    # net = slim.conv2d(inputs, output_dims, [1, 1], stride=1, scope='segmentations')
-    if global_pool == 'average':
-      net = tf.reduce_mean(net, [1, 2], name='global_avg_pool', keep_dims=False)
-    elif global_pool == 'max':
-      net = tf.reduce_max(net, [1, 2], name='global_max_pool', keepp_dims=False)
-    else:
-      ValueError("Unkonwn global_pool Keyword")
-    
-    # with slim.arg_scope([slim.conv2d]):
-    #   if is_training is not None:
-    #     arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
-    #   else:
-    #     arg_scope = slim.arg_scope([])
-    #   with arg_scope:
-    #     net = slim.conv2d(inputs, 1, [1, 1], stride=1, scope='embed')
-        
-    # net = tf.compat.v1.layers.flatten(net)
-
-    for i in range(num_layers):
-      dims = net.get_shape().as_list()[1]
-      if i < num_layers-1:
-        net = fc_layer(net, [dims, dims//decreasing_root], _std=1, reuse=tf.AUTO_REUSE, scope='_'.join(['fc', str(i)]))
-        net = tf.nn.relu(net)
-      else:
-        outputs = fc_layer(net, [dims, output_dims], _std=1, reuse=tf.AUTO_REUSE, scope='_'.join(['fc', str(i)]))
-  
-  return outputs
-  
   
 def get_network(network_name, preprocess_images,
                 preprocessed_images_dtype=tf.float32, arg_scope=None):

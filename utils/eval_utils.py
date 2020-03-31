@@ -7,6 +7,7 @@ Created on Mon Apr  8 12:05:16 2019
 """
 import numpy as np
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
@@ -99,6 +100,15 @@ def plot_box_diagram(path):
     # 显示图形
     plt.show()
 
+
+def compute_params_and_flops(graph):
+    flops = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
+    params = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
+    print("FLOPs: {}; GFLOPs: {}".format(flops.total_float_ops, flops.total_float_ops / 1e9))
+    print("Trainable params:{} MB".format(params.total_parameters/(1024**2)))
+    return flops, params
+
+
 def save_evaluation():
     pass
 
@@ -145,11 +155,19 @@ def precision_and_recall(total_cm):
     recall = cm_diag / sum_over_col
     
     print('Recall and Precision')
+    print(30*"=")
     i = 0
     for p, r in zip(precision, recall):
         print('    class {}: precision: {:.4f}  recall: {:.4f}'.format(i, p, r))
         i += 1
+    p_mean = np.mean(precision)
+    p_std = np.std(precision)
+    r_mean = np.mean(recall)
+    r_std = np.std(recall)
+    print('    precision: mean {:.4f}  std {:.4f}'.format(p_mean, p_std))
+    print('    recall: mean {:.4f}  std {:.4f}'.format(r_mean, r_std))
     return  precision, recall
+
 
 def compute_mean_iou(total_cm):
       """Compute the mean intersection-over-union via the confusion matrix."""
