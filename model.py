@@ -31,6 +31,8 @@ def pgb_network(images,
                 guidance_type=None,
                 fusion_slice=None,
                 prior_dir=None,
+                drop_prob=None,
+                guid_weight=None,
                 is_training=None,
                 scope=None,
                 # **kwargs,
@@ -67,7 +69,9 @@ def pgb_network(images,
                    "low_level3": end_points["pgb_network/resnet_v1_50/block2"],
                    "low_level2": end_points["pgb_network/resnet_v1_50/block1"],
                    "low_level1": end_points["pgb_network/resnet_v1_50/conv1_3"]}
-    
+    # for k, v in end_points.items():
+    #     print(k, v)
+    #     print(30*"-")
     if z_label_method is not None:
         z_pred = predict_z_dimension(features, z_label_method, z_class)
         output_dict[common.OUTPUT_Z] = z_pred
@@ -80,7 +84,14 @@ def pgb_network(images,
             prior_seg = slim.conv2d(features, num_class, [1, 1], 1, activation_fn=None, scope='input_guidance')
             prior_seg = tf.nn.softmax(prior_seg)
         else:
-            prior_seg = prior_segs
+            if guid_weight:
+                embed = tf.reduce_mean(features, [1, 2], name='embed', keep_dims=False)
+                w = mlp(embed, output_dims=num_class, scope='guid_weight')
+                w = tf.nn.sigmoid(w)
+                w = tf.reshape(w, [batch_size,1,1,num_class])
+                prior_seg = tf.multiply(prior_segs, w)
+            else:
+                prior_seg = prior_segs
             
         # if guidance_type == "training_data_fusion":
         #     prior_seg = prior_segs
@@ -108,6 +119,9 @@ def pgb_network(images,
             
             gap_featue = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
             theta = mlp(gap_featue, output_dims=6, scope='theta_extractor')
+            theta = tf.nn.sigmoid(theta)
+            prior_seg.set_shape([batch_size,h,w,num_class])
+            theta = tf.Print(theta, [theta])
             prior_seg = spatial_transformer_network(prior_seg, theta)
                     
         output_dict[common.GUIDANCE] = prior_seg
@@ -119,7 +133,7 @@ def pgb_network(images,
                                                 layers_dict,
                                                 num_class,
                                                 further_attention=False,
-                                                class_split_in_each_stage=False,
+                                                rm_type="class_split_in_each_stage",
                                                 input_guidance_in_each_stage=False,
                                                 is_training=is_training)
     elif model_options.decoder_type == 'unet_structure':
@@ -127,9 +141,11 @@ def pgb_network(images,
     elif model_options.decoder_type == 'upsample':
         out_feats = tf.image.resize_bilinear(features, [h, w], name='logits')
         logits = slim.conv2d(out_feats, num_class, [1, 1], stride=1, scope='segmentations')
-    for v in tf.trainable_variables():
-        print(v)
-        print(30*"-")
+    if drop_prob is not None:
+        logits = tf.nn.dropout(logits, rate=drop_prob)
+    # for v in tf.trainable_variables():
+    #     print(v)
+    #     print(30*"-")
     output_dict[common.OUTPUT_TYPE] = logits
   return output_dict, layers_dict
 

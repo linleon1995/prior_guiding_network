@@ -13,7 +13,9 @@ import os
 import tensorflow as tf
 import common
 import input_preprocess
+from datasets import build_prior
 from utils import train_utils
+
 DatasetDescriptor = collections.namedtuple(
     'DatasetDescriptor',
     [
@@ -57,6 +59,7 @@ class Dataset(object):
                  HU_window,
                 #  only_foreground,
                  z_label_method,
+                 guidance_type=None,
                  seq_length=None,
                  z_class=None,
                  min_resize_value=None,
@@ -70,7 +73,9 @@ class Dataset(object):
                  is_training=False,
                  shuffle_data=False,
                  repeat_data=False,
-                 num_prior_samples=None,
+                 prior_num_slice=None,
+                 prior_num_subject=None,
+                 prior_dir=None,
                  ):
         """Initializes the dataset."""
         if dataset_name not in _DATASETS_INFORMATION:
@@ -106,30 +111,14 @@ class Dataset(object):
         self.z_class = z_class
         self.z_label_method = z_label_method
         self.HU_window = HU_window
-        self.num_prior_samples = num_prior_samples
-        
+        self.prior_num_slice = prior_num_slice
+        self.prior_num_subject = prior_num_subject
+        self.prior_dir = prior_dir
+        self.guidance_type = guidance_type
         self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name].num_classes
         self.ignore_label = _DATASETS_INFORMATION[self.dataset_name].ignore_label
 
-    def _parse_prior(self, example_proto, parse_name):
-        """Function to parse the prior example"""
-        features = {
-          'prior/num_slices': 
-              tf.FixedLenFeature((), tf.int64, default_value=0),
-          'prior/'+parse_name: 
-              tf.FixedLenFeature((), tf.string, default_value=''),}
-        
-        parsed_features = tf.parse_single_example(example_proto, features)
-        prior = tf.decode_raw(parsed_features['prior/'+parse_name], tf.int32)
-        prior = tf.reshape(prior , [1,512,512,20])
-        # prior = tf.image.resize_nearest_neighbor(prior, [256,256])
-        prior = tf.squeeze(prior, axis=0)
-        num_slices = parsed_features['prior/num_slices']
-        
-        sample = {parse_name: prior,
-                  'num_slices': num_slices}
-        return sample
-      
+    
     def _parse_function(self, example_proto):
         """Function to parse the example"""
         features = {
@@ -199,55 +188,35 @@ class Dataset(object):
         # TODO: clear sample problem
         path = self.dataset_dir.split('tfrecord')[0]
         
-        if self.affine_transform and self.deformable_transform:
-          prior_imgs = train_utils.load_nibabel_data(
-            path+'raw/', processing_list=np.arange(1))[0]
-          prior_imgs = np.swapaxes(np.swapaxes(prior_imgs, 0, 2), 0, 1)
-          prior_imgs_slices = prior_imgs.shape[2]
-          sample['prior_slices'] = prior_imgs_slices
-          
-          if self.num_prior_samples is not None:
-            sample_rate = prior_imgs_slices / self.num_prior_samples
-            indices = np.arange(0, prior_imgs_slices, sample_rate)
-            indices = np.int32(indices)
-            prior_imgs = np.take(prior_imgs, indices, axis=2)
-            sample['prior_slices'] = self.num_prior_samples
-            
-          prior_imgs = tf.convert_to_tensor(prior_imgs)
-          prior_imgs = tf.cast(prior_imgs, tf.int32)
-          sample[common.PRIOR_IMGS] = prior_imgs
+        # Load numpy array as prior
+        # TODO: concat zeros?
+        if self.guidance_type in ("adaptive", "training_data_fusion"):
+            print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (self.prior_num_slice, self.prior_num_subject))
+            prior_name = build_prior.get_prior_name("train", num_slice=self.prior_num_slice, 
+                                                    num_subject=self.prior_num_subject)
+            prior_name = prior_name + ".npy"
+            prior_segs = np.load(os.path.join(self.prior_dir, prior_name))
+            prior_segs = np.float32(prior_segs)
+            if self.guidance_type == "training_data_fusion":
+                prior_segs = prior_segs[...,0]
+                
+                # import matplotlib.pyplot as plt
+                # for k in range(14):
+                #     plt.imshow(prior_segs[...,k])
+                #     plt.show()
+                    
+            prior_segs = tf.convert_to_tensor(prior_segs)
         else:
-          prior_imgs = None
-          
-        if self.affine_transform:                                  
-          prior_segs = train_utils.load_nibabel_data(
-            path+'label/', processing_list=np.arange(1))[0]
-          prior_segs = np.swapaxes(np.swapaxes(prior_segs, 0, 2), 0, 1)
-          prior_segs_slices = prior_segs.shape[2]
-          sample['prior_slices'] = prior_segs_slices
-            
-          if self.num_prior_samples is not None:
-            sample_rate = prior_segs_slices / self.num_prior_samples
-            indices = np.arange(0, prior_segs_slices, sample_rate)
-            indices = np.int32(indices)
-            prior_segs = np.take(prior_segs, indices, axis=2)
-            sample['prior_slices'] = self.num_prior_samples
-
-          prior_segs = tf.convert_to_tensor(prior_segs)
-          prior_segs = tf.cast(prior_segs, tf.int32)
-          sample[common.PRIOR_SEGS] = prior_segs
-        else:
-          prior_segs = None 
+            prior_segs = None
         
-        if self.affine_transform and self.deformable_transform:
-          assert prior_imgs_slices == prior_segs_slices 
-            
+        # TODO: input prior shape should be [NHWC] but [HWKC]
+        # TODO: prior_segs and prior_seg_3d
         # Preprocessing for images, label and z_label
-        original_image, image, label, original_label, z_label, prior_imgs, prior_segs = input_preprocess.preprocess_image_and_label(
+        original_image, image, label, original_label, z_label, pp, prior_segs = input_preprocess.preprocess_image_and_label(
             image=image,
             label=label,
             depth=depth,
-            prior_imgs=prior_imgs,
+            prior_imgs=None,
             prior_segs=prior_segs,
             num_slices=num_slices,
             crop_height=self.crop_size[0],
@@ -264,14 +233,14 @@ class Dataset(object):
             ignore_label=self.ignore_label,
             is_training=self.is_training,
             model_variant=self.model_variant,
-            num_prior_samples=self.num_prior_samples)
+            prior_num_slice=self.prior_num_slice)
 
-        # Preprocessing for segmentation prior and image prior
-        # input_preprocess.preprocess_prior()
-        
-        
+        if self.guidance_type == "zeros":
+            prior_shape = label.get_shape().as_list()[1:3]
+            prior_shape.append(self.num_of_classes)
+            prior_segs = tf.zeros(prior_shape)
+            
         sample[common.IMAGE] = image
-    
         if not self.is_training:
           # Original image is only used during visualization.
           sample[common.ORIGINAL_IMAGE] = original_image
@@ -279,30 +248,32 @@ class Dataset(object):
         if label is not None:
           sample[common.LABEL] = label
           
-        # Remove common.LABEL_CLASS key in the sample since it is only used to
-        # derive label and not used in training and evaluation.
-        sample.pop(common.LABELS_CLASS, None)
-
         if z_label is not None:
           sample[common.Z_LABEL] = z_label
 
+        # if prior_imgs is not None:
+        #     sample[common.PRIOR_IMGS] = prior_imgs
+            
+        if prior_segs is not None:
+            sample[common.PRIOR_SEGS] = prior_segs
+          
+        # Remove common.LABEL_CLASS key in the sample since it is only used to
+        # derive label and not used in training and evaluation.
+        sample.pop(common.LABELS_CLASS, None)
+          
         # Remove common.DEPTH key and NUM_SLICES key in the sample since they are only used to
         # derive z_label and not used in training and evaluation.
-        # TODO: [16,16] links to output_strides
-        if prior_imgs is not None:
-            # prior_imgs = tf.image.resize_bilinear(tf.expand_dims(prior_imgs, axis=0), [32,32])
-            # prior_imgs = tf.squeeze(prior_imgs, axis=0)
-            sample[common.PRIOR_IMGS] = prior_imgs
-        if prior_segs is not None:
-            # prior_segs = tf.image.resize_bilinear(tf.expand_dims(prior_segs, axis=0), [32,32])
-            # prior_segs = tf.squeeze(prior_segs, axis=0)
-            sample[common.PRIOR_SEGS] = prior_segs
-            
         # sample.pop(common.DEPTH, None)
 #        sample.pop(common.NUM_SLICES, None)  
-
+        self.prior_summary = pp
+            
         return sample
-     
+    
+    # def test(self, pp):
+    #     for k in pp:
+    #         tf.summary.image(k, pp[k][...,6])
+    #     return tf.summary.merge_all()  
+    
     def get_one_shot_iterator(self):
         """Gets an iterator that iterates across the dataset once.
         Returns:
@@ -338,3 +309,12 @@ class Dataset(object):
                                     file_pattern % split_name)
         return tf.gfile.Glob(file_pattern)       
      
+    # def get_fixed_guidance(self, prior_dir):
+    #     np_prior = np.load(prior_dir)
+    #     prior = tf.convert_to_tensor(np_prior)
+    #     prior = tf.tile(prior, [self.batch_size,1,1,1])  
+    #     # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
+    #     # guidance = tf.expand_dims(guidance, axis=0)
+    #     # guidance = tf.tile(guidance, [clone_batch_size,1,1,1])  
+    #     # guidance = tf.image.resize_bilinear(guidance, [256,256])
+    #     return prior

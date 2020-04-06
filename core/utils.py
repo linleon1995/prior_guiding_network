@@ -41,14 +41,14 @@ def mlp(inputs,
 def GCN(x, out_channels, ks=7, scope=None, is_training=None):
     with tf.variable_scope(scope, "global_convolution_network"):
         channels = x.get_shape().as_list()[3]
-        x_l1 = conv2d(x, [ks,1,channels,out_channels], "x_l1", False)
-        x_l2 = conv2d(x_l1, [1,ks,out_channels,out_channels], "x_l2", False)
+        x_l1 = conv2d(x, [ks,1,channels,out_channels], scope="x_l1", is_training=False)
+        x_l2 = conv2d(x_l1, [1,ks,out_channels,out_channels], scope="x_l2", is_training=False)
         
-        x_r1 = conv2d(x, [1,ks,channels,out_channels], "x_r1", False)
-        x_r2 = conv2d(x_r1, [ks,1,out_channels,out_channels], "x_r2", False)
+        x_r1 = conv2d(x, [1,ks,channels,out_channels], scope="x_r1", is_training=False)
+        x_r2 = conv2d(x_r1, [ks,1,out_channels,out_channels], scope="x_r2", is_training=False)
         
         x = x_l2 + x_r2
-        x = batch_norm(x, is_training=is_training)
+        x = batch_norm(x, is_training=is_training, scope='batch_norm')
         x = tf.nn.relu(x)
     return x
         

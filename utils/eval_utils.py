@@ -235,7 +235,7 @@ def plot_confusion_matrix(cm, classes,
                           normalize=False,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues,
-                          savefig=True):
+                          save_path=None):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -258,7 +258,7 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.tight_layout()  
-    if savefig:
-        plt.savefig("CM.png")
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, "CM.png"))
     else:
         plt.show()

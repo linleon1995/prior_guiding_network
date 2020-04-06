@@ -18,7 +18,7 @@ parser.add_argument('--batch_norm_decay', type=float, default=0.9997,
                     help='')
 
 # Provide three different decoder types, including 'refinement_network', 'unet_structure', 'upsample'
-parser.add_argument('--decoder_type', type=str, default='unet_structure',
+parser.add_argument('--decoder_type', type=str, default='refinement_network',
                     help='')
 
 FLAGS, unparsed = parser.parse_known_args()

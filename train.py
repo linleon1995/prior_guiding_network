@@ -24,7 +24,7 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-40000'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_023/model.ckpt-40000'
 
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
@@ -40,14 +40,14 @@ TRAIN_CROP_SIZE = [256, 256]
 # TODO: Solve Warning in new tensorflow version
 # TODO: tf.gather problem
 
-# TODO: check model conflict
+
 def create_training_path(train_logdir):
     # TODO: Check whether empty of last folder before creating new one
     idx = 0
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
     while os.path.exists(path):
-        if len(os.listdir(path)) == 0:
-            break
+        # if len(os.listdir(path)) == 0:
+        #     break
         idx += 1
         path = os.path.join(train_logdir, "run_{:03d}".format(idx))
 
@@ -67,7 +67,7 @@ parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=18,
+parser.add_argument('--batch_size', type=int, default=16,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -109,26 +109,32 @@ parser.add_argument('--num_ps_tasks', type=int, default=0,
 parser.add_argument('--last_layers_contain_logits_only', type=bool, default=True,
                     help='')
 
-parser.add_argument('--model_variant', type=str, default=None,
+parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
+parser.add_argument('--model_variant', type=str, default=None,
+                    help='')
+
 parser.add_argument('--z_label_method', type=str, default=None,
                     help='')
 
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"
 # TODO: Check conflict of guidance
-parser.add_argument('--guidance_type', type=str, default=None,
+parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
                     help='')
 
-parser.add_argument('--num_prior_slice', type=int, default=5,
+parser.add_argument('--guid_weight', type=bool, default=False,
                     help='')
 
-parser.add_argument('--num_subject', type=int, default=10,
+parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--fusion_slice', type=int, default=3,
+parser.add_argument('--prior_num_subject', type=int, default=20,
+                    help='')
+
+parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
 parser.add_argument('--affine_transform', type=bool, default=False,
@@ -140,12 +146,16 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=1.0,
                     help='')
 
-parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
-                    help='')
+# parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
+#                     help='')
 
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
                     help='')
 
+parser.add_argument('--regularization_weight', type=float, default=None,
+                    help='')
+                    
+                    
 # Learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
                     help='')
@@ -203,12 +213,12 @@ parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
 
-def check_model_conflict(model_options, dataset):
+def check_model_conflict(model_options):
     if not model_options.decoder_type == "refinement_network":
         assert FLAGS.guidance_type is None
 
-    if FLAGS.affine_transform:
-        assert common.PRIOR_SEGS in dataset
+    # if FLAGS.affine_transform:
+    #     assert common.PRIOR_SEGS in dataset
 
     # if FLAGS.deformable_transform:
     #     assert common.PRIOR_SEGS in dataset and common.PRIOR_IMGS in dataset
@@ -252,6 +262,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
 
   # TODO: moving_segs
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
+  
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
@@ -266,10 +277,12 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 batch_size=clone_batch_size,
                 z_label_method=FLAGS.z_label_method,
                 # z_label=samples[common.Z_LABEL],
-                z_class=FLAGS.num_prior_slice,
                 guidance_type=FLAGS.guidance_type,
                 fusion_slice=FLAGS.fusion_slice,
                 prior_dir=FLAGS.prior_dir,
+                drop_prob=FLAGS.drop_prob,
+                guid_weight=FLAGS.guid_weight,
+                # prior_num_slice=FLAGS.prior_num_slice,
                 is_training=True,
                 # weight_decay=FLAGS.weight_decay,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
@@ -279,7 +292,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   output = output_dict[common.OUTPUT_TYPE]
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
-  # TODO: Optimize
   if common.Z_LABEL in samples:
     samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
   else:
@@ -299,12 +311,12 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
     z_pred = output_dict[common.OUTPUT_Z]
   else:
     z_pred = None
-    
+  
   if 'original_guidance' in output_dict:
-    ori_guid = output_dict['original_guidance']
+    guidance_original = output_dict['original_guidance']
   else:
-    ori_guid = None  
-    
+    guidance_original = None
+      
   guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
   if len(guidance_dict) == 0:
     guidance_dict = None
@@ -319,7 +331,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                  prior_imgs=prior_img,
                  prior_segs=prior_seg,
                  guidance=guidance_dict,
-                 guidance_original=ori_guid)
+                 guidance_original=guidance_original)
   return output_dict, layers_dict
 
 
@@ -354,18 +366,22 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                   samples,
                                   loss_dict=loss_dict,
                                   z_loss_decay=FLAGS.z_loss_decay,
-                                  transformed_loss_decay=FLAGS.transformed_loss_decay,
+                                  # transformed_loss_decay=FLAGS.transformed_loss_decay,
                                   guidance_loss_decay=FLAGS.guidance_loss_decay)
   seg_loss = losses[0]
   
   for loss in losses:
     tf.summary.scalar('Losses/%s' % loss.op.name, loss)
 
-  regularization_loss = tf.losses.get_regularization_loss(scope=scope)
-  regularization_loss = tf.identity(regularization_loss, name='regularization_loss_with_decay')
-  tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
-                    regularization_loss)
-  total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
+  if FLAGS.regularization_weight is not None:
+      regularization_loss = tf.losses.get_regularization_loss(scope=scope)
+      regularization_loss = FLAGS.regularization_weight * regularization_loss
+      regularization_loss = tf.identity(regularization_loss, name='regularization_loss_with_decay')
+      tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
+                        regularization_loss)
+      total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
+  else:
+      total_loss = tf.add_n(losses)
   return total_loss, seg_loss
 
 
@@ -401,7 +417,7 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
   if prior_imgs is not None:
     tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
 
-  if prior_segs is not None:
+  if guidance is not None:
     # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
     # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
     
@@ -583,7 +599,8 @@ def main(unused_argv):
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
                 z_label_method=FLAGS.z_label_method,
-                z_class=FLAGS.num_prior_slice,
+                guidance_type=FLAGS.guidance_type,
+                z_class=FLAGS.prior_num_slice,
                 crop_size=TRAIN_CROP_SIZE,
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -596,19 +613,29 @@ def main(unused_argv):
                 is_training=True,
                 shuffle_data=True,
                 repeat_data=True,
-                num_prior_samples=FLAGS.num_prior_slice)
+                prior_num_slice=FLAGS.prior_num_slice,
+                prior_num_subject=FLAGS.prior_num_subject,
+                prior_dir=FLAGS.prior_dir)
 
             model_options = common.ModelOptions(
               outputs_to_num_classes=dataset.num_of_classes,
               crop_size=TRAIN_CROP_SIZE,
               output_stride=FLAGS.output_stride)
-            check_model_conflict(model_options, dataset)
+            check_model_conflict(model_options)
             
             iterator = dataset.get_one_shot_iterator()
             train_tensor, summary_op = _train_deeplab_model(
                 iterator, dataset.num_of_classes, model_options, 
                 dataset.ignore_label)
 
+            # # TODO: remove this
+            # cc=[]
+            # prior_summary = dataset.prior_summary
+            # for k in prior_summary:
+            #     cc.append(tf.summary.image(k, prior_summary[k][...,6]))
+            # # summary_op.append(prior_summary)
+            # summary_op = tf.summary.merge(cc)
+            
             # Soft placement allows placing on CPU ops without GPU implementation.
             session_config = tf.ConfigProto(
                 allow_soft_placement=True, log_device_placement=False)

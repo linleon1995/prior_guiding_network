@@ -153,19 +153,19 @@ def get_losses(output_dict,
         losses.append(z_loss)
 
     # Calculate guidance loss
-    # if common.GUIDANCE in output_dict:
-    #   guidance_loss = 0
-    #   for name, value in layers_dict.items():
-    #       if 'guidance' in name:
-    #           ny_g = value.get_shape()[1]
-    #           nx_g = value.get_shape()[2]
-    #           ys = tf.image.resize_bilinear(samples[common.LABEL], [ny_g, nx_g])
-    #           ys = tf.cast(ys, tf.int32)
-    #           guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.OUTPUT_TYPE])
-    #   guidance_loss = tf.multiply(guidance_loss_decay, 
-    #                               guidance_loss, 
-    #                               name='/'.join(['guidance_loss', loss_dict[common.OUTPUT_TYPE]]))
-    #   losses.append(guidance_loss)
+    if common.GUIDANCE in output_dict:
+      guidance_loss = 0
+      for name, value in layers_dict.items():
+          if 'guidance' in name:
+              ny_g = value.get_shape()[1]
+              nx_g = value.get_shape()[2]
+              ys = tf.image.resize_bilinear(samples[common.LABEL], [ny_g, nx_g])
+              ys = tf.cast(ys, tf.int32)
+              guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.OUTPUT_TYPE])
+      guidance_loss = tf.multiply(guidance_loss_decay, 
+                                  guidance_loss, 
+                                  name='/'.join(['guidance_loss', loss_dict[common.OUTPUT_TYPE]]))
+      losses.append(guidance_loss)
     
     if common.PRIOR_IMGS in loss_dict:
       # TODO: do in the correct way

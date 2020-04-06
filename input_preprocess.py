@@ -30,7 +30,7 @@ def preprocess_image_and_label(image,
                                rotate_angle=None,
                                is_training=True,
                                model_variant=None,
-                               num_prior_samples=None):
+                               prior_num_slice=None):
   """Preprocesses the image and label.
   Args:
     image: Input image.
@@ -59,8 +59,8 @@ def preprocess_image_and_label(image,
   """
   if is_training and label is None:
     raise ValueError('During training, label must be provided.')
-  # if (num_prior_samples is not None) != (prior_imgs is not None or prior_segs is not None):
-  #   raise ValueError('num_prior_samples should exist when import prior and vice versa')
+  # if (prior_num_slice is not None) != (prior_imgs is not None or prior_segs is not None):
+  #   raise ValueError('prior_num_slice should exist when import prior and vice versa')
   if model_variant is None:
     tf.logging.warning('Default mean-subtraction is performed. Please specify '
                        'a model_variant. See feature_extractor.network_map for '
@@ -87,9 +87,10 @@ def preprocess_image_and_label(image,
   if label is not None:
     label = tf.cast(label, tf.int32)
 
+  pp = {}
   if min_resize_value or max_resize_value:
     if prior_segs is not None:
-      prior_segs = tf.cast(prior_segs, tf.int32)
+      # prior_segs = tf.cast(prior_segs, tf.int32)
       prior_segs, _ = (
           preprocess_utils.resize_to_range(
               image=prior_segs,
@@ -97,7 +98,8 @@ def preprocess_image_and_label(image,
               max_size=max_resize_value,
               factor=resize_factor,
               align_corners=True))
-
+      pp["a"] = prior_segs
+      
   # Resize image and label to the desired range.
   # TODO: interface for this func.
   if min_resize_value or max_resize_value:
@@ -126,7 +128,7 @@ def preprocess_image_and_label(image,
     processed_image, label, prior_imgs, prior_segs = preprocess_utils.randomly_scale_image_and_label(
         processed_image, label, prior_imgs, prior_segs, scale)
     processed_image.set_shape([None, None, 1])
-
+    pp["b"] = prior_segs
   # Pad image and label to have dimensions >= [crop_height, crop_width]
   image_shape = tf.shape(processed_image)
   # image_shape = processed_image.get_shape().as_list()
@@ -155,11 +157,14 @@ def preprocess_image_and_label(image,
     
   if prior_segs is not None:
     prior_segs = preprocess_utils.pad_to_bounding_box(
-      prior_segs, 0, 0, target_height, target_width, ignore_label)
+      prior_segs, 0, 0, target_height, target_width, 0)
+    pp["c"] = prior_segs
     
   # Randomly crop the image and label.
   # TODO: Do it in the right way
   # TODO: offset_height, offset_width for input
+  # processed_image, label = preprocess_utils.random_crop(
+  #         [processed_image, label], crop_height, crop_width)
   if is_training and label is not None:
     if prior_imgs is not None and prior_segs is not None:
       processed_image, label, prior_imgs, prior_segs = preprocess_utils.random_crop(
@@ -182,7 +187,10 @@ def preprocess_image_and_label(image,
 
   if prior_imgs is not None:
     prior_imgs.set_shape([crop_height, crop_width, prior_num_slices])
-    prior_segs.set_shape([crop_height, crop_width, prior_num_slices])
+    
+  if prior_segs is not None:
+    prior_segs = tf.squeeze(tf.image.resize_bilinear(tf.expand_dims(prior_segs,axis=0), [256,256]), axis=0)
+    prior_segs.set_shape([256,256, 14])
     
   if is_training:
     # Randomly left-right flip the image and label.
@@ -211,4 +219,4 @@ def preprocess_image_and_label(image,
       z_label = preprocess_utils.get_z_label(method=z_label_method, num_slices=num_slices, depth=depth, z_class=z_class) 
   else:
       z_label = None
-  return original_image, processed_image, label, original_label, z_label, prior_imgs, prior_segs
+  return original_image, processed_image, label, original_label, z_label, pp, prior_segs

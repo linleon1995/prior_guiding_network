@@ -45,10 +45,12 @@ def spatial_transformer_network(input_fmap, theta, out_dims=None, **kwargs):
     # reshape theta to (B, 2, 3)
     theta = tf.reshape(theta, [B, 2, 3])
     
-    # theta = tf.concat([tf.eye(2), tf.zeros([2,1])], axis=1)
-    # theta = tf.expand_dims(theta, axis=0)
-    # theta = tf.tile(theta, [B, 1, 1])
-
+    theta_noaffine = tf.concat([tf.eye(2), tf.zeros([2,1])], axis=1)
+    theta_noaffine = tf.expand_dims(theta_noaffine, axis=0)
+    theta_noaffine = tf.tile(theta_noaffine, [B, 1, 1])
+    
+    theta = theta + theta_noaffine
+    
     # generate grids of same size or upsample/downsample if specified
     if out_dims:
         out_H = out_dims[0]
