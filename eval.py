@@ -37,7 +37,7 @@ ATROUS_RATES = None
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
-IMG_LIST = [60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 220,221,222,223,224, 480,481,482,483,484]
+IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
 
 
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-40000'
@@ -65,10 +65,12 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-20000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_023/model.ckpt-40000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_062/model.ckpt-40000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_029/model.ckpt-40000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_078/model.ckpt-25000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_080/model.ckpt-15000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_062/model.ckpt-40000' # w/o transform
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_029/model.ckpt-40000' # guid weight
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_078/model.ckpt-25000' # single aff
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_080/model.ckpt-20000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_081/model.ckpt-35000' # multiple aff
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_089/model.ckpt-30000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -164,6 +166,7 @@ parser.add_argument('--max_number_of_evaluations', type=int, default=1,
 
 # TODO: Warning for dataset_split, guidance and procedure of guidance, MSE for z information
 # TODO: testing mode for online eval
+# TODO: add run_xxx in  feature, guidance folder name
 
 def load_model(saver, sess, ckpt_path):
     '''Load trained weights.
@@ -298,6 +301,7 @@ def main(unused_argv):
                 prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
                 guid_weight=FLAGS.guid_weight,
+                stn_in_each_class=True,
                 is_training=False,
                 # weight_decay=FLAGS.weight_decay,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
@@ -464,17 +468,20 @@ def main(unused_argv):
           if i in display_imgs:
             # TODO: cc, pp
             # TODO: The situation of prior_seg not exist
-            cc = 2
-            
+            cc = 7
+            # if i in [220,228,340,350,495]:
+            #   weight = tf.get_collection("weight")
+            #   w = sess.run(weight, feed_dict=_feed_dict)
+            #   print(w)
             guid_dict, prior_seg = sess.run([guidance_dict, pp], feed_dict=_feed_dict)
             show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
-            show_guidance.display_figure(FLAGS.eval_split+'_all_guid_%04d' %i,
+            show_guidance.display_figure(FLAGS.eval_split+'_all_guid-%04d-%03d' % (i,cc),
                                           [guid_dict["guidance1"][0,...,cc],
                                            guid_dict["guidance2"][0,...,cc],
                                            guid_dict["guidance3"][0,...,cc]])
             
             show_guidance.set_title(["prediction of class {}".format(cc), "input prior", "guidance_in (32,32)"])
-            show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%04d' %i,
+            show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%04d-%03d' % (i,cc),
                                         [np.int32(data[common.LABEL][0,...,0]==cc),
                                          prior_seg[0,...,cc],
                                          guid_dict["guidance_in"][0,...,cc]])

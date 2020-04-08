@@ -325,14 +325,14 @@ def resnet_v1_50_beta(inputs,
   else:
     if len(multi_grid) != 3:
       raise ValueError('Expect multi_grid to have length 3.')
-
+  # TODO: output stride original: stride=[2,2,2], control by stack_blocks_dense
   blocks = [
       resnet_v1_beta_block(
-          'block1', base_depth=64, num_units=3, stride=2),
+          'block1', base_depth=64, num_units=3, stride=1),
       resnet_v1_beta_block(
           'block2', base_depth=128, num_units=4, stride=2),
       resnet_v1_beta_block(
-          'block3', base_depth=256, num_units=6, stride=2),
+          'block3', base_depth=256, num_units=6, stride=1),
       resnet_utils.Block('block4', bottleneck, [
           {'depth': 2048,
            'depth_bottleneck': 512,

@@ -33,6 +33,7 @@ def pgb_network(images,
                 prior_dir=None,
                 drop_prob=None,
                 guid_weight=None,
+                stn_in_each_class=None,
                 is_training=None,
                 scope=None,
                 # **kwargs,
@@ -90,6 +91,7 @@ def pgb_network(images,
                 w = tf.nn.sigmoid(w)
                 w = tf.reshape(w, [batch_size,1,1,num_class])
                 prior_seg = tf.multiply(prior_segs, w)
+                tf.add_to_collection("weight", w)
             else:
                 prior_seg = prior_segs
             
@@ -117,23 +119,34 @@ def pgb_network(images,
             # TODO: variable scope for spatial transform
             output_dict['original_guidance'] = prior_seg
             
-            gap_featue = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
-            theta = mlp(gap_featue, output_dims=6, scope='theta_extractor')
-            theta = tf.nn.sigmoid(theta)
-            prior_seg.set_shape([batch_size,h,w,num_class])
-            theta = tf.Print(theta, [theta])
-            prior_seg = spatial_transformer_network(prior_seg, theta)
+            gap_feature = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
+            if stn_in_each_class:
+                prior_list = []
+                for k in range(num_class):
+                    theta = mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
+                    theta = tf.nn.sigmoid(theta)
+                    prior_class = prior_seg[...,k:k+1]
+                    prior_class.set_shape([batch_size,h,w,1])
+                    prior_list.append(spatial_transformer_network(prior_class, theta))
+                prior_seg = tf.concat(prior_list, axis=3)
+            else:
+                theta = mlp(gap_feature, output_dims=6, scope='theta_extractor')
+                theta = tf.nn.sigmoid(theta)
+                prior_seg.set_shape([batch_size,h,w,num_class])
+                # theta = tf.Print(theta, [theta])
+                prior_seg = spatial_transformer_network(prior_seg, theta)
                     
         output_dict[common.GUIDANCE] = prior_seg
     
-        logits, layers_dict = refinement_network(features,
+        logits, layers_dict = refinement_network(images,
+                                                 features,
                                                 prior_seg,
                                                 model_options.output_stride,
                                                 batch_size,
                                                 layers_dict,
                                                 num_class,
                                                 further_attention=False,
-                                                rm_type="class_split_in_each_stage",
+                                                rm_type="feature_guided",
                                                 input_guidance_in_each_stage=False,
                                                 is_training=is_training)
     elif model_options.decoder_type == 'unet_structure':

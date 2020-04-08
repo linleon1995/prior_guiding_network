@@ -67,7 +67,7 @@ parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=16,
+parser.add_argument('--batch_size', type=int, default=14,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -188,7 +188,7 @@ parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
 parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
                     help='')
 
-parser.add_argument('--output_stride', type=int, default=8,
+parser.add_argument('--output_stride', type=int, default=None,
                     help='')
 
 parser.add_argument('--num_clones', type=int, default=1,
@@ -282,6 +282,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
                 guid_weight=FLAGS.guid_weight,
+                stn_in_each_class=True,
                 # prior_num_slice=FLAGS.prior_num_slice,
                 is_training=True,
                 # weight_decay=FLAGS.weight_decay,
@@ -418,6 +419,7 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
 
   if guidance is not None:
+    pass
     # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
     # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
     
@@ -427,18 +429,24 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     # tf.summary.image('guidance/%s' % 'guidance_fullres_6', colorize(guidance_fullres[...,6:7], cmap='viridis'))
     # tf.summary.image('guidance/%s' % 'guidance_fullres_7', colorize(guidance_fullres[...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
-  
+    # tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
+    
+    # tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
+
+    # tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
+    
+    # tf.summary.image('guidance/%s' % 'guidance5_6', colorize(guidance['guidance5'][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance5_7', colorize(guidance['guidance5'][...,7:8], cmap='viridis'))
    
   if z_label is not None and z_pred is not None:
     clone_batch_size = FLAGS.batch_size // FLAGS.num_clones

@@ -12,7 +12,94 @@ conv2d = utils.conv2d
 GCN = utils.GCN
 
 
-def refinement_network(features,
+def rm_ori(in_node,
+            num_filters,
+             guidance,
+             feature,
+             scale=None,
+             further_attention=False,
+             weight_sharing=False,
+             is_training=None,
+             scope=None):
+    """refining module
+    feature: [H,W,Channels]
+    guidance: [H,W,Class]
+    """
+    with tf.variable_scope(scope, 'rm_ori'):
+        h, w = in_node.get_shape().as_list()[1:3]
+        num_class = guidance.get_shape().as_list()[3]
+        # num_filters = feature.get_shape().as_list()[3]
+        channels = in_node.get_shape().as_list()[3]
+
+        # feature embedding
+        conv_r1 = conv2d(in_node, [3,3,channels,num_filters], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training)
+        conv_r1 = conv2d(conv_r1, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training)
+        
+        # conv_r1 = GCN(in_node, num_filters, ks=7, is_training=is_training)
+        
+        # sram attention
+        def sram_attention_branch(sram_input, scope):
+            feature_list = []
+            for c in range(num_class):
+                if not weight_sharing:
+                    scope = "_".join([scope, str(c)])
+                attention_class = sram(sram_input, guidance[...,c:c+1], scope=scope, is_training=is_training)
+                
+                feature_list.append(attention_class)
+            attention = tf.concat(feature_list, axis=3)
+            
+            if feature is not None and scope == "sram2":
+                attention += feature
+            return feature_list
+        
+        new_feature = sram_attention_branch(sram_input=conv_r1, scope="sram1")
+        if further_attention:
+            new_feature = sram_attention_branch(sram_input=new_feature, scope="sram2")
+        
+        new_guidance = conv2d(new_feature, [1,1,num_filters,num_class], 
+                              activate=None, scope="guidance", is_training=is_training)
+        if scale is not None or scale != 1:
+            new_feature = tf.image.resize_bilinear(new_feature, [scale*h, scale*w], name='new_feature')
+            new_guidance = tf.image.resize_bilinear(new_guidance, [scale*h, scale*w], name='new_guidance')
+        
+    return new_feature, new_guidance
+
+
+def rm_test(in_node,
+        num_filters,
+        guidance,
+        num_class=14,
+        scale=None,
+        further_attention=False,
+        is_training=None,
+        scope=None):
+    """refining module
+    feature: [H,W,Channels]
+    guidance: [H,W,Channels]
+    """
+    with tf.variable_scope(scope, 'rm'):
+        h, w = in_node.get_shape().as_list()[1:3]
+        # num_filters = feature.get_shape().as_list()[3]
+        
+        # feature embedding
+        conv_r1 = GCN(in_node, num_filters, ks=7, is_training=is_training)
+        
+        # sram attention
+        attention = sram(conv_r1, guidance, scope='sram1', is_training=is_training)
+        new_feature = conv2d(attention, [1,1,num_filters,num_filters], 
+                           activate=tf.nn.relu, scope="fuse", is_training=is_training) 
+        if further_attention:
+            new_feature = sram(new_feature, guidance, scope='sram2', is_training=is_training)
+            
+        # if scale is not None or scale != 1:
+        #     new_feature = tf.image.resize_bilinear(new_feature, [scale*h, scale*w], name='new_feature')
+      
+    return new_feature
+
+
+
+def refinement_network2(images,
+                       features,
                        guidance,
                        output_stride,
                        batch_size,
@@ -28,7 +115,50 @@ def refinement_network(features,
     """
     # TODO: necessary for using batch_size??
     # TODO: check guidance shape. The shape [?,256,256,1] should cause error
-    scale_list = [1,1,1,4,2] # output_strides=8
+    # scale_list = [1,1,1,4,2] # output_strides=8
+    scale_list = [1,1,2,2,2] # output_strides=8
+    num_stage = len(layers_dict)
+        
+    with tf.variable_scope(scope, 'refinement_network') as sc:
+        feature = None
+        layers_dict["guidance_in"] = guidance
+        
+        for stage in range(num_stage, 0, -1):
+            feature, guidance = rm_ori(in_node=layers_dict["low_level"+str(stage)],
+                                            num_filters=embed,
+                                            guidance=guidance,
+                                            feature=feature,
+                                            scale=scale_list[num_stage-stage],
+                                            further_attention=further_attention,
+                                            scope='RM_'+str(stage),
+                                            is_training=is_training)  
+            
+            layers_dict["guidance"+str(stage)] = guidance
+            layers_dict["feature"+str(stage)] = feature
+            
+        
+    return guidance, layers_dict
+
+
+def refinement_network(images,
+                       features,
+                       guidance,
+                       output_stride,
+                       batch_size,
+                       layers_dict,
+                       num_class=None,
+                       embed=32,
+                       further_attention=False,
+                       rm_type=None,
+                       input_guidance_in_each_stage=False,
+                       is_training=None,
+                       scope=None):
+    """
+    """
+    # TODO: necessary for using batch_size??
+    # TODO: check guidance shape. The shape [?,256,256,1] should cause error
+    # scale_list = [1,1,1,4,2] # output_strides=8
+    scale_list = [1,1,2,2,2] # output_strides=8
     num_stage = len(layers_dict)
     # num_up = int(math.sqrt(output_stride))
     # num_same = num_stage - num_up
@@ -39,77 +169,138 @@ def refinement_network(features,
         _, h, w = layers_dict["low_level5"].get_shape().as_list()[0:3]
         guidance_in_lowres = tf.image.resize_bilinear(guidance, [h, w])
         zero_tensor = tf.zeros([batch_size, h, w, embed])
+        feature = zero_tensor
             
         layers_dict["guidance_in"] = guidance_in
-        feature, guidance = rm_class(in_node=layers_dict["low_level5"],
-                                    feature=zero_tensor,
-                                    guidance=guidance_in_lowres,
-                                    scale=scale_list[0],
-                                    scope='RM_5',
-                                    is_training=is_training)
-        layers_dict["guidance1"] = guidance
-        layers_dict["feature1"] = feature
+        g = tf.concat([guidance_in, images], axis=3)
+        g = conv2d(g, [3,3,15,embed], activate=tf.nn.relu, scope="prior_embed", is_training=is_training)
+        f = []
+        for stage in range(1, num_stage+1):
+            conv1 = conv2d(g, [3,3,embed,embed], activate=tf.nn.relu, scope="conv%d_1" %(stage), is_training=is_training)
+            g = conv2d(conv1, [3,3,embed,embed], activate=tf.nn.relu, scope="conv%d_2" %(stage), is_training=is_training)
+            if scale_list[num_stage-stage] == 2:
+                g = tf.nn.max_pool(g, [1,2,2,1], [1,2,2,1], "VALID")
+
+            feature = rm_test(in_node=layers_dict["low_level"+str(stage)],
+                                            num_filters=embed,
+                                            guidance=g,
+                                            num_class=num_class,
+                                            # scale=scale_list[num_stage-stage],
+                                            further_attention=further_attention,
+                                            scope='RM_'+str(stage),
+                                            is_training=is_training)  
+            new_feature = tf.image.resize_bilinear(feature, [256, 256], name='new_feature')
+            f.append(new_feature)
+            
+            layers_dict["g"+str(stage)] = g
+            layers_dict["feature"+str(stage)] = feature
+            
+        final_f = tf.concat(f, axis=3)    
+        logits = conv2d(final_f, [1,1,embed*num_stage,num_class], 
+                              activate=None, scope="logits", is_training=is_training)
         
-        # guidance = tf.nn.softmax(guidance, axis=3)
-        # TODO: got to be a better way --> maybe p*guidance_in+(1-p)*guid in each stage
-        if input_guidance_in_each_stage:
-            guidance = guidance + guidance_in_lowres
+    return logits, layers_dict
+
+
+# def refinement_network(features,
+#                        guidance,
+#                        output_stride,
+#                        batch_size,
+#                        layers_dict,
+#                        num_class=None,
+#                        embed=32,
+#                        further_attention=False,
+#                        rm_type=None,
+#                        input_guidance_in_each_stage=False,
+#                        is_training=None,
+#                        scope=None):
+#     """
+#     """
+#     # TODO: necessary for using batch_size??
+#     # TODO: check guidance shape. The shape [?,256,256,1] should cause error
+#     # scale_list = [1,1,1,4,2] # output_strides=8
+#     scale_list = [1,1,2,2,2] # output_strides=8
+#     num_stage = len(layers_dict)
+#     # num_up = int(math.sqrt(output_stride))
+#     # num_same = num_stage - num_up
+#     # upsample_flags = num_same*[False] + num_up*[True]
+        
+#     with tf.variable_scope(scope, 'refinement_network') as sc:
+#         guidance_in = guidance
+#         _, h, w = layers_dict["low_level5"].get_shape().as_list()[0:3]
+#         guidance_in_lowres = tf.image.resize_bilinear(guidance, [h, w])
+#         zero_tensor = tf.zeros([batch_size, h, w, embed])
+            
+#         layers_dict["guidance_in"] = guidance_in
+#         feature, guidance = rm_class(in_node=layers_dict["low_level5"],
+#                                     feature=None,
+#                                     guidance=guidance_in_lowres,
+#                                     scale=scale_list[0],
+#                                     scope='RM_5',
+#                                     is_training=is_training)
+#         layers_dict["guidance1"] = guidance
+#         layers_dict["feature1"] = feature
+        
+#         # guidance = tf.nn.softmax(guidance, axis=3)
+#         # TODO: got to be a better way --> maybe p*guidance_in+(1-p)*guid in each stage
+#         # if input_guidance_in_each_stage:
+#         #     guidance = guidance + guidance_in_lowres
             
                 
-        for stage in range(num_stage-1, 0, -1):
-            if rm_type != "feature_guided":
-                if input_guidance_in_each_stage:
-                    p = tf.get_variable('weight', [1,1,1,num_class], initializer=tf.constant_initializer(0.5))
-                    h, w = guidance.get_shape().as_list()[1:3]
-                    guidance_in_lowres = tf.image.resize_bilinear(guidance_in, [h, w])
-                    guidance = p*guidance_in_lowres + (tf.ones_like(p)-p)*tf.nn.softmax(guidance, axis=3)
-                else:
-                    guidance = tf.nn.softmax(guidance, axis=3)
+#         for stage in range(num_stage-1, 0, -1):
+#             if rm_type != "feature_guided":
+#                 if input_guidance_in_each_stage:
+#                     p = tf.get_variable('weight', [1,1,1,num_class], initializer=tf.constant_initializer(0.5))
+#                     h, w = guidance.get_shape().as_list()[1:3]
+#                     guidance_in_lowres = tf.image.resize_bilinear(guidance_in, [h, w])
+#                     guidance = p*guidance_in_lowres + (tf.ones_like(p)-p)*tf.nn.softmax(guidance, axis=3)
+#                 else:
+#                     guidance = tf.nn.softmax(guidance, axis=3)
             
-            if rm_type == "class_split_in_each_stage":
-                feature, guidance = rm_class(in_node=layers_dict["low_level"+str(stage)],
-                                            feature=feature,
-                                            guidance=guidance,
-                                            scale=scale_list[num_stage-stage],
-                                            further_attention=further_attention,
-                                            scope='RM_'+str(stage),
-                                            is_training=is_training)
-                # if stage != 1:
-                #     guidance = tf.nn.softmax(guidance, axis=3)
-            elif rm_type == "feature_guided":
-                feature, guidance = rm_feature(in_node=layers_dict["low_level"+str(stage)],
-                                        feature=feature,
-                                        guidance=feature,
-                                        num_class=num_class,
-                                        scale=scale_list[num_stage-stage],
-                                        further_attention=further_attention,
-                                        scope='RM_'+str(stage),
-                                        is_training=is_training)        
-            else:
-                feature, guidance = rm_class(in_node=layers_dict["low_level"+str(stage)],
-                                            feature=feature,
-                                            guidance=tf.nn.softmax(guidance, axis=3),
-                                            scale=scale_list[num_stage-stage],
-                                            further_attention=further_attention,
-                                            weight_sharing=True,
-                                            scope='RM_'+str(stage),
-                                            is_training=is_training)
+#             if rm_type == "class_split_in_each_stage":
+#                 feature, guidance = rm_class(in_node=layers_dict["low_level"+str(stage)],
+#                                             feature=feature,
+#                                             guidance=guidance,
+#                                             scale=scale_list[num_stage-stage],
+#                                             further_attention=further_attention,
+#                                             scope='RM_'+str(stage),
+#                                             is_training=is_training)
+#                 # if stage != 1:
+#                 #     guidance = tf.nn.softmax(guidance, axis=3)
+#             elif rm_type == "feature_guided":
+#                 feature, guidance = rm_feature(in_node=layers_dict["low_level"+str(stage)],
+#                                         feature=feature,
+#                                         guidance=feature,
+#                                         num_class=num_class,
+#                                         scale=scale_list[num_stage-stage],
+#                                         further_attention=further_attention,
+#                                         scope='RM_'+str(stage),
+#                                         is_training=is_training)        
+#             else:
+#                 feature, guidance = rm_class(in_node=layers_dict["low_level"+str(stage)],
+#                                             feature=feature,
+#                                             guidance=tf.nn.softmax(guidance, axis=3),
+#                                             scale=scale_list[num_stage-stage],
+#                                             further_attention=further_attention,
+#                                             weight_sharing=True,
+#                                             scope='RM_'+str(stage),
+#                                             is_training=is_training)
             
-            layers_dict["guidance"+str(num_stage+1-stage)] = guidance
-            layers_dict["feature"+str(num_stage+1-stage)] = feature
+#             layers_dict["guidance"+str(num_stage+1-stage)] = guidance
+#             layers_dict["feature"+str(num_stage+1-stage)] = feature
 
-            # guidance = tf.nn.softmax(guidance, axis=3)
-            # if input_guidance_in_each_stage:
-            #     h, w = layers_dict["low_level"+str(stage)].get_shape().as_list()[1:3]
-            #     cue = tf.image.resize_bilinear(guidance_in, [h, w])
-            #     guidance = guidance + cue
+#             # guidance = tf.nn.softmax(guidance, axis=3)
+#             # if input_guidance_in_each_stage:
+#             #     h, w = layers_dict["low_level"+str(stage)].get_shape().as_list()[1:3]
+#             #     cue = tf.image.resize_bilinear(guidance_in, [h, w])
+#             #     guidance = guidance + cue
                  
-    return guidance, layers_dict
+#     return guidance, layers_dict
 
 
 def rm_class(in_node,
-             feature,
              guidance,
+             feature,
              scale=None,
              further_attention=False,
              weight_sharing=False,
@@ -128,22 +319,20 @@ def rm_class(in_node,
         # feature embedding
         
 
-        # conv_r1 = conv2d(in_node, [3,3,channels,num_filters], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training)
-        # conv_r1 = conv2d(conv_r1, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training)
+        conv_r1 = conv2d(in_node, [3,3,channels,num_filters], activate=tf.nn.relu, scope="conv_r1_1", is_training=is_training)
+        conv_r1 = conv2d(conv_r1, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="conv_r1_2", is_training=is_training)
         
-        conv_r1 = GCN(in_node, num_filters, ks=7, is_training=is_training)
+        # conv_r1 = GCN(in_node, num_filters, ks=7, is_training=is_training)
         
         # sram attention
-        def sram_attention_branch(sram_input):
+        def sram_attention_branch(sram_input, scope):
             feature_list = []
-            f = num_filters*(num_class+1)
-            feature_list.append(feature)
+            f = num_filters*num_class
+            if feature is not None:
+                feature_list.append(feature)
+                f += num_filters
                 
             for c in range(num_class):
-                if not further_attention:
-                    scope = "sram1"
-                else:
-                    scope = "sram2"
                 if not weight_sharing:
                     scope = "_".join([scope, str(c)])
                 attention_class = sram(sram_input, guidance[...,c:c+1], scope=scope, is_training=is_training)
@@ -153,9 +342,9 @@ def rm_class(in_node,
                                activate=tf.nn.relu, scope="fuse", is_training=is_training) 
             return attention
         
-        new_feature = sram_attention_branch(sram_input=conv_r1)
+        new_feature = sram_attention_branch(sram_input=conv_r1, scope="sram1")
         if further_attention:
-            new_feature = sram_attention_branch(sram_input=new_feature)
+            new_feature = sram_attention_branch(sram_input=new_feature, scope="sram2")
         
         new_guidance = conv2d(new_feature, [1,1,num_filters,num_class], 
                               activate=None, scope="guidance", is_training=is_training)
