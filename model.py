@@ -34,6 +34,7 @@ def pgb_network(images,
                 drop_prob=None,
                 guid_weight=None,
                 stn_in_each_class=None,
+                reuse=None,
                 is_training=None,
                 scope=None,
                 # **kwargs,
@@ -55,7 +56,7 @@ def pgb_network(images,
   # labels = kwargs.pop(common.IMAGE, None)
   # labels = kwargs.pop(common.IMAGE, None)
     
-  with tf.variable_scope(scope, 'pgb_network'):
+  with tf.variable_scope(scope, 'pgb_network', reuse=reuse):
     features, end_points = features_extractor.extract_features(images=images,
                                                                output_stride=model_options.output_stride,
                                                                multi_grid=model_options.multi_grid,
@@ -84,6 +85,13 @@ def pgb_network(images,
         elif guidance_type == "come_from_feature":
             prior_seg = slim.conv2d(features, num_class, [1, 1], 1, activation_fn=None, scope='input_guidance')
             prior_seg = tf.nn.softmax(prior_seg)
+        elif guidance_type == "gt":
+            prior_seg = tf.one_hot(indices=labels[...,0],
+                                    depth=14,
+                                    on_value=1,
+                                    off_value=0,
+                                    axis=-1,
+                              )
         else:
             if guid_weight:
                 embed = tf.reduce_mean(features, [1, 2], name='embed', keep_dims=False)
@@ -138,7 +146,8 @@ def pgb_network(images,
                     
         output_dict[common.GUIDANCE] = prior_seg
     
-        logits, layers_dict = refinement_network(images,
+        logits, layers_dict = refinement_network(
+                                                # images,
                                                  features,
                                                 prior_seg,
                                                 model_options.output_stride,

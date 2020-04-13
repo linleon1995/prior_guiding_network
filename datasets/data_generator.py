@@ -298,6 +298,7 @@ class Dataset(object):
     
         dataset = dataset.batch(self.batch_size).prefetch(self.batch_size)
         return dataset.make_one_shot_iterator()
+        
     
     def _get_all_files(self, split_name):
         """Gets all the files to read data from.

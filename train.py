@@ -10,6 +10,7 @@ import time
 
 import model
 import common
+import eval
 from model import voxelmorph
 from datasets import data_generator
 from utils import train_utils
@@ -76,7 +77,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=80000,
+parser.add_argument('--training_number_of_steps', type=int, default=50000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -224,6 +225,53 @@ def check_model_conflict(model_options):
     #     assert common.PRIOR_SEGS in dataset and common.PRIOR_IMGS in dataset
 
 
+# def new_eval(iterator, num_of_classes, model_options, ignore_label):
+#   samples = iterator.get_next()
+#   output_dict, _ = model.pgb_network(
+#                 samples[common.IMAGE],
+#                 model_options=model_options,
+#                 affine_transform=FLAGS.affine_transform,
+#                 # deformable_transform=FLAGS.deformable_transform,
+#                 labels=samples[common.LABEL],
+#                 # prior_imgs=samples[common.PRIOR_IMGS],
+#                 prior_segs=samples[common.PRIOR_SEGS],
+#                 num_class=num_of_classes,
+#                 # num_slices=samples[common.NUM_SLICES],
+#                 prior_slice=None,
+#                 batch_size=1,
+#                 z_label_method=FLAGS.z_label_method,
+#                 # z_label=samples[common.Z_LABEL],
+#                 guidance_type=FLAGS.guidance_type,
+#                 fusion_slice=FLAGS.fusion_slice,
+#                 prior_dir=FLAGS.prior_dir,
+#                 drop_prob=FLAGS.drop_prob,
+#                 guid_weight=FLAGS.guid_weight,
+#                 stn_in_each_class=True,
+#                 # prior_num_slice=FLAGS.prior_num_slice,
+#                 is_training=True,
+#                 reuse=tf.compat.v1.AUTO_REUSE,
+#                 # weight_decay=FLAGS.weight_decay,
+#                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
+#                 )
+
+#   logits = output_dict[common.OUTPUT_TYPE]
+#   predictions = tf.nn.softmax(logits)
+#   predictions = tf.identity(predictions, name=common.OUTPUT_TYPE)
+#   predictions = tf.argmax(predictions, axis=3)
+#   predictions = tf.cast(predictions, tf.int32)
+#   pred_flat = tf.reshape(predictions, shape=[-1,])
+
+#   labels = tf.squeeze(samples[common.LABEL], axis=3)
+#   labels_flat = tf.reshape(labels, shape=[-1,])
+
+#   # Define the evaluation metric.
+#   predictions_tag = 'miou'
+#   mIoU, update_op = tf.contrib.metrics.streaming_mean_iou(pred_flat, labels_flat, num_classes=num_of_classes,
+#                                                           )
+#   tf.summary.scalar(predictions_tag, mIoU)
+#   return mIoU, update_op
+    
+
 def _build_network(samples, outputs_to_num_classes, model_options, ignore_label):
   """Builds a clone of DeepLab.
   Args:
@@ -350,6 +398,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
   with tf.variable_scope(
       tf.get_variable_scope(), reuse=True if reuse_variable else None):
     samples = iterator.get_next()
+    # samples = iterator
     output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
                                               model_options, ignore_label)
 
@@ -419,7 +468,6 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
 
   if guidance is not None:
-    pass
     # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
     # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
     
@@ -430,20 +478,20 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     # tf.summary.image('guidance/%s' % 'guidance_fullres_7', colorize(guidance_fullres[...,7:8], cmap='viridis'))
     
     
-    # tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
     
-    # tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
     
-    # tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
     
-    # tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
 
-    # tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
     
     # tf.summary.image('guidance/%s' % 'guidance5_6', colorize(guidance['guidance5'][...,6:7], cmap='viridis'))
     # tf.summary.image('guidance/%s' % 'guidance5_7', colorize(guidance['guidance5'][...,7:8], cmap='viridis'))
@@ -484,7 +532,7 @@ def _average_gradients(tower_grads):
   return average_grads
 
 
-def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label):
+def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, r=None):
   """Trains the deeplab model.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
@@ -518,7 +566,9 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label):
             model_options=model_options, 
             ignore_label=ignore_label,
             scope=scope,
-            reuse_variable=(i != 0))
+            reuse_variable=(i != 0)
+            # reuse_variable=r
+            )
         total_loss += loss
         total_seg_loss += seg_loss
         grads = optimizer.compute_gradients(loss)
@@ -624,7 +674,7 @@ def main(unused_argv):
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 prior_dir=FLAGS.prior_dir)
-
+      
             model_options = common.ModelOptions(
               outputs_to_num_classes=dataset.num_of_classes,
               crop_size=TRAIN_CROP_SIZE,
@@ -632,17 +682,45 @@ def main(unused_argv):
             check_model_conflict(model_options)
             
             iterator = dataset.get_one_shot_iterator()
+            # samples = iterator.get_next()
             train_tensor, summary_op = _train_deeplab_model(
                 iterator, dataset.num_of_classes, model_options, 
                 dataset.ignore_label)
 
-            # # TODO: remove this
-            # cc=[]
-            # prior_summary = dataset.prior_summary
-            # for k in prior_summary:
-            #     cc.append(tf.summary.image(k, prior_summary[k][...,6]))
-            # # summary_op.append(prior_summary)
-            # summary_op = tf.summary.merge(cc)
+            # dataset2 = data_generator.Dataset(
+            #     dataset_name=FLAGS.dataset,
+            #     split_name=FLAGS.train_split,
+            #     dataset_dir=FLAGS.dataset_dir,
+            #     affine_transform=FLAGS.affine_transform,
+            #     deformable_transform=FLAGS.deformable_transform,
+            #     batch_size=1,
+            #     HU_window=HU_WINDOW,
+            #     z_label_method=FLAGS.z_label_method,
+            #     guidance_type=FLAGS.guidance_type,
+            #     z_class=FLAGS.prior_num_slice,
+            #     crop_size=TRAIN_CROP_SIZE,
+            #     min_resize_value=FLAGS.min_resize_value,
+            #     max_resize_value=FLAGS.max_resize_value,
+            #     resize_factor=FLAGS.resize_factor,
+            #     min_scale_factor=FLAGS.min_scale_factor,
+            #     max_scale_factor=FLAGS.max_scale_factor,
+            #     scale_factor_step_size=FLAGS.scale_factor_step_size,
+            #     # model_variant=FLAGS.model_variant,
+            #     num_readers=2,
+            #     is_training=False,
+            #     shuffle_data=False,
+            #     repeat_data=True,
+            #     prior_num_slice=FLAGS.prior_num_slice,
+            #     prior_num_subject=FLAGS.prior_num_subject,
+            #     prior_dir=FLAGS.prior_dir)
+            
+            
+            
+
+            # with tf.name_scope('clone_0') as scope:
+            #   test_tensor, seg = _tower_loss(iterator2, dataset.num_of_classes, model_options, dataset.ignore_label, scope, 
+            #               reuse_variable=tf.AUTO_REUSE)
+            
             
             # Soft placement allows placing on CPU ops without GPU implementation.
             session_config = tf.ConfigProto(
@@ -659,7 +737,39 @@ def main(unused_argv):
                     initialize_last_layer=FLAGS.initialize_last_layer,
                     # last_layers,
                     ignore_missing_vars=True)
-                
+
+
+            # count_training = 1
+            
+            
+            # train_iterator = dataset.get_one_shot_iterator()
+            # train_handle = train_iterator.string_handle()
+            # # sess = tf.Session()
+            # # a=train_iterator.string_handle()
+            # # b=sess.run(a)
+            # # print(a, b, 30*"q")
+            # # if isinstance(b, str):
+            # #   print(30*"a")
+            # # train_iterator_handle = sess.run(train_iterator.string_handle())
+
+            
+
+            # test_iterator = dataset2.get_one_shot_iterator()
+            # test_handle = test_iterator.string_handle()
+            # # test_iterator_handle = sess.run(test_iterator.string_handle())
+
+            # handle = tf.placeholder(tf.string, shape=[], name="handle")
+            # iterator = tf.data.Iterator.from_string_handle(
+            #     handle, train_iterator.output_types, train_iterator.output_shapes)
+            # next_element = iterator.get_next()
+
+            # loss, summary_op = _train_deeplab_model(
+            #     next_element, dataset.num_of_classes, model_options, 
+            #     dataset.ignore_label)
+
+            # # train_iterator_handle = sess.run(train_iterator.string_handle())
+            # # train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
+
             scaffold = tf.train.Scaffold(
                 init_fn=init_fn,
                 summary_op=summary_op,
@@ -667,6 +777,7 @@ def main(unused_argv):
 
             stop_hook = tf.train.StopAtStepHook(FLAGS.training_number_of_steps)
             
+
             with tf.train.MonitoredTrainingSession(
                 master=FLAGS.master,
                 is_chief=(FLAGS.task == 0),
@@ -679,7 +790,30 @@ def main(unused_argv):
                 save_checkpoint_steps=FLAGS.save_checkpoint_steps,
                 hooks=[stop_hook]) as sess:
                 while not sess.should_stop():
-                    sess.run([train_tensor])
+                      sess.run([train_tensor])
+                  # count_training = 0
+                  
+                  # while not sess.should_stop():
+                  #     train_iterator_handle = sess.run(train_handle)
+                      
+                  #     train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
+                  #     print(count_training, train_loss)
+                  #     count_training += 1
+                      
+                  #     # we do periodic validation
+                  #     if count_training % 20 == 0:
+                  #         count_validation = 0
+                  #         while not sess.should_stop():
+                  #             test_iterator_handle = sess.run(test_handle)
+                  #             test_loss = sess.run(loss, feed_dict={handle: test_iterator_handle})
+                  #             print(count_validation, test_loss)
+                  #             count_validation += 1
+                  #   # if j%2 == 0:
+                  #   #   for step in range(668):
+                  #   #     if step % 20 == 0:
+                  #   #       print(step)
+                  #   #       print(test_tensor)
+                  #   # j+=1
 
 
 if __name__ == '__main__':

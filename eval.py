@@ -70,7 +70,11 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_078/model.ckpt-25000' # single aff
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_080/model.ckpt-20000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_081/model.ckpt-35000' # multiple aff
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_089/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_089/model.ckpt-45000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_093/model.ckpt-45000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_025/model.ckpt-35000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_100/model.ckpt-50000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_111/model.ckpt-20000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -332,6 +336,12 @@ def main(unused_argv):
     num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     labels_flat = tf.reshape(labels, shape=[-1,])
 
+    guid0 = layers_dict["guidance_in"]
+    guid1 = tf.nn.softmax(layers_dict["guidance1"])
+    guid2 = tf.nn.softmax(layers_dict["guidance2"])
+    guid3 = tf.nn.softmax(layers_dict["guidance3"])
+    guid4 = tf.nn.softmax(layers_dict["guidance4"])
+
     # guidance = output_dict[common.GUIDANCE]
     if FLAGS.affine_transform or FLAGS.deformable_transform:
       pp = output_dict[common.GUIDANCE]
@@ -374,8 +384,8 @@ def main(unused_argv):
         load_model(loader, sess, FLAGS.checkpoint_dir)
     else:
         raise ValueError("model checkpoint not exist")
-
-
+    
+    
     cm_total = 0
     total_eval_z = 0
     foreground_pixel = 0
@@ -395,6 +405,7 @@ def main(unused_argv):
                                                             subplot_split=(1,3),
                                                             type_list=3*['img'])
     # Build up Pyplot displaying tool
+    # TODO: Image could only show once
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
                                                         is_showfig=False,
                                                         is_savefig=True,
@@ -402,6 +413,7 @@ def main(unused_argv):
                                                         type_list=3*['img'])
     # Start Evaluate
     # TODO: The order of subject
+    
     if FLAGS.vis_features:
         if not os.path.isdir(FLAGS.eval_logdir+"feature"):
             os.mkdir(FLAGS.eval_logdir+"feature")
@@ -421,6 +433,7 @@ def main(unused_argv):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
+        
         # if i in range(50, 80, 10):
         #   tt, xx = sess.run([theta, x_s], feed_dict=_feed_dict)
         #   print(tt)
@@ -442,7 +455,6 @@ def main(unused_argv):
         DSC_slice.append(dscs)
         cm_total += cm_slice
 
-        # TODO: display specific images
         
         if i in display_imgs:
             parameters = [{"cmap": "gray"}]
@@ -468,38 +480,38 @@ def main(unused_argv):
           if i in display_imgs:
             # TODO: cc, pp
             # TODO: The situation of prior_seg not exist
-            cc = 7
+            class_list = np.arange(14)
             # if i in [220,228,340,350,495]:
             #   weight = tf.get_collection("weight")
             #   w = sess.run(weight, feed_dict=_feed_dict)
             #   print(w)
-            guid_dict, prior_seg = sess.run([guidance_dict, pp], feed_dict=_feed_dict)
-            show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
-            show_guidance.display_figure(FLAGS.eval_split+'_all_guid-%04d-%03d' % (i,cc),
-                                          [guid_dict["guidance1"][0,...,cc],
-                                           guid_dict["guidance2"][0,...,cc],
-                                           guid_dict["guidance3"][0,...,cc]])
-            
-            show_guidance.set_title(["prediction of class {}".format(cc), "input prior", "guidance_in (32,32)"])
-            show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%04d-%03d' % (i,cc),
-                                        [np.int32(data[common.LABEL][0,...,0]==cc),
-                                         prior_seg[0,...,cc],
-                                         guid_dict["guidance_in"][0,...,cc]])
+            for c in class_list:
+              g0, g1, g2, g3, g4, prior_seg = sess.run([guid0, guid1, guid2, guid3, guid4, pp], feed_dict=_feed_dict)
+              show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
+              show_guidance.display_figure(FLAGS.eval_split+'_all_guid-%04d-%03d' % (i,c),
+                                            [g1[0,...,c],
+                                            g2[0,...,c],
+                                            g3[0,...,c]])
+                                            
+              show_guidance.set_title(["prediction of class {}".format(c), "input prior", "guidance_in (32,32)"])
+              show_guidance.display_figure(FLAGS.eval_split+'_prior_and_guid_%04d-%03d' % (i,c),
+                                          [np.int32(data[common.LABEL][0,...,0]==c),
+                                          prior_seg[0,...,c],
+                                          g0[0,...,c]])
           
         # Features Visualization
         if FLAGS.vis_features:
           if i in display_imgs:
             sram_conv = tf.get_collection("/sram_embed")
-            s = 17
+            s = 46
             conv2 = sram_conv[s]["conv2"]
             guidance = sram_conv[s]["guidance_tile"]
             output = sram_conv[s]["output"]
             c2, guid, out = sess.run([conv2, guidance, output], feed_dict=_feed_dict)
-            for cc in range(32):
-              show_feature.display_figure(FLAGS.eval_split+'_sram_feature-sample%04d-feature%04d' % (i,cc),
-                                          [c2[0,...,cc],
-                                            guid[0,...,cc],
-                                            out[0,...,cc]])
+            for cc in range(0, 32, 4):
+              filename = [FLAGS.eval_split, "sram_feature", "sample%04d" %i, "sram%03d" %s, "feature%04d" %cc]
+              filename = "-".join(filename)
+              show_feature.display_figure(filename, [c2[0,...,cc],guid[0,...,cc],out[0,...,cc]])
           
           # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
           pass
@@ -589,7 +601,8 @@ def main(unused_argv):
     #     hooks=hooks,
     #     eval_interval_secs=FLAGS.eval_interval_secs)
 
-
+    return mean_dice_score
+  
 if __name__ == '__main__':
     # guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
     # for i in range(14):
