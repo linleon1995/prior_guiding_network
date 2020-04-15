@@ -145,18 +145,25 @@ def _convert_dataset(dataset_split):
       filename = os.path.basename(re_match.group(1))
 
       if _DATA_TYPE == "2D":
+        seg_onehot = np.eye(14)[seg_data]
+        organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
+        organ_labels = np.int32(organ_labels>0)
         for i in range(num_slices):
           image_slice = image_data[i].tostring()
           seg_slice = seg_data[i].tostring()
-          example = build_medical_data.image_seg_to_tfexample(
-              image_slice, seg_slice, filename, height, width, depth=i, num_slices=num_slices)
+          organ_label = organ_labels[i].tostring()
+          example = build_medical_data.image_seg_to_tfexample(image_slice, seg_slice, 
+                                                              filename, height, width, depth=i, 
+                                                              num_slices=num_slices, organ_label=organ_label)
           tfrecord_writer.write(example.SerializeToString())
       elif _DATA_TYPE == "3D":
-        image_slice = image_data.tostring()
-        seg_slice = seg_data.tostring()
-        example = build_medical_data.image_seg_to_tfexample(
-            image_slice, seg_slice, filename, height, width, depth=None, num_slices=num_slices)
-        tfrecord_writer.write(example.SerializeToString())
+        pass
+        # image_slice = image_data.tostring()
+        # seg_slice = seg_data.tostring()
+        # organ_label = np.int32(np.nonzero(np.sum(seg_slice)))
+        # example = build_medical_data.image_seg_to_tfexample(
+        #     image_slice, seg_slice, filename, height, width, depth=None, num_slices=num_slices, organ_label=organ_label)
+        # tfrecord_writer.write(example.SerializeToString())
       
       
     if FLAGS.prior_id is not None:  

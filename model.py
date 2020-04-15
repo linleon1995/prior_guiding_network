@@ -20,6 +20,7 @@ def pgb_network(images,
                 affine_transform,
                 # deformable_transform,
                 labels=None,
+                samples=None,
                 # prior_imgs=None,
                 prior_segs=None,
                 num_class=None,
@@ -86,12 +87,12 @@ def pgb_network(images,
             prior_seg = slim.conv2d(features, num_class, [1, 1], 1, activation_fn=None, scope='input_guidance')
             prior_seg = tf.nn.softmax(prior_seg)
         elif guidance_type == "gt":
-            prior_seg = tf.one_hot(indices=labels[...,0],
-                                    depth=14,
+            prior_seg = tf.one_hot(indices=prior_segs[...,0],
+                                    depth=num_class,
                                     on_value=1,
                                     off_value=0,
-                                    axis=-1,
-                              )
+                                    axis=3,
+                                    )
         else:
             if guid_weight:
                 embed = tf.reduce_mean(features, [1, 2], name='embed', keep_dims=False)
@@ -103,6 +104,10 @@ def pgb_network(images,
             else:
                 prior_seg = prior_segs
             
+            if "organ_label" in samples:
+                organ_label = tf.reshape(samples["organ_label"], [batch_size,1,1,num_class])
+                organ_label = tf.cast(organ_label, tf.float32)
+                prior_seg = prior_segs * organ_label
         # if guidance_type == "training_data_fusion":
         #     prior_seg = prior_segs
         # elif guidance_type == "zeros":
@@ -145,7 +150,6 @@ def pgb_network(images,
                 prior_seg = spatial_transformer_network(prior_seg, theta)
                     
         output_dict[common.GUIDANCE] = prior_seg
-    
         logits, layers_dict = refinement_network(
                                                 # images,
                                                  features,

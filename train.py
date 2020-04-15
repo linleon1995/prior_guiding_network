@@ -11,13 +11,16 @@ import time
 import model
 import common
 import eval
+import experiments
 from model import voxelmorph
 from datasets import data_generator
 from utils import train_utils
 from core import features_extractor
 import input_preprocess
 from tensorflow.python.ops import math_ops
+import math
 colorize = train_utils.colorize
+spatial_transfom_exp = experiments.spatial_transfom_exp
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -25,7 +28,7 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_023/model.ckpt-40000'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
 
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
@@ -213,6 +216,17 @@ parser.add_argument('--max_resize_value', type=int, default=256,
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
+# Exp.
+# TODO: dx, dy should get together, tensorflow argument
+parser.add_argument('--stn_exp_angle', type=int, default=None,
+                    help='')
+
+parser.add_argument('--stn_exp_dx', type=int, default=None,
+                    help='')
+
+parser.add_argument('--stn_exp_dy', type=int, default=None,
+                    help='')
+
 
 def check_model_conflict(model_options):
     if not model_options.decoder_type == "refinement_network":
@@ -317,6 +331,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 labels=samples[common.LABEL],
+                samples=samples,
                 # prior_imgs=samples[common.PRIOR_IMGS],
                 prior_segs=samples[common.PRIOR_SEGS],
                 num_class=outputs_to_num_classes['semantic'],
@@ -398,7 +413,19 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
   with tf.variable_scope(
       tf.get_variable_scope(), reuse=True if reuse_variable else None):
     samples = iterator.get_next()
-    # samples = iterator
+
+    if FLAGS.guidance_type == "gt":
+      if FLAGS.stn_exp_angle is not None:
+        angle = FLAGS.stn_exp_angle * math.pi / 180
+      else:
+        angle = None
+      if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
+        translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
+      else:
+        translations  = None
+      samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
+                                                  translations, "NEAREST")
+
     output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
                                               model_options, ignore_label)
 

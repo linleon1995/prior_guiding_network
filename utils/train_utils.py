@@ -157,42 +157,36 @@ def get_losses(output_dict,
     # Calculate guidance loss
     if common.GUIDANCE in output_dict:
       guidance_loss = 0
-      # labels = samples[common.LABEL]
-      # labels = tf.one_hot(indices=tf.cast(samples[common.LABEL][...,0], tf.int32),
-      #                       depth=14,
-      #                       on_value=1.0,
-      #                       off_value=0.0,
-      #                       axis=-1,
-      #                       )
-
+      
+      # Upsample logits in each stage
       ny = samples[common.LABEL].get_shape()[1]
       nx = samples[common.LABEL].get_shape()[2]
+      ys = tf.one_hot(
+          samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
+      ys = tf.reshape(ys, [-1,14])
+      ys = tf.cast(ys, tf.float32)
       for name, value in layers_dict.items():
           if 'guidance' in name:
-              
-              
-              # ys = tf.image.resize_nearest_neighbor(labels, [ny_g, nx_g])
-              # ys = tf.cast(ys, tf.int32)
-              # ys = tf.image.resize_bilinear(labels, [ny_g, nx_g])
-              
-              # value = tf.nn.sigmoid(value)
-              # value = tf.reshape(value, [-1,14])
-              # ys = tf.reshape(ys, [-1,14])
-              # loss = -tf.reduce_mean(ys * tf.log(tf.clip_by_value(value,1e-10,1.0)))
-              # guidance_loss += loss
-              # value = tf.image.resize_bilinear(value, [ny, nx])
+              value = tf.nn.sigmoid(value)
               value = tf.compat.v2.image.resize(value, [ny, nx])
-              guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
               
+              value = tf.reshape(value, [-1,14])
+              loss = -tf.reduce_mean(ys * tf.log(tf.clip_by_value(value,1e-10,1.0)))
+              guidance_loss += loss
+              
+              
+              # guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
+              
+      # # Downsample Ground Truth       
       # for name, value in layers_dict.items():
       #     if 'guidance' in name:
       #         ny_g = value.get_shape()[1]
       #         nx_g = value.get_shape()[2]
-              
-      #         ys = tf.image.resize_bilinear(samples[common.LABEL], [ny_g, nx_g])
+      #         ys = tf.compat.v2.image.resize(samples[common.LABEL], [ny_g, nx_g])
       #         ys = tf.cast(ys, tf.int32)
       #         guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.OUTPUT_TYPE])
       
+    
       guidance_loss = tf.multiply(guidance_loss_decay, 
                                   guidance_loss, 
                                   name='/'.join(['guidance_loss', loss_dict[common.OUTPUT_TYPE]]))

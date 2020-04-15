@@ -140,6 +140,8 @@ class Dataset(object):
             tf.FixedLenFeature((), tf.string, default_value=''),
         'image/segmentation/class/format':
             tf.FixedLenFeature((), tf.string, default_value=''),
+        'image/segmentation/class/organ_label':
+            tf.FixedLenFeature((), tf.string, default_value=''),
         }
         
         parsed_features = tf.parse_single_example(example_proto, features)
@@ -150,6 +152,8 @@ class Dataset(object):
         label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
         label = tf.reshape(label, [512,512,1])
         # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
+
+        organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         
         # import prior
         # TODO: paramarize subject selection
@@ -161,6 +165,7 @@ class Dataset(object):
             common.WIDTH: parsed_features['image/width'],
             common.DEPTH: parsed_features['image/depth'],
             common.NUM_SLICES: parsed_features['image/num_slices'],
+            "organ_label": organ_label
         }
         
 
@@ -178,13 +183,18 @@ class Dataset(object):
           sample[common.LABELS_CLASS] = label
       
         return sample
-     
+    
+    # def get_z_label(self, organ_label, depth, num_slices, z_class):
+    #     tf.cond(tf.reduce_sum(organ_label)>0, 
+            
     def _preprocessing(self, sample):
         image = sample[common.IMAGE]
         label = sample[common.LABELS_CLASS]
         depth = sample[common.DEPTH]
         num_slices = sample[common.NUM_SLICES]
+        # organ_label = sample["organ_label"]
         
+        # z_label = self.get_z_label(organ_label, depth, num_slices, z_class)
         # TODO: clear sample problem
         path = self.dataset_dir.split('tfrecord')[0]
         

@@ -101,7 +101,7 @@ def _bytes_list_feature(values):
       bytes_list=tf.train.BytesList(value=[norm2bytes(values)]))
 
 
-def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth, num_slices):
+def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth, num_slices, organ_label):
   """Converts one image/segmentation pair to tf example.
   Args:
     image_data: string of image data.
@@ -125,6 +125,8 @@ def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth,
           _bytes_list_feature(seg_data)),
       'image/segmentation/class/format': _bytes_list_feature(
           FLAGS.label_format),
+      'image/segmentation/class/organ_label': _bytes_list_feature(
+          organ_label),
   }))
   
 def priors_to_tfexample(priors, parse_name, num_slices, prior_id):

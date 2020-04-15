@@ -27,6 +27,10 @@ import common
 import model
 from datasets import data_generator
 from utils import eval_utils
+import experiments
+
+import math
+spatial_transfom_exp = experiments.spatial_transfom_exp
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
@@ -75,6 +79,10 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_025/model.ckpt-35000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_100/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_111/model.ckpt-20000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_105/model.ckpt-5000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-20000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-20000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -119,7 +127,7 @@ parser.add_argument('--prior_num_subject', type=int, default=20,
 parser.add_argument('--fusion_slice', type=int, default=3,
                     help='')
 
-parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
+parser.add_argument('--guidance_type', type=str, default="gt",
                     help='')
                     
 # Change to True for adding flipped images during test.
@@ -163,6 +171,18 @@ parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
 
 parser.add_argument('--max_number_of_evaluations', type=int, default=1,
                     help='')
+
+# Exp.
+# TODO: dx, dy should get together, tensorflow argument
+parser.add_argument('--stn_exp_angle', type=int, default=None,
+                    help='')
+
+parser.add_argument('--stn_exp_dx', type=int, default=None,
+                    help='')
+
+parser.add_argument('--stn_exp_dy', type=int, default=None,
+                    help='')
+
 # TODO: boxplot
 # TODO: MSE for z information
 # TODO: Automatically output --> mean_iou, mean_dsc, pixel_acc as text file,
@@ -267,14 +287,16 @@ def main(unused_argv):
     else:
       placeholder_dict[common.PRIOR_IMGS] = None
 
-    if common.PRIOR_SEGS in samples:
-      samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
-      prior_seg_placeholder = tf.placeholder(tf.float32,
-                                           shape=[None, EVAL_CROP_SIZE[0],
-                                                  EVAL_CROP_SIZE[1], dataset.num_of_classes])
-      placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
-    else:
-      placeholder_dict[common.PRIOR_SEGS] = None
+    prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 1])
+    placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
+    # if common.PRIOR_SEGS in samples:
+    #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
+    #   prior_seg_placeholder = tf.placeholder(tf.float32,
+    #                                        shape=[None, EVAL_CROP_SIZE[0],
+    #                                               EVAL_CROP_SIZE[1], dataset.num_of_classes])
+    #   placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
+    # else:
+    #   placeholder_dict[common.PRIOR_SEGS] = None
 
     if 'prior_slices' in samples:
       prior_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
@@ -285,6 +307,19 @@ def main(unused_argv):
     # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
     # guidance = tf.expand_dims(guidance, axis=0)
     
+    if FLAGS.guidance_type == "gt":
+      if FLAGS.stn_exp_angle is not None:
+        angle = FLAGS.stn_exp_angle * math.pi / 180
+      else:
+        angle = None
+      if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
+        translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
+      else:
+        translations  = None
+      samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
+                                                  translations, "NEAREST")
+
+
     output_dict, layers_dict = model.pgb_network(
                 placeholder_dict[common.IMAGE],
                 model_options=model_options,
