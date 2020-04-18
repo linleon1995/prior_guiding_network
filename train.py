@@ -126,7 +126,7 @@ parser.add_argument('--z_label_method', type=str, default=None,
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"
 # TODO: Check conflict of guidance
-parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
+parser.add_argument('--guidance_type', type=str, default="gt",
                     help='')
 
 parser.add_argument('--guid_weight', type=bool, default=False,
@@ -141,7 +141,7 @@ parser.add_argument('--prior_num_subject', type=int, default=20,
 parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -150,8 +150,8 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=1.0,
                     help='')
 
-# parser.add_argument('--transformed_loss_decay', type=float, default=1e-10,
-#                     help='')
+parser.add_argument('--transform_loss_decay', type=float, default=None,
+                    help='')
 
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
                     help='')
@@ -325,13 +325,22 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   # TODO: moving_segs
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
   
+  translations = tf.random_uniform([], minval=-15,maxval=15,dtype=tf.float32)
+  angle = tf.random_uniform([], minval=-20,maxval=20,dtype=tf.float32)
+  angle = angle * math.pi / 180
+  labels = samples[common.LABEL]
+  samples[common.IMAGE] = spatial_transfom_exp(samples[common.IMAGE], angle, 
+                                              [translations,0], "BILINEAR")
+  samples[common.LABEL] = spatial_transfom_exp(samples[common.LABEL], angle, 
+                                              [translations,0], "NEAREST")
+                                              
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
                 affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
-                labels=samples[common.LABEL],
-                samples=samples,
+                labels=labels,
+                samples=samples["organ_label"],
                 # prior_imgs=samples[common.PRIOR_IMGS],
                 prior_segs=samples[common.PRIOR_SEGS],
                 num_class=outputs_to_num_classes['semantic'],
@@ -381,9 +390,9 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   else:
     guidance_original = None
       
-  guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
-  if len(guidance_dict) == 0:
-    guidance_dict = None
+  # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
+  # if len(guidance_dict) == 0:
+  #   guidance_dict = None
 
   # Log the summary
   _log_summaries(samples[common.IMAGE],
@@ -394,7 +403,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                  z_pred=z_pred,
                  prior_imgs=prior_img,
                  prior_segs=prior_seg,
-                 guidance=guidance_dict,
+                 guidance=layers_dict,
                  guidance_original=guidance_original)
   return output_dict, layers_dict
 
@@ -414,17 +423,20 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       tf.get_variable_scope(), reuse=True if reuse_variable else None):
     samples = iterator.get_next()
 
-    if FLAGS.guidance_type == "gt":
-      if FLAGS.stn_exp_angle is not None:
-        angle = FLAGS.stn_exp_angle * math.pi / 180
-      else:
-        angle = None
-      if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
-        translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
-      else:
-        translations  = None
-      samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
-                                                  translations, "NEAREST")
+    # if FLAGS.guidance_type == "gt":
+      
+      # if FLAGS.stn_exp_angle is not None:
+      #   angle = FLAGS.stn_exp_angle * math.pi / 180
+      # else:
+      #   angle = None
+        
+      # if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
+      #   translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
+      # else:
+      #   translations  = None
+        
+      # samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
+      #                                             translations, "NEAREST")
 
     output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
                                               model_options, ignore_label)
@@ -436,15 +448,25 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     elif FLAGS.z_label_method == 'classification':
       loss_dict[common.OUTPUT_Z] = 'cross_entropy_zlabel'
 
+  if common.GUIDANCE in output_dict:
+    loss_dict[common.GUIDANCE] = "cross_entropy_sigmoid"
+
   # TODO: Other voxel_morph loss
   # TODO: Repeated clone name --> clone_0/Losses/clone_0/guidance_loss/mean_dice_coefficient
   # TODO: loss summaries without decay
+  # TODO: assert correctness
+  # if FLAGS.affine_transform:
+  #   assert FLAGS.transform_loss_decay is not None
+  # if FLAGS.transform_loss_decay is not None:
+  #   assert FLAGS.affine_transform is True
+
   losses = train_utils.get_losses(output_dict, layers_dict,
                                   samples,
                                   loss_dict=loss_dict,
                                   z_loss_decay=FLAGS.z_loss_decay,
                                   # transformed_loss_decay=FLAGS.transformed_loss_decay,
-                                  guidance_loss_decay=FLAGS.guidance_loss_decay)
+                                  guidance_loss_decay=FLAGS.guidance_loss_decay,
+                                  transform_loss_decay=FLAGS.transform_loss_decay)
   seg_loss = losses[0]
   
   for loss in losses:
@@ -498,13 +520,16 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
     # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
     
-    # tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
+    if FLAGS.affine_transform:
+      tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
+      tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
     
     # tf.summary.image('guidance/%s' % 'guidance_fullres_6', colorize(guidance_fullres[...,6:7], cmap='viridis'))
     # tf.summary.image('guidance/%s' % 'guidance_fullres_7', colorize(guidance_fullres[...,7:8], cmap='viridis'))
     
-    
+    tf.summary.image('guidance/%s' % 'guidance_init_6', colorize(guidance['init_guid'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance_init_7', colorize(guidance['init_guid'][...,7:8], cmap='viridis'))
+
     tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
     

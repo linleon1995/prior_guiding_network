@@ -14,7 +14,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 class Build_Pyplot_Subplots(object):
     def __init__(self, saving_path, is_showfig, is_savefig, subplot_split, type_list):
-        self.fig, self.ax = plt.subplots(*subplot_split)
+        self.fig, self.ax = plt.subplots(figsize=(9,3),*subplot_split)
+        # TODO: figsize decided by subplot_split
+        plt.tight_layout()
+        # self.fig.figsize = (6,2)
         self.saving_path = saving_path
         self.is_showfig = is_showfig
         self.is_savefig = is_savefig

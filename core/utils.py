@@ -10,7 +10,12 @@ slim = contrib_slim
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
 
 
-
+# def conv_block(inputs, output_dims, embed=None):
+#   conv = inputs
+#   for i, k in enumerate(embed):
+#     conv = conv2d(conv, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="fuse", is_training=is_training) 
+    
+    
 def mlp(inputs, 
         output_dims, 
         num_layers=3, 

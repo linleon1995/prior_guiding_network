@@ -91,6 +91,7 @@ def refinement_network(features,
     scale_list = [1,1,2,2,2] # output_strides=8
     num_stage = len(layers_dict)
     guidance_in = guidance
+    layers_dict["init_guid"] = guidance
     h, w = layers_dict["low_level5"].get_shape().as_list()[1:3]
     
     guidance = tf.image.resize_bilinear(guidance, [h, w])

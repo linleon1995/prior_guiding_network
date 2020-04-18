@@ -42,7 +42,7 @@ ATROUS_RATES = None
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
-
+IMG_LIST = [50, 60, 64, 82, 222, 350, 481]
 
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-40000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-40000'
@@ -81,8 +81,11 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_111/model.ckpt-20000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_105/model.ckpt-5000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-20000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-20000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-20000' # gt, softmax loss
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-20000' # gt, log loss 
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-10000' # fusion, log loss
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-25000' # fusion, correct bce loss, with organ label
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-50000' # fusion, bce loss, with organ label, missing stn
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -304,6 +307,7 @@ def main(unused_argv):
     else:
       placeholder_dict['prior_slices'] = None
 
+    placeholder_dict['organ_label'] = tf.placeholder(tf.int32, shape=[None,dataset.num_of_classes])
     # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
     # guidance = tf.expand_dims(guidance, axis=0)
     
@@ -326,6 +330,7 @@ def main(unused_argv):
                 affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 labels=placeholder_dict[common.LABEL],
+                samples=placeholder_dict["organ_label"],
                 # prior_imgs=placeholder_dict[common.PRIOR_IMGS],
                 prior_segs=placeholder_dict[common.PRIOR_SEGS],
                 num_class=dataset.num_of_classes,
@@ -372,11 +377,16 @@ def main(unused_argv):
     labels_flat = tf.reshape(labels, shape=[-1,])
 
     guid0 = layers_dict["guidance_in"]
-    guid1 = tf.nn.softmax(layers_dict["guidance1"])
-    guid2 = tf.nn.softmax(layers_dict["guidance2"])
-    guid3 = tf.nn.softmax(layers_dict["guidance3"])
-    guid4 = tf.nn.softmax(layers_dict["guidance4"])
+    guid1 = tf.nn.sigmoid(layers_dict["guidance1"])
+    guid2 = tf.nn.sigmoid(layers_dict["guidance2"])
+    guid3 = tf.nn.sigmoid(layers_dict["guidance3"])
+    guid4 = tf.nn.sigmoid(layers_dict["guidance4"])
 
+    # pred_stage1 = tf.argmax(guid1, axis=3)
+    # pred_stage2 = tf.argmax(guid2, axis=3)
+    # pred_stage3 = tf.argmax(guid3, axis=3)
+    # pred_stage4 = tf.argmax(guid4, axis=3)
+    
     # guidance = output_dict[common.GUIDANCE]
     if FLAGS.affine_transform or FLAGS.deformable_transform:
       pp = output_dict[common.GUIDANCE]
@@ -396,7 +406,22 @@ def main(unused_argv):
 
     # Define Confusion Maxtrix
     cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
-
+    # if FLAGS.vis_guidance:
+    #   def cm_in_each_stage(pred, label):
+    #     h, w = pred.get_shape().as_list()[1:3]
+    #     label =tf.expand_dims(label, axis=3)
+    #     label = tf.compat.v2.image.resize(label, [h, w], method='nearest')
+        
+    #     label_flat = tf.reshape(label, shape=[-1,])
+    #     pred_flat = tf.reshape(pred, shape=[-1,])
+    #     cm = tf.confusion_matrix(label_flat, pred_flat, num_classes=dataset.num_of_classes)
+    #     return cm, label
+    #   cm_g1, label_g1 = cm_in_each_stage(pred_stage1, labels)
+    #   cm_g2, label_g2 = cm_in_each_stage(pred_stage2, labels)
+    #   cm_g3, label_g3 = cm_in_each_stage(pred_stage3, labels)
+    #   cm_g4, label_g4 = cm_in_each_stage(pred_stage4, labels)
+      # guid_pred = [pred_stage1, pred_stage2, pred_stage3, pred_stage4]
+      # guid_label = [label_g1, label_g2, label_g3, label_g4]
     summary_op = tf.summary.merge_all()
     summary_hook = tf.contrib.training.SummaryAtEndHook(
         log_dir=FLAGS.eval_logdir, summary_op=summary_op)
@@ -422,6 +447,7 @@ def main(unused_argv):
     
     
     cm_total = 0
+    _cm_g1_t, _cm_g2_t, _cm_g3_t, _cm_g4_t = 0, 0, 0, 0
     total_eval_z = 0
     foreground_pixel = 0
     DSC_slice = []
@@ -442,7 +468,7 @@ def main(unused_argv):
     # Build up Pyplot displaying tool
     # TODO: Image could only show once
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
-                                                        is_showfig=False,
+                                                        is_showfig=True,
                                                         is_savefig=True,
                                                         subplot_split=(1,3),
                                                         type_list=3*['img'])
@@ -512,14 +538,16 @@ def main(unused_argv):
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
+          # _cm_g1, _cm_g2, _cm_g3, _cm_g4 = sess.run([cm_g1, cm_g2, cm_g3, cm_g4], feed_dict=_feed_dict)
+          # _cm_g1_t += _cm_g1
+          # _cm_g2_t += _cm_g2
+          # _cm_g3_t += _cm_g3
+          # _cm_g4_t += _cm_g4
+          # _guid_pred, _guid_label = sess.run([guid_pred, guid_label], feed_dict=_feed_dict)
           if i in display_imgs:
             # TODO: cc, pp
             # TODO: The situation of prior_seg not exist
             class_list = np.arange(14)
-            # if i in [220,228,340,350,495]:
-            #   weight = tf.get_collection("weight")
-            #   w = sess.run(weight, feed_dict=_feed_dict)
-            #   print(w)
             for c in class_list:
               g0, g1, g2, g3, g4, prior_seg = sess.run([guid0, guid1, guid2, guid3, guid4, pp], feed_dict=_feed_dict)
               show_guidance.set_title(["guidance1", "guidance2", "guidance3"])
@@ -533,7 +561,12 @@ def main(unused_argv):
                                           [np.int32(data[common.LABEL][0,...,0]==c),
                                           prior_seg[0,...,c],
                                           g0[0,...,c]])
-          
+            # for s in range(4):
+            #   show_guidance.set_title(["image", "label", "guidance"])
+            #   show_guidance.display_figure(FLAGS.eval_split+'-guid_pred-slice%04d-stage%02d' % (i,s+1),
+            #                               [data[common.IMAGE][0,...,0],
+            #                               _guid_label[s],
+            #                               _guid_pred[s]])
         # Features Visualization
         if FLAGS.vis_features:
           if i in display_imgs:
@@ -587,12 +620,19 @@ def main(unused_argv):
     #         print('step {:d}'.format(step))
     # print('Mean IoU: {:.3f}'.format(mIoU.eval(session=sess)))
 
-    print(30*"=")
+    print(10*"=", "Segmentation Evaluation", 10*"=")
     mean_iou = eval_utils.compute_mean_iou(cm_total)
     mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
     pixel_acc = eval_utils.compute_accuracy(cm_total)
     _, _ = eval_utils.precision_and_recall(cm_total)
     print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
+
+    if FLAGS.vis_guidance:
+      print(10*"=", "Guidance Evaluation", 10*"=")
+      g1_mdsc, _ = eval_utils.compute_mean_dsc(_cm_g1_t)
+      g2_mdsc, _ = eval_utils.compute_mean_dsc(_cm_g2_t)
+      g3_mdsc, _ = eval_utils.compute_mean_dsc(_cm_g3_t)
+      g4_mdsc, _ = eval_utils.compute_mean_dsc(_cm_g4_t)
 
     # TODO: save instead of showing
     eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
