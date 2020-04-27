@@ -18,6 +18,8 @@ class Build_Pyplot_Subplots(object):
         # TODO: figsize decided by subplot_split
         plt.tight_layout()
         # self.fig.figsize = (6,2)
+        self.x_axis = subplot_split[0]
+        self.y_axis = subplot_split[1]
         self.saving_path = saving_path
         self.is_showfig = is_showfig
         self.is_savefig = is_savefig
@@ -29,8 +31,12 @@ class Build_Pyplot_Subplots(object):
         # TODO: remove coreordinate
         # TODO: Solve subplots(2,2)--> ax is a numpy array not suitble for using for loop directly
         # TODO: Make a judgement about existence of directory
+        
     def set_title(self, title_list):
         assert self.num_plot == len(title_list)
+        # for x in range(self.x_axis):
+        #     for y in range(self.y_axis):
+        #         sub_ax.set_title(title)
         for sub_ax, title in zip(self.ax, title_list):
             sub_ax.set_title(title)
 

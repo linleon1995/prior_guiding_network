@@ -155,6 +155,40 @@ def get_batch_norm_params(decay=0.9997,
   return batch_norm_params
 
 
+def conv_block(inputs, channels=32, scope=None, is_training=True):
+    with tf.variable_scope(scope, "conv_block"):
+      in_channel = inputs.get_shape().as_list()[3]
+      conv1 = conv2d(inputs, [3,3,in_channel,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+      conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+    return conv2
+
+
+def _simple_decoder(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+    for s in range(1, stage+1):
+      h, w = inputs.get_shape().as_list()[1:3]
+      up = tf.image.resize_bilinear(inputs, [2*h, 2*w])
+      inputs = conv_block(up, channels, "up_conv_block"+str(s), is_training)
+    return inputs    
+           
+def _simple_unet(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+    with tf.variable_scope(scope, 'simple_unet'):
+      down_conv_list = []
+      down = inputs
+      for s in range(1, stage+1):
+        conv = conv_block(down, channels, "down_conv_block"+str(s), is_training)
+        down_conv_list.append(conv)
+        down = tf.nn.max_pool(conv, [1,2,2,1], [1,2,2,1], "VALID")
+        
+      conv = conv_block(down, channels, "latent", is_training)
+      
+      for s in range(1, stage+1):
+        down = down_conv_list[stage-s]
+        h, w = down.get_shape().as_list()[1:3]
+        up = tf.image.resize_bilinear(conv, [h, w])
+        conv = conv_block(tf.concat([up,down], axis=3), channels, "up_conv_block"+str(s), is_training)
+      
+      return  conv2d(conv, [3,3,channels,out], activate=None, is_training=is_training, scope="output_conv")
+        
 def __2d_unet_decoder(features, layers_dict, num_class, channels=None, scope=None, is_training=None):
     with tf.variable_scope(scope, '2d_unet'):
         i = 1

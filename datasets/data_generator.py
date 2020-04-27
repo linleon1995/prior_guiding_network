@@ -200,7 +200,7 @@ class Dataset(object):
         
         # Load numpy array as prior
         # TODO: concat zeros?
-        if self.guidance_type in ("adaptive", "training_data_fusion"):
+        if self.guidance_type in ("adaptive", "training_data_fusion", "training_data_fusion_h"):
             print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (self.prior_num_slice, self.prior_num_subject))
             prior_name = build_prior.get_prior_name("train", num_slice=self.prior_num_slice, 
                                                     num_subject=self.prior_num_subject)
@@ -209,7 +209,9 @@ class Dataset(object):
             prior_segs = np.float32(prior_segs)
             if self.guidance_type == "training_data_fusion":
                 prior_segs = prior_segs[...,0]
-                
+            elif self.guidance_type == "training_data_fusion_h":    
+                prior_segs = prior_segs[...,0]
+                prior_segs = np.float32(prior_segs>0)
                 # import matplotlib.pyplot as plt
                 # for k in range(14):
                 #     plt.imshow(prior_segs[...,k])
@@ -245,10 +247,10 @@ class Dataset(object):
             model_variant=self.model_variant,
             prior_num_slice=self.prior_num_slice)
 
-        if self.guidance_type == "zeros":
-            prior_shape = label.get_shape().as_list()[1:3]
-            prior_shape.append(self.num_of_classes)
-            prior_segs = tf.zeros(prior_shape)
+        # if self.guidance_type == "zeros":
+        #     prior_shape = label.get_shape().as_list()[1:3]
+        #     prior_shape.append(self.num_of_classes)
+        #     prior_segs = tf.zeros(prior_shape)
             
         sample[common.IMAGE] = image
         if not self.is_training:
@@ -264,9 +266,15 @@ class Dataset(object):
         # if prior_imgs is not None:
         #     sample[common.PRIOR_IMGS] = prior_imgs
             
-        if prior_segs is not None:
+        if self.guidance_type == "gt":
+            sample[common.PRIOR_SEGS] = label
+        elif self.guidance_type in ("adaptive", "training_data_fusion", "training_data_fusion_h"):
             sample[common.PRIOR_SEGS] = prior_segs
-          
+        elif self.guidance_type == "ones":
+            sample[common.PRIOR_SEGS] = tf.ones_like(label)
+        else:
+            sample[common.PRIOR_SEGS] = None 
+             
         # Remove common.LABEL_CLASS key in the sample since it is only used to
         # derive label and not used in training and evaluation.
         sample.pop(common.LABELS_CLASS, None)

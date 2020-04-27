@@ -19,10 +19,15 @@ from core import features_extractor
 import input_preprocess
 from tensorflow.python.ops import math_ops
 import math
+from test_flownet import FlowNetS, WarpingLayer
+from core import stn, utils
+from utils import train_utils 
+
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
+loss_utils = train_utils.loss_utils
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -61,13 +66,10 @@ def create_training_path(train_logdir):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--share', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--guidance_acc', type=str, default="acc",
-                    help='')
-
 # Training configuration
+parser.add_argument('--seg_loss', type=str, default="cross_entropy_sigmoid",
+                    help='')
+
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
                     help='')
 
@@ -77,7 +79,7 @@ parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=14,
+parser.add_argument('--batch_size', type=int, default=24,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -86,7 +88,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=60000,
+parser.add_argument('--training_number_of_steps', type=int, default=30000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -123,7 +125,7 @@ parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
-parser.add_argument('--model_variant', type=str, default=None,
+parser.add_argument('--model_variant', type=str, default="unet",
                     help='')
 
 parser.add_argument('--z_label_method', type=str, default=None,
@@ -170,7 +172,7 @@ parser.add_argument('--regularization_weight', type=float, default=None,
 parser.add_argument('--learning_policy', type=str, default='poly',
                     help='')
 
-parser.add_argument('--base_learning_rate', type=float, default=5e-3,
+parser.add_argument('--base_learning_rate', type=float, default=1e-4,
                     help='')
 
 parser.add_argument('--learning_rate_decay_step', type=float, default=0,
@@ -234,18 +236,10 @@ parser.add_argument('--stn_exp_dy', type=int, default=None,
                     help='')
 
 
-def check_model_conflict(model_options):
-    if not model_options.decoder_type == "refinement_network":
-        assert FLAGS.guidance_type is None
-
-    # if FLAGS.affine_transform:
-    #     assert common.PRIOR_SEGS in dataset
-
-    # if FLAGS.deformable_transform:
-    #     assert common.PRIOR_SEGS in dataset and common.PRIOR_IMGS in dataset
+parser.add_argument('--learning_cases', type=str, default="img-prior",
+                    help='')
 
 
-    
 
 def _build_network(samples, outputs_to_num_classes, model_options, ignore_label):
   """Builds a clone of DeepLab.
@@ -261,114 +255,112 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
   samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
 
-  if 'prior_slices' in samples:
-    prior_slices = samples['prior_slices']
-  else:
-    prior_slices = None
-
-  if common.PRIOR_IMGS in samples:
-    samples[common.PRIOR_IMGS] = tf.identity(
-        samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
-  else:
-    samples[common.PRIOR_IMGS] = None
-
-  if common.PRIOR_SEGS in samples:
-    samples[common.PRIOR_SEGS] = tf.identity(
-        samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
-  else:
-    samples[common.PRIOR_SEGS] = None
-
-  if common.GUIDANCE in samples:
-    samples[common.GUIDANCE] = tf.identity(samples[common.GUIDANCE], name=common.GUIDANCE)
-  else:
-    samples[common.GUIDANCE] = None
 
   # TODO: moving_segs
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
   
-  # translations = tf.random_uniform([], minval=-15,maxval=15,dtype=tf.float32)
-  # angle = tf.random_uniform([], minval=-20,maxval=20,dtype=tf.float32)
+  # translations = tf.random_uniform([], minval=-10,maxval=10,dtype=tf.float32)
+  # angle = tf.random_uniform([], minval=-10,maxval=10,dtype=tf.float32)
   # angle = angle * math.pi / 180
-  # labels = samples[common.LABEL]
-  # samples[common.IMAGE] = spatial_transfom_exp(samples[common.IMAGE], angle, 
+  # transform_images = spatial_transfom_exp(samples[common.IMAGE], angle, 
   #                                             [translations,0], "BILINEAR")
-  # samples[common.LABEL] = spatial_transfom_exp(samples[common.LABEL], angle, 
+  # transform_labels = spatial_transfom_exp(samples[common.LABEL], angle, 
   #                                             [translations,0], "NEAREST")
-                                              
-  output_dict, layers_dict = model.pgb_network(
-                samples[common.IMAGE],
-                model_options=model_options,
-                affine_transform=FLAGS.affine_transform,
-                # deformable_transform=FLAGS.deformable_transform,
-                # labels=samples[common.LABEL],
-                samples=samples["organ_label"],
-                # prior_imgs=samples[common.PRIOR_IMGS],
-                prior_segs=samples[common.PRIOR_SEGS],
-                num_class=outputs_to_num_classes['semantic'],
-                # num_slices=samples[common.NUM_SLICES],
-                prior_slice=prior_slices,
-                batch_size=clone_batch_size,
-                z_label_method=FLAGS.z_label_method,
-                # z_label=samples[common.Z_LABEL],
-                guidance_type=FLAGS.guidance_type,
-                fusion_slice=FLAGS.fusion_slice,
-                prior_dir=FLAGS.prior_dir,
-                drop_prob=FLAGS.drop_prob,
-                guid_weight=FLAGS.guid_weight,
-                stn_in_each_class=True,
-                # prior_num_slice=FLAGS.prior_num_slice,
-                is_training=True,
-                # weight_decay=FLAGS.weight_decay,
-                # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                guidance_acc=FLAGS.guidance_acc,
-                share=FLAGS.share,
-                )
-
-  # Add name to graph node so we can add to summary.
-  output = output_dict[common.OUTPUT_TYPE]
-  output = tf.identity(output, name=common.OUTPUT_TYPE)
-
-  if common.Z_LABEL in samples:
-    samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
-  else:
-    samples[common.Z_LABEL] = None
-
-  if common.PRIOR_IMGS in output_dict:
-    prior_img = output_dict[common.PRIOR_IMGS]
-  else:
-    prior_img = None
-
-  if common.PRIOR_SEGS in output_dict:
-    prior_seg = output_dict[common.PRIOR_SEGS]
-  else:
-    prior_seg = None
-
-  if common.OUTPUT_Z in output_dict:
-    z_pred = output_dict[common.OUTPUT_Z]
-  else:
-    z_pred = None
+#   transform_images = samples[common.IMAGE]
+#   transform_labels = samples[common.LABEL]
+  net = FlowNetS()
   
-  if 'original_guidance' in output_dict:
-    guidance_original = output_dict['original_guidance']
-  else:
-    guidance_original = None
+  if FLAGS.learning_cases == "img-img":
+      input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.IMAGE]
+  elif FLAGS.learning_cases == "seg-seg":
+      input_a, input_b, query = samples[common.LABEL], transform_labels, samples[common.LABEL]
+  elif FLAGS.learning_cases == "img-seg":
+      input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.LABEL]
+  elif FLAGS.learning_cases == "img-prior":
+      input_a, input_b, query = samples[common.IMAGE], samples[common.PRIOR_SEGS], samples[common.PRIOR_SEGS]
+          
+  inputs = {"input_a": input_a, "input_b": input_b, "query": query}
+  training_schedule = {
+        # 'step_values': [400000, 600000, 800000, 1000000],
+        'step_values': [400000, 600000, 800000, 1000000],
+        'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
+        'momentum': 0.9,
+        'momentum2': 0.999,
+        'weight_decay': 0.0004,
+        'max_iter': FLAGS.training_number_of_steps,
+    }
+  with tf.variable_scope("flow_model"):
+    if FLAGS.model_variant == "unet":
+      concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
+      flow = utils._simple_unet(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+    elif FLAGS.model_variant == "FlowNet-S":
+      flow_dict = net.model(inputs, training_schedule, trainable=True)
+      flow = flow_dict["flow"]
+    elif FLAGS.model_variant == "resnet_decoder":
+      features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
+                                                                output_stride=FLAGS.output_stride,
+                                                                multi_grid=model_options.multi_grid,
+                                                                model_variant=model_options.model_variant,
+                                                                reuse=tf.AUTO_REUSE,
+                                                                is_training=True,
+                                                                fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+                                                                preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+
+      concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
+      flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+    # elif FLAGS.model_variant == "resnet_gap_mlp":
+    #   features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
+    #                                                             output_stride=FLAGS.output_stride,
+    #                                                             multi_grid=model_options.multi_grid,
+    #                                                             model_variant=model_options.model_variant,
+    #                                                             reuse=tf.AUTO_REUSE,
+    #                                                             is_training=True,
+    #                                                             fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+    #                                                             preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+
+    #   concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
+    #   gap_feature = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
+    #   prior_list = []
+    #   b = FLAGS.batch_size//FLAGS.num_clones
+    #   for k in range(14):
+    #       # theta = mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
+    #       theta = utils.mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
+    #       theta = tf.nn.sigmoid(theta)
+    #       theta.set_shape([b,6])
+    #       # rescale x and y to [0, W-1/H-1]
+    #       flow = stn.affine_grid_generator(256, 256, theta)
+    #       x, y = flow[...,0], flow[...,1]
+    #       x = tf.cast(x, 'float32')
+    #       y = tf.cast(y, 'float32')
+    #       x = 0.5 * ((x + 1.0) * tf.cast(256-1, 'float32'))
+    #       y = 0.5 * ((y + 1.0) * tf.cast(256-1, 'float32'))
+    #       flow_list.append()
+    #       # prior_class = prior_seg[...,k:k+1]
+    #       # prior_class.set_shape([batch_size,h,w,1])
+    #       # prior_list.append(stn.spatial_transformer_network(prior_class, theta))
+    #   prior_seg = tf.concat(prior_list, axis=3)
       
-  # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
-  # if len(guidance_dict) == 0:
-  #   guidance_dict = None
+      # flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+      
+  #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
+    if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
+      warp_func = WarpingLayer('bilinear')
+    elif FLAGS.learning_cases.split("-")[1] == "seg":
+      warp_func = WarpingLayer('nearest')
+      
+    pred = warp_func(query, flow)
+    output_dict = {common.OUTPUT_TYPE: pred,
+                  "flow": flow}
 
   # Log the summary
-  _log_summaries(samples[common.IMAGE],
+  _log_summaries(inputs["input_a"],
+                 inputs["input_b"],
+                 inputs["query"],
                  samples[common.LABEL],
                  outputs_to_num_classes['semantic'],
                  output_dict[common.OUTPUT_TYPE],
-                 z_label=samples[common.Z_LABEL],
-                 z_pred=z_pred,
-                 prior_imgs=prior_img,
-                 prior_segs=prior_seg,
-                 guidance=layers_dict,
-                 guidance_original=guidance_original)
-  return output_dict, layers_dict
+                 output_dict["flow"])
+  return inputs, output_dict
 
 
 def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, reuse_variable):
@@ -386,53 +378,39 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       tf.get_variable_scope(), reuse=True if reuse_variable else None):
     samples = iterator.get_next()
 
-    # if FLAGS.guidance_type == "gt":
-      
-      # if FLAGS.stn_exp_angle is not None:
-      #   angle = FLAGS.stn_exp_angle * math.pi / 180
-      # else:
-      #   angle = None
-        
-      # if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
-      #   translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
-      # else:
-      #   translations  = None
-        
-      # samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
-      #                                             translations, "NEAREST")
-
-    output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
+    inputs, output_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
                                               model_options, ignore_label)
 
-  loss_dict = {common.OUTPUT_TYPE: "mean_dice_coefficient"}
-  if common.OUTPUT_Z in output_dict:
-    if FLAGS.z_label_method == 'regression':
-      loss_dict[common.OUTPUT_Z] = 'MSE'
-    elif FLAGS.z_label_method == 'classification':
-      loss_dict[common.OUTPUT_Z] = 'cross_entropy_zlabel'
+  def get_loss(learning_cases):
+    total_loss = []
+    if learning_cases == "img-img":
+        similarity_loss = tf.compat.v1.losses.mean_squared_error(inputs["query"], output_dict[common.OUTPUT_TYPE])
+        total_loss.append(similarity_loss)
+    elif learning_cases == "seg-seg":
+        pass
+    elif learning_cases == "img-seg":
+        pass
+    elif learning_cases == "img-prior":
+        if FLAGS.seg_loss == "cross_entropy_sigmoid":
+          label = tf.one_hot(indices=samples[common.LABEL][...,0],
+                              depth=14,
+                              on_value=1,
+                              off_value=0,
+                              axis=3,
+                              )
+          label = tf.cast(label, tf.float32)
+        else:
+          label = samples[common.LABEL]
+        seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], label, cost_name=FLAGS.seg_loss)
+        total_loss.append(seg_loss)
+        
+    
+    # smoothing_loss
+    # total_loss.append(smoothing_loss)
+    return total_loss
 
-  if common.GUIDANCE in output_dict:
-    loss_dict[common.GUIDANCE] = "cross_entropy_sigmoid"
-
-  # TODO: Other voxel_morph loss
-  # TODO: Repeated clone name --> clone_0/Losses/clone_0/guidance_loss/mean_dice_coefficient
-  # TODO: loss summaries without decay
-  # TODO: assert correctness
-  # if FLAGS.affine_transform:
-  #   assert FLAGS.transform_loss_decay is not None
-  # if FLAGS.transform_loss_decay is not None:
-  #   assert FLAGS.affine_transform is True
-  clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
-  losses = train_utils.get_losses(output_dict, layers_dict,
-                                  samples,
-                                  loss_dict=loss_dict,
-                                  z_loss_decay=FLAGS.z_loss_decay,
-                                  # transformed_loss_decay=FLAGS.transformed_loss_decay,
-                                  guidance_loss_decay=FLAGS.guidance_loss_decay,
-                                  transform_loss_decay=FLAGS.transform_loss_decay,
-                                  batch_size=clone_batch_size)
-  seg_loss = losses[0]
-  
+  losses = get_loss(FLAGS.learning_cases)
+  similarity = losses[0]
   for loss in losses:
     tf.summary.scalar('Losses/%s' % loss.op.name, loss)
 
@@ -445,11 +423,10 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
   else:
       total_loss = tf.add_n(losses)
-  return total_loss, seg_loss
+  return total_loss, similarity
 
 
-def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, prior_imgs, prior_segs, 
-                   guidance, guidance_original):
+def _log_summaries(moving, fixed, output, label, num_of_classes, warping_output, flow):
   """Logs the summaries for the model.
   Args:
     input_image: Input image of the model. Its shape is [batch_size, height,
@@ -464,99 +441,25 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
 
   # Add summaries for images, labels, semantic predictions.
   if FLAGS.save_summaries_images:
-    tf.summary.image('samples/%s' % common.IMAGE, colorize(input_image, cmap='viridis'))
+    tf.summary.image('samples/%s' % "moving", colorize(moving, cmap='viridis'))
 
     # Scale up summary image pixel values for better visualization.
-    pixel_scaling = max(1, 255 // num_of_classes)
+    # pixel_scaling = max(1, 255 // num_of_classes)
 
-    summary_label = tf.cast(label * pixel_scaling, tf.uint8)
-    tf.summary.image('samples/%s' % common.LABEL, colorize(summary_label, cmap='viridis'))
+    # label = tf.cast(label * pixel_scaling, tf.uint8)
+    tf.summary.image('samples/%s' % "fixed", colorize(fixed[...,6:7], cmap='viridis'))
 
-    predictions = tf.expand_dims(tf.argmax(output, 3), -1)
-    summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
-    tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
+    # predictions = tf.expand_dims(tf.argmax(output, 3), -1)
+    # predictions = tf.cast(output * pixel_scaling, tf.uint8)
+    tf.summary.image('samples/%s' % "output", colorize(output[...,6:7], cmap='viridis'))
+    
+    tf.summary.image('samples/%s' % "output", colorize(label, cmap='viridis'))
 
-  # TODO: parameterization
-  if prior_imgs is not None:
-    tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
-
-  if guidance is not None:
-    # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
-    # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
+    tf.summary.image('samples/%s' % "warping_output", colorize(warping_output[...,6:7], cmap='viridis'))
     
-    if FLAGS.affine_transform:
-      tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
-      tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance_fullres_6', colorize(guidance_fullres[...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance_fullres_7', colorize(guidance_fullres[...,7:8], cmap='viridis'))
-    
-    guidance_list = tf.get_collection("guidance")
-    
-    tf.summary.image('guidance/%s' % 'f_guidance1_6', colorize(guidance_list[0][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance1_7', colorize(guidance_list[0][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance1_13', colorize(guidance_list[0][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance_list[1][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance_list[1][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_13', colorize(guidance_list[1][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'f_guidance2_6', colorize(guidance_list[2][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance2_7', colorize(guidance_list[2][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance2_13', colorize(guidance_list[2][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance_list[3][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance_list[3][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_13', colorize(guidance_list[3][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'f_guidance3_6', colorize(guidance_list[4][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance3_7', colorize(guidance_list[4][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance3_13', colorize(guidance_list[4][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance_list[5][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance_list[5][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_13', colorize(guidance_list[5][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'f_guidance4_6', colorize(guidance_list[6][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance4_7', colorize(guidance_list[6][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance4_13', colorize(guidance_list[6][...,13:14], cmap='viridis'))
-    
-    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance_list[7][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance_list[7][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_13', colorize(guidance_list[7][...,13:14], cmap='viridis'))
-    
-    
-    tf.summary.image('guidance/%s' % 'guidance_init_6', colorize(guidance['init_guid'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance_init_7', colorize(guidance['init_guid'][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance_init_13', colorize(guidance['init_guid'][...,13:14], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance5_6', colorize(guidance['guidance5'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance5_7', colorize(guidance['guidance5'][...,7:8], cmap='viridis'))
-   
-  if z_label is not None and z_pred is not None:
-    clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
-    
-    z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
-    z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
-    tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
-
-    z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
-    z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
-    tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
+    tf.summary.image('samples/%s' % "flow_x", colorize(flow[...,0:1], cmap='viridis'))
+    tf.summary.image('samples/%s' % "flow_y", colorize(flow[...,1:2], cmap='viridis'))
+    # TODO: flow
 
 
 def _average_gradients(tower_grads):
@@ -678,6 +581,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
 
 
 def main(unused_argv):
+    print(30*"o", FLAGS.seg_loss, FLAGS.guidance_type, FLAGS.model_variant)
     tf.logging.set_verbosity(tf.logging.INFO)
 
     tf.gfile.MakeDirs(FLAGS.train_logdir)
@@ -730,7 +634,6 @@ def main(unused_argv):
               outputs_to_num_classes=dataset.num_of_classes,
               crop_size=TRAIN_CROP_SIZE,
               output_stride=FLAGS.output_stride)
-            check_model_conflict(model_options)
             
             iterator = dataset.get_one_shot_iterator()
             # samples = iterator.get_next()
@@ -738,40 +641,6 @@ def main(unused_argv):
                 iterator, dataset.num_of_classes, model_options, 
                 dataset.ignore_label)
 
-            # dataset2 = data_generator.Dataset(
-            #     dataset_name=FLAGS.dataset,
-            #     split_name=FLAGS.train_split,
-            #     dataset_dir=FLAGS.dataset_dir,
-            #     affine_transform=FLAGS.affine_transform,
-            #     deformable_transform=FLAGS.deformable_transform,
-            #     batch_size=1,
-            #     HU_window=HU_WINDOW,
-            #     z_label_method=FLAGS.z_label_method,
-            #     guidance_type=FLAGS.guidance_type,
-            #     z_class=FLAGS.prior_num_slice,
-            #     crop_size=TRAIN_CROP_SIZE,
-            #     min_resize_value=FLAGS.min_resize_value,
-            #     max_resize_value=FLAGS.max_resize_value,
-            #     resize_factor=FLAGS.resize_factor,
-            #     min_scale_factor=FLAGS.min_scale_factor,
-            #     max_scale_factor=FLAGS.max_scale_factor,
-            #     scale_factor_step_size=FLAGS.scale_factor_step_size,
-            #     # model_variant=FLAGS.model_variant,
-            #     num_readers=2,
-            #     is_training=False,
-            #     shuffle_data=False,
-            #     repeat_data=True,
-            #     prior_num_slice=FLAGS.prior_num_slice,
-            #     prior_num_subject=FLAGS.prior_num_subject,
-            #     prior_dir=FLAGS.prior_dir)
-            
-            
-            
-
-            # with tf.name_scope('clone_0') as scope:
-            #   test_tensor, seg = _tower_loss(iterator2, dataset.num_of_classes, model_options, dataset.ignore_label, scope, 
-            #               reuse_variable=tf.AUTO_REUSE)
-            
             
             # Soft placement allows placing on CPU ops without GPU implementation.
             session_config = tf.ConfigProto(
@@ -788,38 +657,6 @@ def main(unused_argv):
                     initialize_last_layer=FLAGS.initialize_last_layer,
                     # last_layers,
                     ignore_missing_vars=True)
-
-
-            # count_training = 1
-            
-            
-            # train_iterator = dataset.get_one_shot_iterator()
-            # train_handle = train_iterator.string_handle()
-            # # sess = tf.Session()
-            # # a=train_iterator.string_handle()
-            # # b=sess.run(a)
-            # # print(a, b, 30*"q")
-            # # if isinstance(b, str):
-            # #   print(30*"a")
-            # # train_iterator_handle = sess.run(train_iterator.string_handle())
-
-            
-
-            # test_iterator = dataset2.get_one_shot_iterator()
-            # test_handle = test_iterator.string_handle()
-            # # test_iterator_handle = sess.run(test_iterator.string_handle())
-
-            # handle = tf.placeholder(tf.string, shape=[], name="handle")
-            # iterator = tf.data.Iterator.from_string_handle(
-            #     handle, train_iterator.output_types, train_iterator.output_shapes)
-            # next_element = iterator.get_next()
-
-            # loss, summary_op = _train_deeplab_model(
-            #     next_element, dataset.num_of_classes, model_options, 
-            #     dataset.ignore_label)
-
-            # # train_iterator_handle = sess.run(train_iterator.string_handle())
-            # # train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
 
             scaffold = tf.train.Scaffold(
                 init_fn=init_fn,
@@ -842,30 +679,7 @@ def main(unused_argv):
                 hooks=[stop_hook]) as sess:
                 while not sess.should_stop():
                       sess.run([train_tensor])
-                  # count_training = 0
-                  
-                  # while not sess.should_stop():
-                  #     train_iterator_handle = sess.run(train_handle)
-                      
-                  #     train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
-                  #     print(count_training, train_loss)
-                  #     count_training += 1
-                      
-                  #     # we do periodic validation
-                  #     if count_training % 20 == 0:
-                  #         count_validation = 0
-                  #         while not sess.should_stop():
-                  #             test_iterator_handle = sess.run(test_handle)
-                  #             test_loss = sess.run(loss, feed_dict={handle: test_iterator_handle})
-                  #             print(count_validation, test_loss)
-                  #             count_validation += 1
-                  #   # if j%2 == 0:
-                  #   #   for step in range(668):
-                  #   #     if step % 20 == 0:
-                  #   #       print(step)
-                  #   #       print(test_tensor)
-                  #   # j+=1
-
+                
 
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()

@@ -10,7 +10,42 @@ from core import preprocess_utils
 from core import utils
 import common
 # from utils import loss_utils
+_EPSILON = 1e-5
 
+
+def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
+    ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
+
+    # If logits are provided then convert the predictions into probabilities
+    if from_logits:
+        pred_prob = tf.sigmoid(y_pred)
+    else:
+        pred_prob = y_pred
+
+    p_t = (y_true * pred_prob) + ((1 - y_true) * (1 - pred_prob))
+    alpha_factor = 1.0
+    modulating_factor = 1.0
+
+    if alpha:
+        alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
+
+    if gamma:
+        modulating_factor = tf.pow((1.0 - p_t), gamma)
+
+    # compute the final loss and return
+    return tf.reduce_sum(alpha_factor * modulating_factor * ce)
+                         
+  # p = tf.nn.sigmoid(labels)
+  # q = 1 - p
+  
+  # p = tf.math.maximum(p, _EPSILON)
+  # q = tf.math.maximum(q, _EPSILON)
+    
+  # pos_loss = -alpha * ((1-p)**gamma) * tf.log(p)
+  # neg_loss = -alpha * ((1-q)**gamma) * tf.log(q)
+  # focal_loss = labels*pos_loss + (1-labels)*neg_loss
+  # focal_loss = tf.reduce_sum(focal_loss)
+  # return focal_loss
 
 
 def loss_utils(logits, labels, cost_name, **cost_kwargs):
@@ -22,26 +57,31 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
     regularizer: power of the L2 regularizers added to the loss function
     """
     if cost_name == "cross_entropy":
-        flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
-        flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
+        add_softmax_cross_entropy_loss_for_each_scale(logits,
+                                                    labels,
+                                                    14,
+                                                    -1)
+        loss = tf.losses.get_losses()[0]
+        # flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
+        # flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
         
-        class_weights = cost_kwargs.pop("class_weights", None)
+        # class_weights = cost_kwargs.pop("class_weights", None)
         
-        if class_weights is not None:
-            class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
+        # if class_weights is not None:
+        #     class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
     
-            weight_map = tf.multiply(flat_labels, class_weights)
-            weight_map = tf.reduce_sum(weight_map, axis=1)
+        #     weight_map = tf.multiply(flat_labels, class_weights)
+        #     weight_map = tf.reduce_sum(weight_map, axis=1)
     
-            loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-                                                                labels=flat_labels)
-            weighted_loss = tf.multiply(loss_map, weight_map)
+        #     loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
+        #                                                         labels=flat_labels)
+        #     weighted_loss = tf.multiply(loss_map, weight_map)
     
-            loss = tf.reduce_mean(weighted_loss)
+        #     loss = tf.reduce_mean(weighted_loss)
             
-        else:
-            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, 
-                                                                            labels=flat_labels))
+        # else:
+        #     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, 
+        #                                                                     labels=flat_labels))
 
             
     elif cost_name == "KL_divergence":
@@ -99,6 +139,7 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
             
     elif cost_name == "mean_dice_coefficient":       
         eps = 1e-5
+        batch_size = cost_kwargs.pop("batch_size", None)
         # TODO: num_class variables or change in datagenerator
         is_onehot = cost_kwargs.pop("is_onehot", True)
         if is_onehot:
@@ -118,13 +159,36 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
 
         loss = (2*intersection+eps) / (union+eps)
         loss = 1 - tf.reduce_mean(loss)
+
+        # if is_onehot:
+        #   labels = tf.one_hot(indices=labels,
+        #                       depth=14,
+        #                       on_value=1,
+        #                       off_value=0,
+        #                       axis=-1,
+        #                       )
+        # gt = tf.reshape(labels, [batch_size, -1, labels.get_shape()[-1]])
+        # gt = tf.cast(gt, tf.float32)
+        # prediction = tf.nn.softmax(logits)
+        # prediction = tf.reshape(prediction, [batch_size, -1, logits.get_shape()[-1]])
         
+        # intersection = tf.reduce_sum(gt*prediction, axis=1)
+        # union = tf.reduce_sum(gt, axis=1) + tf.reduce_sum(prediction, axis=1)
+        # loss = 1 - tf.reduce_mean((2*intersection+eps)/(union+eps), axis=1)
+        # loss = tf.reduce_mean(loss)
+
     elif cost_name == "MSE":
         loss = tf.losses.mean_squared_error(
                                         labels,
                                         logits,
                                         )
-        
+    elif cost_name == "binary_focal_sigmoid":
+      alpha = cost_kwargs.pop("alpha", 0.25)
+      gamma = cost_kwargs.pop("gamma", 2.0)
+      flat_logits = tf.reshape(logits, [-1, ])
+      flat_labels = tf.reshape(labels, [-1, ])
+      loss = binary_focal_sigmoid_loss(flat_labels, flat_logits, alpha, gamma)   
+      
     else:
         raise ValueError("Unknown cost function: "%cost_name)
 
@@ -142,10 +206,13 @@ def get_losses(output_dict,
                z_loss_decay=None, 
                transformed_loss_decay=None, 
                guidance_loss_decay=None,
-               transform_loss_decay=None):
+               transform_loss_decay=None,
+               batch_size=None):
     # TODO: auxlarity loss in latent
     losses = []
-    seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
+    seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], samples[common.LABEL], 
+                          cost_name=loss_dict[common.OUTPUT_TYPE],
+                          batch_size=batch_size)
     seg_loss = tf.identity(seg_loss, name='/'.join(['segmentation_loss', loss_dict[common.OUTPUT_TYPE]]))
     losses.append(seg_loss)
     
@@ -167,7 +234,7 @@ def get_losses(output_dict,
       
       for name, value in layers_dict.items():
           if 'guidance' in name:
-              value = tf.nn.sigmoid(value)
+              # value = tf.nn.sigmoid(value)
               value = tf.compat.v2.image.resize(value, [ny, nx])
               
               guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.GUIDANCE])
@@ -358,6 +425,8 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
   if gt_is_matting_map and not labels.dtype.is_floating:
     raise ValueError('Labels must be floats if groundtruth is a matting map.')
 
+  # TODO:
+  scales_to_logits = {"1": scales_to_logits}
   for scale, logits in six.iteritems(scales_to_logits):
     loss_scope = None
     if scope:
