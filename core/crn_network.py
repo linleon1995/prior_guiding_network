@@ -178,7 +178,7 @@ def refinement_network(features,
                 elif guid_acc == "acc_init":
                     guidance = guidance * guidance_last + guidance_last
                     guid_in = tf.image.resize_bilinear(guidance_in, [h, w])
-                    p = tf.Variable(0.5)
+                    p = tf.get_variable(name='guid_w', shape=[1], initializer=tf.constant_initializer(0.5))
                     guidance = p*guidance + (1-p)*guid_in
                     
                 tf.add_to_collection("guidance", guidance)

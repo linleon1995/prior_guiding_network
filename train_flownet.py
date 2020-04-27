@@ -67,7 +67,7 @@ def create_training_path(train_logdir):
 parser = argparse.ArgumentParser()
 
 # Training configuration
-parser.add_argument('--seg_loss', type=str, default="cross_entropy_sigmoid",
+parser.add_argument('--seg_loss', type=str, default="mean_dice_coefficient",
                     help='')
 
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
@@ -292,7 +292,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   with tf.variable_scope("flow_model"):
     if FLAGS.model_variant == "unet":
       concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
-      flow = utils._simple_unet(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+      flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
     elif FLAGS.model_variant == "FlowNet-S":
       flow_dict = net.model(inputs, training_schedule, trainable=True)
       flow = flow_dict["flow"]

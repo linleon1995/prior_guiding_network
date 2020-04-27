@@ -44,13 +44,17 @@ EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
 IMG_LIST = []
-IMG_LIST = [60, 64, 70, 82, 222, 227, 350, 481]
+# IMG_LIST = [60, 64, 70, 82, 222, 227, 350, 481]
+
+THRESHOLD = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+# THRESHOLD = [0.5, 0.9]
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000' # fusion, gradually, meandsc loss, no feature adding
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_043/model.ckpt-30000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-30000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_058/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_058/model.ckpt-30000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_059/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -213,7 +217,7 @@ def main(unused_argv):
                 num_readers=2,
                 is_training=False,
                 shuffle_data=False,
-                repeat_data=False,
+                repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 prior_dir=FLAGS.prior_dir)             
@@ -244,10 +248,12 @@ def main(unused_argv):
     image_placeholder = tf.placeholder(tf.float32, shape=[1,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
     label_placeholder = tf.placeholder(tf.int32, shape=[None,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
     num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
+    threshold_placeholder = tf.placeholder(tf.float32)
     
     placeholder_dict = {common.IMAGE: image_placeholder,
                         common.LABEL: label_placeholder,
-                        common.NUM_SLICES: num_slices_placeholder}
+                        common.NUM_SLICES: num_slices_placeholder,
+                        "threshold": threshold_placeholder}
 
     if common.Z_LABEL in samples:
       samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
@@ -342,12 +348,12 @@ def main(unused_argv):
                                                                   multi_grid=model_options.multi_grid,
                                                                   model_variant=model_options.model_variant,
                                                                   reuse=tf.AUTO_REUSE,
-                                                                  is_training=True,
+                                                                  is_training=False,
                                                                   fine_tune_batch_norm=model_options.fine_tune_batch_norm,
                                                                   preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
         concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
-        flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+        flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=False)
         
     #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
     if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
@@ -360,19 +366,19 @@ def main(unused_argv):
                     "flow": flow}
     
     
-    # # Add name to graph node so we can add to summary.
+    # Add name to graph node so we can add to summary.
     before_transform = query
-    # before_transform = tf.cast(before_transform, tf.int32)
+    after_transform = pred
     pred_b = tf.reshape(before_transform, shape=[-1,])
     
-    
+    assert len(THRESHOLD) > 0
     cm_list = []
     for c in range(dataset.num_of_classes):
       pred_a = pred[...,c]
-      if FLAGS.threshold is not None:
-        one = tf.ones_like(pred_a)
-        zero = tf.zeros_like(pred_a)
-        pred_a = tf.where(pred_a>FLAGS.threshold, x=one, y=zero)
+      
+      one = tf.ones_like(pred_a)
+      zero = tf.zeros_like(pred_a)
+      pred_a = tf.where(pred_a>placeholder_dict["threshold"], x=one, y=zero)
       pred_a_flat = tf.reshape(pred_a, shape=[-1,])  
       
       labels = tf.squeeze(placeholder_dict[common.LABEL], axis=3)
@@ -417,8 +423,8 @@ def main(unused_argv):
     
     cm_total_a = 0
     cm_total_b = 0
-    cm_total = 0
-    
+    xx = 10*[]
+    dsc_in_diff_th = [[] for _ in range(dataset.num_of_classes)]
     _cm_g1_t, _cm_g2_t, _cm_g3_t, _cm_g4_t = 0, 0, 0, 0
     total_eval_z = 0
     foreground_pixel = 0
@@ -447,37 +453,53 @@ def main(unused_argv):
         display_imgs = IMG_LIST
         
     # TODO:         
-    for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
-        data = sess.run(samples)
-        _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-        print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
-        
-        # # Segmentation Evaluation
-        cm_slice, p = sess.run([cm_class, pred], feed_dict=_feed_dict)
-        cm_total += cm_slice
-        if i in (64, 70):
-          plt.imshow(p[0,...,6])
-          plt.show()
-        # if i in display_imgs:
-          # pred_a, pred_b = sess.run([after_transform, before_transform], feed_dict=_feed_dict)
-          # show_transform_results.set_title(["before", "after", "label"])
-          # show_transform_results.set_axis_off()
-          # for c in range(14):
-          #   show_transform_results.display_figure(FLAGS.eval_split+'-transform_compare-%04d-%03d' %(i,c),
-          #                                   [pred_b[0,...,c], 
-          #                                    pred_a[0,...,c], 
-          #                                    np.int32(data[common.LABEL][0,...,0]==c)],
-          #                                   parameters=None)
-        
-    for c in range(14):
-      print(30*str(c))
-      print(20*"=", "Before Transform Segmentation Evaluation", 20*"=")
-      mean_iou = eval_utils.compute_mean_iou(cm_total[c])
-      mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total[c])
-      pixel_acc = eval_utils.compute_accuracy(cm_total[c])
+    for idx, th in enumerate(THRESHOLD):
+      cm_total = 0
+      for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
+          data = sess.run(samples)
+          _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
+          _feed_dict[placeholder_dict["threshold"]] = th
+          print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
+          
+          # Segmentation Evaluation
+          cm_slice = sess.run(cm_class, feed_dict=_feed_dict)
+          cm_total += cm_slice
+          
+          
+          if idx==0 and i in display_imgs:
+            # Transform Comparision
+            pred_a, pred_b = sess.run([after_transform, before_transform], feed_dict=_feed_dict)
+            show_transform_results.set_title(["before", "after", "ground_truth"])
+            show_transform_results.set_axis_off()
+            for c in range(14):
+              show_transform_results.display_figure(FLAGS.eval_split+'-transform_compare-%04d-%03d-%02f' %(i,c,th),
+                                              [pred_b[0,...,c], 
+                                               pred_a[0,...,c], 
+                                               np.int32(data[common.LABEL][0,...,0]==c)],
+                                              parameters=None)
+            
+            # Flow Visualization
+      m_dsc = []
+      for c in range(1, dataset.num_of_classes):      
+        mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total[c])
+        dsc_in_diff_th[c-1].append(dice_score[1])
+        m_dsc.append(dice_score[1])
+      dsc_in_diff_th[dataset.num_of_classes-1].append(sum(m_dsc)/len(m_dsc))
+        # dsc_in_diff_th[th] = dice_score
+    # for c in range(14):
+    #   print(30*str(c))
+    #   print(20*"=", "Before Transform Segmentation Evaluation", 20*"=")
+    #   mean_iou = eval_utils.compute_mean_iou(cm_total[c])
+    #   mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total[c])
+    #   pixel_acc = eval_utils.compute_accuracy(cm_total[c])
       
-      _, _ = eval_utils.precision_and_recall(cm_total[c])
+      # _, _ = eval_utils.precision_and_recall(cm_total[c])
     
+
+    # Eval of performance trend
+
+    eval_utils.eval_flol_model(dsc_in_diff_th, THRESHOLD)
+
     # print(10*"=", "After Transform Segmentation Evaluation", 10*"=")
     # mean_iou = eval_utils.compute_mean_iou(cm_total_a)
     # mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total_a)

@@ -9,8 +9,35 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
-
+class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader", 
+                  5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC", 
+                  10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+
+def eval_flol_model(dsc_in_diff_th, threshold):
+    """
+    """
+    ll = []
+    _, ax = plt.subplots(1,1)
+    num_class = len(dsc_in_diff_th)
+    for i, c in enumerate(dsc_in_diff_th):
+        if i < num_class-1:
+            label = class_to_organ[i+1]
+        else:
+            label = "mean"
+        if i+1 > 10:
+            ax.plot(threshold, c, "*-", label=label)
+        else:
+            ax.plot(threshold, c, label=label)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper right')
+    ax.set_xticks(threshold, minor=False)
+    ax.grid(True)
+    ax.set_title("Threshold to DSC for each calss")
+    ax.set_xlabel("Threshold")
+    ax.set_ylabel("Dice Score")
+    plt.show()
 
 class Build_Pyplot_Subplots(object):
     def __init__(self, saving_path, is_showfig, is_savefig, subplot_split, type_list):
