@@ -79,7 +79,7 @@ parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=20,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -88,7 +88,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=30000,
+parser.add_argument('--training_number_of_steps', type=int, default=50000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -125,7 +125,7 @@ parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
-parser.add_argument('--model_variant', type=str, default="unet",
+parser.add_argument('--model_variant', type=str, default="resnet_decoder",
                     help='')
 
 parser.add_argument('--z_label_method', type=str, default=None,
@@ -268,7 +268,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   #                                             [translations,0], "NEAREST")
 #   transform_images = samples[common.IMAGE]
 #   transform_labels = samples[common.LABEL]
-  net = FlowNetS()
+  
   
   if FLAGS.learning_cases == "img-img":
       input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.IMAGE]
@@ -294,10 +294,12 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
       concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
       flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
     elif FLAGS.model_variant == "FlowNet-S":
+      net = FlowNetS()
       flow_dict = net.model(inputs, training_schedule, trainable=True)
       flow = flow_dict["flow"]
     elif FLAGS.model_variant == "resnet_decoder":
-      features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
+      in_node = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
+      features, _ = features_extractor.extract_features(images=in_node,
                                                                 output_stride=FLAGS.output_stride,
                                                                 multi_grid=model_options.multi_grid,
                                                                 model_variant=model_options.model_variant,
@@ -306,8 +308,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                                                                 fine_tune_batch_norm=model_options.fine_tune_batch_norm,
                                                                 preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
-      concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
-      flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+      flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
     # elif FLAGS.model_variant == "resnet_gap_mlp":
     #   features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
     #                                                             output_stride=FLAGS.output_stride,

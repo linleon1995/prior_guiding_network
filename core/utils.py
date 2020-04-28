@@ -168,7 +168,9 @@ def _simple_decoder(inputs, out, stage=None, channels=None, scope=None, is_train
       h, w = inputs.get_shape().as_list()[1:3]
       up = tf.image.resize_bilinear(inputs, [2*h, 2*w])
       inputs = conv_block(up, channels, "up_conv_block"+str(s), is_training)
-    return inputs    
+    outputs = conv2d(inputs, [3,3,channels,out], activate=None, is_training=is_training, scope="output_conv")
+    return outputs    
+           
            
 def _simple_unet(inputs, out, stage=None, channels=None, scope=None, is_training=None):
     with tf.variable_scope(scope, 'simple_unet'):

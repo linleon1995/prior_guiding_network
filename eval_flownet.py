@@ -50,11 +50,13 @@ THRESHOLD = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # THRESHOLD = [0.5, 0.9]
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000' # fusion, gradually, meandsc loss, no feature adding
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_043/model.ckpt-30000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-30000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_058/model.ckpt-30000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_059/model.ckpt-30000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_043/model.ckpt-30000'
+# # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_058/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_059/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-50000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -161,7 +163,7 @@ parser.add_argument('--learning_cases', type=str, default="img-prior",
 parser.add_argument('--threshold', type=float, default=0.5,
                     help='')
 
-parser.add_argument('--model_variant', type=str, default="unet",
+parser.add_argument('--model_variant', type=str, default="resnet_decoder",
                     help='')
 
 
@@ -315,7 +317,7 @@ def main(unused_argv):
                                                 [translations,0], "NEAREST")
     #   transform_images = samples[common.IMAGE]
     #   transform_labels = samples[common.LABEL]
-    net = FlowNetS()
+    
     if FLAGS.learning_cases == "img-img":
         input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.IMAGE]
     elif FLAGS.learning_cases == "seg-seg":
@@ -340,20 +342,21 @@ def main(unused_argv):
         concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
         flow = utils._simple_unet(concat_inputs, out=2, stage=3, channels=32, is_training=True)
       elif FLAGS.model_variant == "FlowNet-S":
+        net = FlowNetS()
         flow_dict = net.model(inputs, training_schedule, trainable=True)
         flow = flow_dict["flow"]
       elif FLAGS.model_variant == "resnet_decoder":
-        features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
+        inputs = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
+        features, _ = features_extractor.extract_features(images=inputs,
                                                                   output_stride=FLAGS.output_stride,
                                                                   multi_grid=model_options.multi_grid,
                                                                   model_variant=model_options.model_variant,
                                                                   reuse=tf.AUTO_REUSE,
-                                                                  is_training=False,
+                                                                  is_training=True,
                                                                   fine_tune_batch_norm=model_options.fine_tune_batch_norm,
                                                                   preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
-        concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
-        flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=False)
+        flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
         
     #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
     if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
