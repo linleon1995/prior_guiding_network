@@ -43,7 +43,7 @@ ATROUS_RATES = None
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
-IMG_LIST = []
+# IMG_LIST = []
 # IMG_LIST = [60, 64, 70, 82, 222, 227, 350, 481]
 
 THRESHOLD = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -57,6 +57,7 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-30000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-50000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -163,7 +164,7 @@ parser.add_argument('--learning_cases', type=str, default="img-prior",
 parser.add_argument('--threshold', type=float, default=0.5,
                     help='')
 
-parser.add_argument('--model_variant', type=str, default="resnet_decoder",
+parser.add_argument('--model_variant', type=str, default="unet",
                     help='')
 
 

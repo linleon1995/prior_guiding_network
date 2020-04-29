@@ -27,6 +27,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
+PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_033/model.ckpt-0'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
 
@@ -66,6 +67,10 @@ parser.add_argument('--share', type=bool, default=True,
 
 parser.add_argument('--guidance_acc', type=str, default="acc",
                     help='')
+
+parser.add_argument('--flow_model_type', type=str, default="resnet_decoder",
+                    help='')
+
 
 # Training configuration
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
@@ -147,16 +152,16 @@ parser.add_argument('--prior_num_subject', type=int, default=20,
 parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
                     help='')
 
-parser.add_argument('--z_loss_decay', type=float, default=1.0,
+parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--transform_loss_decay', type=float, default=None,
+parser.add_argument('--transform_loss_decay', type=float, default=1e-1,
                     help='')
 
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
@@ -238,6 +243,9 @@ def check_model_conflict(model_options):
     if not model_options.decoder_type == "refinement_network":
         assert FLAGS.guidance_type is None
 
+    if FLAGS.affine_transform:
+        assert FLAGS.transform_loss_decay is not None
+        
     # if FLAGS.affine_transform:
     #     assert common.PRIOR_SEGS in dataset
 
@@ -322,6 +330,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
+                flow_model_type=FLAGS.flow_model_type,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -372,80 +381,56 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
 
 
 def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, reuse_variable):
-  """Calculates the total loss on a single tower running the deeplab model.
-  Args:
-    iterator: An iterator of type tf.data.Iterator for images and labels.
-    num_of_classes: Number of classes for the dataset.
-    ignore_label: Ignore label for the dataset.
-    scope: Unique prefix string identifying the deeplab tower.
-    reuse_variable: If the variable should be reused.
-  Returns:
-     The total loss for a batch of data.
-  """
-  with tf.variable_scope(
-      tf.get_variable_scope(), reuse=True if reuse_variable else None):
-    samples = iterator.get_next()
+    """Calculates the total loss on a single tower running the deeplab model.
+    Args:
+        iterator: An iterator of type tf.data.Iterator for images and labels.
+        num_of_classes: Number of classes for the dataset.
+        ignore_label: Ignore label for the dataset.
+        scope: Unique prefix string identifying the deeplab tower.
+        reuse_variable: If the variable should be reused.
+    Returns:
+        The total loss for a batch of data.
+    """
+    with tf.variable_scope(
+        tf.get_variable_scope(), reuse=True if reuse_variable else None):
+        samples = iterator.get_next()
+        output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
+                                                model_options, ignore_label)
 
-    # if FLAGS.guidance_type == "gt":
-      
-      # if FLAGS.stn_exp_angle is not None:
-      #   angle = FLAGS.stn_exp_angle * math.pi / 180
-      # else:
-      #   angle = None
+    loss_dict = {}
+    loss_dict[common.OUTPUT_TYPE] = {"loss": "mean_dice_coefficient","decay": None}
+
+    if FLAGS.z_loss_decay is not None:
+        if FLAGS.z_label_method == 'regression':
+            loss_dict[common.OUTPUT_Z] = {"loss": "MSE", "decay": FLAGS.z_loss_decay}
+        elif FLAGS.z_label_method == 'classification':
+            loss_dict[common.OUTPUT_Z] = {"loss": "cross_entropy_zlabel", "decay": FLAGS.z_loss_decay}
+
+    if FLAGS.guidance_loss_decay is not None:
+        loss_dict[common.GUIDANCE] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.guidance_loss_decay}
+
+    if FLAGS.transform_loss_decay is not None:
+        loss_dict["transform"] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.transform_loss_decay}
         
-      # if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
-      #   translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
-      # else:
-      #   translations  = None
-        
-      # samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
-      #                                             translations, "NEAREST")
+    clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
+    losses = train_utils.get_losses(output_dict, layers_dict, samples,
+                                    loss_dict=loss_dict,
+                                    batch_size=clone_batch_size)
+    seg_loss = losses[0]
+    for loss in losses:
+        tf.summary.scalar('Losses/%s' % loss.op.name, loss)
 
-    output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes}, 
-                                              model_options, ignore_label)
 
-  loss_dict = {common.OUTPUT_TYPE: "mean_dice_coefficient"}
-  if common.OUTPUT_Z in output_dict:
-    if FLAGS.z_label_method == 'regression':
-      loss_dict[common.OUTPUT_Z] = 'MSE'
-    elif FLAGS.z_label_method == 'classification':
-      loss_dict[common.OUTPUT_Z] = 'cross_entropy_zlabel'
-
-  if common.GUIDANCE in output_dict:
-    loss_dict[common.GUIDANCE] = "cross_entropy_sigmoid"
-
-  # TODO: Other voxel_morph loss
-  # TODO: Repeated clone name --> clone_0/Losses/clone_0/guidance_loss/mean_dice_coefficient
-  # TODO: loss summaries without decay
-  # TODO: assert correctness
-  # if FLAGS.affine_transform:
-  #   assert FLAGS.transform_loss_decay is not None
-  # if FLAGS.transform_loss_decay is not None:
-  #   assert FLAGS.affine_transform is True
-  clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
-  losses = train_utils.get_losses(output_dict, layers_dict,
-                                  samples,
-                                  loss_dict=loss_dict,
-                                  z_loss_decay=FLAGS.z_loss_decay,
-                                  # transformed_loss_decay=FLAGS.transformed_loss_decay,
-                                  guidance_loss_decay=FLAGS.guidance_loss_decay,
-                                  transform_loss_decay=FLAGS.transform_loss_decay,
-                                  batch_size=clone_batch_size)
-  seg_loss = losses[0]
-  
-  for loss in losses:
-    tf.summary.scalar('Losses/%s' % loss.op.name, loss)
-
-  if FLAGS.regularization_weight is not None:
-      regularization_loss = tf.losses.get_regularization_loss(scope=scope)
-      regularization_loss = FLAGS.regularization_weight * regularization_loss
-      regularization_loss = tf.identity(regularization_loss, name='regularization_loss_with_decay')
-      tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
-                        regularization_loss)
-      total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
-  else:
-      total_loss = tf.add_n(losses)
-  return total_loss, seg_loss
+    if FLAGS.regularization_weight is not None:
+        regularization_loss = tf.losses.get_regularization_loss(scope=scope)
+        regularization_loss = FLAGS.regularization_weight * regularization_loss
+        regularization_loss = tf.identity(regularization_loss, name='regularization_loss_with_decay')
+        tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
+                            regularization_loss)
+        total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
+    else:
+        total_loss = tf.add_n(losses)
+    return total_loss, seg_loss
 
 
 def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, prior_imgs, prior_segs, 

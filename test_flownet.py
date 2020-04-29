@@ -8,9 +8,55 @@ import numpy as np
 import os
 import math
 import tensorflow as tf
+
+import common
+from core import features_extractor, utils
 slim = tf.contrib.slim
 
 
+def build_flow_model(inputs, samples, model_variant, model_options, learning_cases):
+    if model_variant == "resnet_decoder":
+        in_node = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
+        features, _ = features_extractor.extract_features(images=in_node,
+                                                            output_stride=model_options.output_stride,
+                                                            multi_grid=model_options.multi_grid,
+                                                            model_variant=model_options.model_variant,
+                                                            reuse=tf.AUTO_REUSE,
+                                                            is_training=True,
+                                                            fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+                                                            preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+
+    with tf.variable_scope("flow_model"):
+        if model_variant == "unet":
+            concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
+            flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
+        elif model_variant == "FlowNet-S":
+            training_schedule = {
+                # 'step_values': [400000, 600000, 800000, 1000000],
+                'step_values': [400000, 600000, 800000, 1000000],
+                'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
+                'momentum': 0.9,
+                'momentum2': 0.999,
+                'weight_decay': 0.0004,
+                'max_iter': 30000,
+                }
+            net = FlowNetS()
+            flow_dict = net.model(inputs, training_schedule, trainable=True)
+            flow = flow_dict["flow"]
+        elif model_variant == "resnet_decoder":
+            flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
+        
+        
+    #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
+        if learning_cases.split("-")[1] in ("img", "prior"):
+            warp_func = WarpingLayer('bilinear')
+        elif learning_cases.split("-")[1] == "seg":
+            warp_func = WarpingLayer('nearest')
+        
+        pred = warp_func(inputs["query"], flow)
+        output_dict = {common.OUTPUT_TYPE: pred,
+                    "flow": flow}
+    return output_dict
 
 class Mode(Enum):
     TRAIN = 1

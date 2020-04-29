@@ -19,9 +19,8 @@ from core import features_extractor
 import input_preprocess
 from tensorflow.python.ops import math_ops
 import math
-from test_flownet import FlowNetS, WarpingLayer
+from test_flownet import build_flow_model
 from core import stn, utils
-from utils import train_utils 
 
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
@@ -79,7 +78,7 @@ parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=20,
+parser.add_argument('--batch_size', type=int, default=18,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -88,7 +87,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=50000,
+parser.add_argument('--training_number_of_steps', type=int, default=30000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -277,81 +276,14 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   elif FLAGS.learning_cases == "img-seg":
       input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.LABEL]
   elif FLAGS.learning_cases == "img-prior":
-      input_a, input_b, query = samples[common.IMAGE], samples[common.PRIOR_SEGS], samples[common.PRIOR_SEGS]
+      prior_seg = samples[common.PRIOR_SEGS][...,0]
+      input_a, input_b, query = samples[common.IMAGE], prior_seg, prior_seg
           
   inputs = {"input_a": input_a, "input_b": input_b, "query": query}
-  training_schedule = {
-        # 'step_values': [400000, 600000, 800000, 1000000],
-        'step_values': [400000, 600000, 800000, 1000000],
-        'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
-        'momentum': 0.9,
-        'momentum2': 0.999,
-        'weight_decay': 0.0004,
-        'max_iter': FLAGS.training_number_of_steps,
-    }
-  with tf.variable_scope("flow_model"):
-    if FLAGS.model_variant == "unet":
-      concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
-      flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
-    elif FLAGS.model_variant == "FlowNet-S":
-      net = FlowNetS()
-      flow_dict = net.model(inputs, training_schedule, trainable=True)
-      flow = flow_dict["flow"]
-    elif FLAGS.model_variant == "resnet_decoder":
-      in_node = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
-      features, _ = features_extractor.extract_features(images=in_node,
-                                                                output_stride=FLAGS.output_stride,
-                                                                multi_grid=model_options.multi_grid,
-                                                                model_variant=model_options.model_variant,
-                                                                reuse=tf.AUTO_REUSE,
-                                                                is_training=True,
-                                                                fine_tune_batch_norm=model_options.fine_tune_batch_norm,
-                                                                preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
-      flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
-    # elif FLAGS.model_variant == "resnet_gap_mlp":
-    #   features, _ = features_extractor.extract_features(images=samples[common.IMAGE],
-    #                                                             output_stride=FLAGS.output_stride,
-    #                                                             multi_grid=model_options.multi_grid,
-    #                                                             model_variant=model_options.model_variant,
-    #                                                             reuse=tf.AUTO_REUSE,
-    #                                                             is_training=True,
-    #                                                             fine_tune_batch_norm=model_options.fine_tune_batch_norm,
-    #                                                             preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
-    #   concat_inputs = tf.concat([features, inputs['input_b']], axis=3)
-    #   gap_feature = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
-    #   prior_list = []
-    #   b = FLAGS.batch_size//FLAGS.num_clones
-    #   for k in range(14):
-    #       # theta = mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
-    #       theta = utils.mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
-    #       theta = tf.nn.sigmoid(theta)
-    #       theta.set_shape([b,6])
-    #       # rescale x and y to [0, W-1/H-1]
-    #       flow = stn.affine_grid_generator(256, 256, theta)
-    #       x, y = flow[...,0], flow[...,1]
-    #       x = tf.cast(x, 'float32')
-    #       y = tf.cast(y, 'float32')
-    #       x = 0.5 * ((x + 1.0) * tf.cast(256-1, 'float32'))
-    #       y = 0.5 * ((y + 1.0) * tf.cast(256-1, 'float32'))
-    #       flow_list.append()
-    #       # prior_class = prior_seg[...,k:k+1]
-    #       # prior_class.set_shape([batch_size,h,w,1])
-    #       # prior_list.append(stn.spatial_transformer_network(prior_class, theta))
-    #   prior_seg = tf.concat(prior_list, axis=3)
-      
-      # flow = utils._simple_decoder(concat_inputs, out=2, stage=3, channels=32, is_training=True)
-      
-  #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
-    if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
-      warp_func = WarpingLayer('bilinear')
-    elif FLAGS.learning_cases.split("-")[1] == "seg":
-      warp_func = WarpingLayer('nearest')
-      
-    pred = warp_func(query, flow)
-    output_dict = {common.OUTPUT_TYPE: pred,
-                  "flow": flow}
+  output_dict = build_flow_model(inputs, samples, FLAGS.model_variant, model_options, FLAGS.learning_cases)
+  
 
   # Log the summary
   _log_summaries(inputs["input_a"],

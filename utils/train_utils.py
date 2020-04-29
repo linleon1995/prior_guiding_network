@@ -203,98 +203,52 @@ def get_losses(output_dict,
                layers_dict, 
                samples, 
                loss_dict, 
-               z_loss_decay=None, 
-               transformed_loss_decay=None, 
-               guidance_loss_decay=None,
-               transform_loss_decay=None,
                batch_size=None):
     # TODO: auxlarity loss in latent
     losses = []
+    ys = tf.one_hot(samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
+
+    # Calculate segmentation loss
     seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], samples[common.LABEL], 
-                          cost_name=loss_dict[common.OUTPUT_TYPE],
+                          cost_name=loss_dict[common.OUTPUT_TYPE]["loss"],
                           batch_size=batch_size)
-    seg_loss = tf.identity(seg_loss, name='/'.join(['segmentation_loss', loss_dict[common.OUTPUT_TYPE]]))
+    seg_loss = tf.identity(seg_loss, name='/'.join(['segmentation_loss', loss_dict[common.OUTPUT_TYPE]["loss"]]))
     losses.append(seg_loss)
     
     # Calculate z loss
-    if common.OUTPUT_Z in output_dict:
-        z_loss = loss_utils(output_dict[common.OUTPUT_Z], samples[common.Z_LABEL], cost_name=loss_dict[common.OUTPUT_Z])
-        z_loss = tf.multiply(z_loss_decay, z_loss, name='/'.join(['z_loss', loss_dict[common.OUTPUT_Z]]))
+    if common.OUTPUT_Z in loss_dict:
+        z_loss = loss_utils(output_dict[common.OUTPUT_Z], samples[common.Z_LABEL], cost_name=loss_dict[common.OUTPUT_Z]["loss"])
+        z_loss = tf.multiply(loss_dict[common.OUTPUT_Z]["decay"], z_loss, 
+							 name='/'.join(['z_loss', loss_dict[common.OUTPUT_Z]["loss"]]))
         losses.append(z_loss)
 
     # Calculate guidance loss
-    if common.GUIDANCE in output_dict:
-      guidance_loss = 0
-      
-      # Upsample logits in each stage with tf loss func
-      ny = samples[common.LABEL].get_shape()[1]
-      nx = samples[common.LABEL].get_shape()[2]
-      ys = tf.one_hot(
-          samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
-      
-      for name, value in layers_dict.items():
-          if 'guidance' in name:
-              # value = tf.nn.sigmoid(value)
-              value = tf.compat.v2.image.resize(value, [ny, nx])
-              
-              guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.GUIDANCE])
+    if common.GUIDANCE in loss_dict:
+        guidance_loss = 0
+        
+		# Upsample logits in each stage with tf loss func# Upsample logits in each stage with tf loss func
+        ny = samples[common.LABEL].get_shape()[1]
+        nx = samples[common.LABEL].get_shape()[2]
+        
+        
+        for name, value in layers_dict.items():
+            if 'guidance' in name:
+                value = tf.compat.v2.image.resize(value, [ny, nx])
+                guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.GUIDANCE]["loss"])
+        guidance_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], guidance_loss,
+                                    name='/'.join(['guidance_loss', loss_dict[common.GUIDANCE]["loss"]]))
 
-      
-      # # Upsample logits in each stage
-      # ny = samples[common.LABEL].get_shape()[1]
-      # nx = samples[common.LABEL].get_shape()[2]
-      # ys = tf.one_hot(
-      #     samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
-      # ys = tf.reshape(ys, [-1,14])
-      # ys = tf.cast(ys, tf.float32)
-      # for name, value in layers_dict.items():
-      #     if 'guidance' in name:
-      #         value = tf.nn.sigmoid(value)
-      #         value = tf.compat.v2.image.resize(value, [ny, nx])
-              
-      #         value = tf.reshape(value, [-1,14])
-      #         loss = -tf.reduce_mean(ys * tf.log(tf.clip_by_value(value,1e-10,1.0)))
-      #         guidance_loss += loss
-              
-              
-      #         # guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
-              
-      # # Downsample Ground Truth       
-      # for name, value in layers_dict.items():
-      #     if 'guidance' in name:
-      #         ny_g = value.get_shape()[1]
-      #         nx_g = value.get_shape()[2]
-      #         ys = tf.compat.v2.image.resize(samples[common.LABEL], [ny_g, nx_g])
-      #         ys = tf.cast(ys, tf.int32)
-      #         guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.OUTPUT_TYPE])
-      
-    
-      guidance_loss = tf.multiply(guidance_loss_decay, 
-                                  guidance_loss, 
-                                  name='/'.join(['guidance_loss', loss_dict[common.GUIDANCE]]))
+        losses.append(guidance_loss)  
 
-      losses.append(guidance_loss)  
-      
-    if transform_loss_decay is not None:
-      ys2 = tf.compat.v2.image.resize(ys, [32,32])
-      transform_loss = loss_utils(output_dict[common.GUIDANCE], ys2, cost_name=loss_dict[common.GUIDANCE])
-      transform_loss = tf.multiply(transform_loss_decay, 
-                                transform_loss, 
-                                name='/'.join(['transform_loss', loss_dict[common.GUIDANCE]]))                             
-      losses.append(transform_loss)
+    # Calculate transformation loss  
+    if "transform" in loss_dict:
+      	transform_loss = loss_utils(output_dict[common.GUIDANCE], ys, cost_name=loss_dict["transform"]["loss"])
+      	transform_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], transform_loss, 
+                                     name='/'.join(['transform_loss', loss_dict["transform"]["loss"]]))                             
+      	losses.append(transform_loss)
     
-    # if common.PRIOR_IMGS in loss_dict:
-    #   # TODO: do in the correct way
-    #   transformed_loss = loss_utils(samples[common.IMAGE], output_dict[common.PRIOR_IMGS], 
-    #                                 cost_name=loss_dict[common.PRIOR_IMGS])
-    #   # image_gradient  = tf.image.image_gradients(output_dict[common.PRIOR_IMGS])
-    #   # transformed_loss += image_gradient
-    #   transformed_loss = tf.multiply(transformed_loss_decay, 
-    #                               transformed_loss, 
-    #                               name='/'.join(['transformed_loss', loss_dict[common.PRIOR_IMGS]]))
-      # losses.append(transformed_loss)
-      
     return losses
+
 
 def get_files_name(path, data_suffix='*.jpg'):
     subject = glob.glob(path + data_suffix)
@@ -556,7 +510,8 @@ def get_model_init_fn(train_logdir,
   exclude_list = ['global_step']
   if not initialize_last_layer:
     exclude_list.extend(last_layers)
-
+  exclude_list.append('resnet_v1_50/conv1_1/weights:0')
+  
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
 

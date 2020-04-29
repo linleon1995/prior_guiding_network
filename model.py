@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 # from tensorflow.python.ops import math_ops
 from core import features_extractor, stn, voxelmorph, crn_network, utils
+from test_flownet import build_flow_model
 import common
 import experiments
 import math
@@ -129,71 +130,70 @@ def pgb_network(images,
                 scope=None,
                 **kwargs,
                 ):
-  """
-  VoxelMorph: A Learning Framework for Deformable Medical Image Registration
-  Args:
-    images:
-    prior_segs: [1,H,W,Class,Layer]
-  Returns:
-    segmentations:
-  """
-  output_dict = {}
-  h, w = images.get_shape().as_list()[1:3]
-  # images = kwargs.pop(common.IMAGE, None)
-  # labels = kwargs.pop(common.LABEL, None)
-  # prior_imgs = kwargs.pop(common.PRIOR_IMGS, None)
-  # prior_segs = kwargs.pop(common.PRIOR_SEGS, None)
-  # labels = kwargs.pop(common.IMAGE, None)
-  # labels = kwargs.pop(common.IMAGE, None)
+    """
+    VoxelMorph: A Learning Framework for Deformable Medical Image Registration
+    Args:
+        images:
+        prior_segs: [1,H,W,Class,Layer]
+    Returns:
+        segmentations:
+    """
+    output_dict = {}
+    h, w = images.get_shape().as_list()[1:3]
+    flow_model_type = kwargs.pop("flow_model_type", None)
+    # images = kwargs.pop(common.IMAGE, None)
+    # labels = kwargs.pop(common.LABEL, None)
+    # prior_imgs = kwargs.pop(common.PRIOR_IMGS, None)
+    # prior_segs = kwargs.pop(common.PRIOR_SEGS, None)
+    # labels = kwargs.pop(common.IMAGE, None)
+    # labels = kwargs.pop(common.IMAGE, None)
     
-  with tf.variable_scope(scope, 'pgb_network', reuse=reuse):
-    features, end_points = features_extractor.extract_features(images=images,
-                                                               output_stride=model_options.output_stride,
-                                                               multi_grid=model_options.multi_grid,
-                                                               model_variant=model_options.model_variant,
-                                                               reuse=tf.AUTO_REUSE,
-                                                               is_training=is_training,
-                                                               fine_tune_batch_norm=model_options.fine_tune_batch_norm,
-                                                               preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+    # with tf.variable_scope(scope, 'pgb_network', reuse=reuse):
+    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+        prior_seg = prior_segs[...,0]
+        # TODO: if tf.rank<4
+        # prior_segs = tf.split(prior_segs, num_or_size_splits=z_class, axis=3)
+        # prior_segs = tf.concat(prior_segs, axis=2)
+        # prior_segs = tf.squeeze(prior_segs, axis=3)
+    elif guidance_type == "gt":
+        prior_seg = tf.one_hot(indices=prior_segs[...,0],
+                                depth=num_class,
+                                on_value=1,
+                                off_value=0,
+                                axis=3)                     
+    else:
+        prior_seg = prior_segs
+
+    if affine_transform:
+        flow_model_inputs = tf.concat([images, prior_seg], axis=3)
+        if flow_model_type=="resnet_decoder":
+            in_node = flow_model_inputs
+    else:
+        in_node = images
+
+    features, end_points = features_extractor.extract_features(images=in_node,
+                                                            output_stride=model_options.output_stride,
+                                                            multi_grid=model_options.multi_grid,
+                                                            model_variant=model_options.model_variant,
+                                                            reuse=tf.AUTO_REUSE,
+                                                            is_training=is_training,
+                                                            fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+                                                            preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
     layers_dict = {"low_level5": features,
-                   "low_level4": end_points["pgb_network/resnet_v1_50/block3"],
-                   "low_level3": end_points["pgb_network/resnet_v1_50/block2"],
-                   "low_level2": end_points["pgb_network/resnet_v1_50/block1"],
-                   "low_level1": end_points["pgb_network/resnet_v1_50/conv1_3"]}
+                "low_level4": end_points["resnet_v1_50/block3"],
+                "low_level3": end_points["resnet_v1_50/block2"],
+                "low_level2": end_points["resnet_v1_50/block1"],
+                "low_level1": end_points["resnet_v1_50/conv1_3"]}
     
-    # for k, v in end_points.items():
-    #     print(k, v)
-    #     print(30*"-")
-    if z_label_method is not None:
-        z_pred = predict_z_dimension(features, z_label_method, z_class)
-        output_dict[common.OUTPUT_Z] = z_pred
-        
+    # if z_label_method is not None:
+    #     z_pred = predict_z_dimension(features, z_label_method, z_class)
+    #     output_dict[common.OUTPUT_Z] = z_pred
+    #     if z_to_prior:
+    #         prior_seg = get_adaptive_guidance(prior_segs, z_pred, z_label_method, num_class, 
+    #                                         prior_slice, fusion_slice)
+
     if model_options.decoder_type == 'refinement_network':
-        if guidance_type == "adaptive":
-            prior_seg = get_adaptive_guidance(prior_segs, z_pred, z_label_method, num_class, 
-                                              prior_slice, fusion_slice)
-        elif guidance_type == "come_from_feature":
-            prior_seg = slim.conv2d(features, num_class, [1, 1], 1, activation_fn=None, scope='input_guidance')
-            prior_seg = tf.nn.softmax(prior_seg)
-        elif guidance_type == "gt":
-            prior_seg = tf.one_hot(indices=prior_segs[...,0],
-                                    depth=num_class,
-                                    on_value=1,
-                                    off_value=0,
-                                    axis=3,
-                                    )                     
-        else:
-            if guid_weight:
-                embed = tf.reduce_mean(features, [1, 2], name='embed', keep_dims=False)
-                w = mlp(embed, output_dims=num_class, scope='guid_weight')
-                w = tf.nn.sigmoid(w)
-                w = tf.reshape(w, [batch_size,1,1,num_class])
-                prior_seg = tf.multiply(prior_segs, w)
-                tf.add_to_collection("weight", w)
-            else:
-                prior_seg = prior_segs
-            
             # if "organ_label" in samples:
             # organ_label = tf.reshape(samples, [batch_size,1,1,num_class])
             # organ_label = tf.cast(organ_label, tf.float32)
@@ -202,59 +202,25 @@ def pgb_network(images,
         # TODO: check prior shape
         
         if affine_transform:
+            with tf.variable_scope("flow_model"):
+                output_dict["original_guidance"] = prior_seg
+                if flow_model_type == "unet":
+                    flow = utils._simple_unet(flow_model_inputs, out=2, stage=5, channels=32, is_training=True)
+                elif flow_model_type == "resnet_decoder":
+                    flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
+
+                warp_func = WarpingLayer('bilinear')
+                
+                prior_seg = warp_func(prior_seg, flow)
+                prior_seg = tf.cast(prior_seg, tf.float32)
+                output_dict["flow"] = flow
+                            
             # TODO: stn split in class --> for loop
             # TODO: variable scope for spatial transform
-            prior_seg = tf.cast(prior_seg, tf.float32)
-            output_dict['original_guidance'] = prior_seg
-
-            cc = 32
-            p0 = tf.compat.v2.image.resize(prior_seg, [32,32])
-            stn_conv1 = conv2d(tf.concat([features, p0], 3), [3,3,2048+num_class,cc], 
-                           activate=tf.nn.relu, scope="stn_conv1", is_training=is_training) 
-            field = conv2d(stn_conv1, [1,1,cc,2], 
-                           activate=None, scope="field", is_training=is_training)
-            field = tf.clip_by_value(field, -0.05, 0.05)
-            # up1 = tf.compat.v2.image.resize(stn_conv1, [64,64])
-            # p1 = tf.compat.v2.image.resize(prior_seg, [64,64])
-            # stn_conv2 = conv2d(tf.concat([up1, p1], 3), [3,3,cc+num_class,cc//2], 
-            #                activate=tf.nn.relu, scope="stn_conv2", is_training=is_training) 
             
-            # up2 = tf.compat.v2.image.resize(stn_conv2, [128,128])
-            # p2 = tf.compat.v2.image.resize(prior_seg, [128,128])              
-            # stn_conv3 = conv2d(tf.concat([up2, p2], 3), [3,3,cc//2+num_class,cc//4], 
-            #                activate=tf.nn.relu, scope="stn_conv3", is_training=is_training)
-             
-            # up3 = tf.compat.v2.image.resize(stn_conv3, [256,256])
-            # field = conv2d(tf.concat([up3, prior_seg], 3), [1,1,cc//4+num_class,2], 
-            #                activate=tf.nn.tanh, scope="field", is_training=is_training) 
-
-            prior_seg = bilinear_sampler(p0, field[...,0], field[...,1])
-            
-            # if stn_in_each_class:
-            #     gap_feature = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
-            #     prior_list = []
-            #     for k in range(num_class):
-            #         # theta = mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
-            #         theta = mlp(gap_feature, output_dims=6, scope='theta_extractor_%d' %k)
-            #         theta = tf.nn.sigmoid(theta)
-            #         theta.set_shape([batch_size,6])
-            #         prior_class = prior_seg[...,k:k+1]
-            #         prior_class.set_shape([batch_size,h,w,1])
-            #         prior_list.append(spatial_transformer_network(prior_class, theta))
-            #     prior_seg = tf.concat(prior_list, axis=3)
-            # else:
-            #     gap_feature = tf.reduce_mean(features, [1, 2], name='global_avg_pool', keep_dims=False)
-            #     theta = mlp(gap_feature, output_dims=6, scope='theta_extractor')
-            #     theta = tf.nn.sigmoid(theta)
-            #     prior_seg.set_shape([batch_size,h,w,num_class])
-            #     # theta = tf.Print(theta, [theta])
-            #     prior_seg = spatial_transformer_network(prior_seg, theta)
-              
-             
         output_dict[common.GUIDANCE] = prior_seg
         logits, layers_dict = refinement_network(
-                                                # images,
-                                                 features,
+                                                features,
                                                 prior_seg,
                                                 model_options.output_stride,
                                                 batch_size,
@@ -277,7 +243,7 @@ def pgb_network(images,
     #     print(v)
     #     print(30*"-")
     output_dict[common.OUTPUT_TYPE] = logits
-  return output_dict, layers_dict
+    return output_dict, layers_dict
 
 
 

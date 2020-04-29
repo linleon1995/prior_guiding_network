@@ -7,6 +7,11 @@ import matplotlib.pyplot as plt
 DATA_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/label/'
 OUTPUT_DIR = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
+NUM_SUBJECT = [1,10,20]
+NUM_SUBJECT = [20]
+OUTPUT_PRIOR_SLICE = [1,2,4,6,8,10]
+OUTPUT_PRIOR_SLICE = [2]
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data_dir', type=str, default=DATA_DIR,
@@ -15,15 +20,18 @@ parser.add_argument('--data_dir', type=str, default=DATA_DIR,
 parser.add_argument('--output_dir', type=str, default=OUTPUT_DIR,
                     help='')
 
-parser.add_argument('--num_subject', type=str, default=1,
-                    help='The number of training data be used')
+# parser.add_argument('--num_subject', type=str, default=1,
+#                     help='The number of training data be used')
 
 parser.add_argument('--num_class', type=str, default=14,
                     help='The number of segmentation categories')
 
-parser.add_argument('--num_slice', type=str, default=1,
-                    help='The slice number (layer) of output prior')
+# parser.add_argument('--num_slice', type=str, default=2,
+#                     help='The slice number (layer) of output prior')
 
+parser.add_argument('--remove_zeros', type=str, default=True,
+                    help='The boolean flag for removing zero slices')
+                    
 parser.add_argument('--save_prior_in_npy', type=bool, default=True,
                     help='')
 
@@ -43,8 +51,7 @@ def remove_zeros_slice(data):
     """
     one-hot data in specific class: [H,W,C]
     Return
-        [class1, class2,..., classK]
-        [[H,W,C1],[H,W,C2],...,[H,W,Ck]]
+        [H,W,C'] which includes all non-zero frame
     """
     nonzero_idx = np.nonzero(np.sum(np.sum(data, axis=0), axis=0))
     nonzero_idx = nonzero_idx[0]
@@ -99,8 +106,9 @@ def merge_training_seg2(data_list, num_slice, num_class):
             class_data = onehot_data[...,k]
             # Process when organ exist
             if np.sum(class_data) != 0:
-                nonzero_data = remove_zeros_slice(class_data)
-                norm_data = normalize_slice(nonzero_data, num_slice)
+                if FLAGS.remove_zeros:
+                    class_data = remove_zeros_slice(class_data)
+                norm_data = normalize_slice(class_data, num_slice)
             else:
                 norm_data = np.zeros(list(class_data.shape[:2])+[num_slice])
             norm_data_list.append(norm_data)    
@@ -161,10 +169,11 @@ def get_file_list(path, num_file=None, file_format="nii"):
     return file_list
 
 
-def get_prior_name(data_split, num_slice, num_subject):
-    file_name = "-".join([data_split,
-                "slice%03d" %num_slice,
-                "subject%03d" %num_subject,])
+def get_prior_name(kewywords):
+    file_name = "-".join(kewywords)
+    # file_name = "-".join([data_split,
+    #             "slice%03d" %num_slice,
+    #             "subject%03d" %num_subject,])
     print("File nmae: %s" %file_name)
     return file_name
 
@@ -182,42 +191,47 @@ def build_priors(data_dir, output_dir, num_slice, num_of_class,
     assert len(priors.shape) == 4
     
     prior_img_dir = output_dir + "priors_img/"
-    for i in range(num_slice):
-        for j in range(num_of_class):
-            if save_prior_in_images:
+    data_split = "train"
+    if not FLAGS.remove_zeros:
+        data_split + "-z"
+    file_name = [data_split, "slice%03d" %num_slice, "subject%03d" %num_subject]
+
+    if save_prior_in_images:
+        for i in range(num_slice):
+            for j in range(num_of_class):
                 plt.imshow(priors[:,:,j,i])
                 # plt.show()
-                img_file = get_prior_name("train", num_slice, num_subject)
-                img_file = img_file + "-depth%03d" %i + "-class%03d" %j + ".png"
-                plt.savefig(os.path.join(prior_img_dir, img_file))
+                file_name.extend(["-depth%03d" %i, "-class%03d" %j])
+                file_name = get_prior_name(file_name)
+                file_name = file_name + ".png"
+                plt.savefig(os.path.join(prior_img_dir, file_name))
+
     if save_prior_in_npy:
-        file_name = get_prior_name("train", num_slice, num_subject)
+        file_name = get_prior_name(file_name)
         file_name = file_name + ".npy"
         np.save(os.path.join(output_dir, file_name), priors)    
     print("Finish Prior Building!")
     
 
 def main(unused_argv):
-    for sub in [1,10,20]:
-        for slices in [1,2,4,6,8,10]:
+    for sub in NUM_SUBJECT:
+        for slices in OUTPUT_PRIOR_SLICE:
             build_priors(data_dir=FLAGS.data_dir, 
                         output_dir=FLAGS.output_dir,
                         num_slice=slices,
                         num_of_class=FLAGS.num_class,
                         num_subject=sub, 
                         save_prior_in_npy=FLAGS.save_prior_in_npy,
-                        save_prior_in_images=False)  
-    # build_priors(data_dir=FLAGS.data_dir, 
-    #              output_dir=FLAGS.output_dir,
-    #              num_slice=FLAGS.num_slice,
-    #              num_of_class=FLAGS.num_class,
-    #              num_subject=FLAGS.num_subject, 
-    #              save_prior_in_npy=FLAGS.save_prior_in_npy,
-    #              save_prior_in_images=FLAGS.save_prior_in_images)    
+                        save_prior_in_images=False)    
     
     
 if __name__ == '__main__':
-    a = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/train-slice002-subject001.npy")
-    b=0
+    # a = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/train-z-slice002-subject020.npy")
+    # b=0
+    # for i in range(14):
+    #     for j in range(2):
+    #         plt.imshow(a[...,i,j])
+    #         # plt.show()
+    #         plt.savefig("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/priors_img/train-z-slice002-subject002-depth%03d-class%03d.png" %(j,i))
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
