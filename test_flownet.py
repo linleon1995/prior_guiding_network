@@ -14,8 +14,8 @@ from core import features_extractor, utils
 slim = tf.contrib.slim
 
 
-def build_flow_model(inputs, samples, model_variant, model_options, learning_cases):
-    if model_variant == "resnet_decoder":
+def build_flow_model(inputs, samples, flow_model_variant, model_options, learning_cases):
+    if flow_model_variant == "resnet_decoder":
         in_node = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
         features, _ = features_extractor.extract_features(images=in_node,
                                                             output_stride=model_options.output_stride,
@@ -27,10 +27,10 @@ def build_flow_model(inputs, samples, model_variant, model_options, learning_cas
                                                             preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
     with tf.variable_scope("flow_model"):
-        if model_variant == "unet":
+        if flow_model_variant == "unet":
             concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
             flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
-        elif model_variant == "FlowNet-S":
+        elif flow_model_variant == "FlowNet-S":
             training_schedule = {
                 # 'step_values': [400000, 600000, 800000, 1000000],
                 'step_values': [400000, 600000, 800000, 1000000],
@@ -43,7 +43,7 @@ def build_flow_model(inputs, samples, model_variant, model_options, learning_cas
             net = FlowNetS()
             flow_dict = net.model(inputs, training_schedule, trainable=True)
             flow = flow_dict["flow"]
-        elif model_variant == "resnet_decoder":
+        elif flow_model_variant == "resnet_decoder":
             flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
         
         

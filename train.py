@@ -27,7 +27,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
-PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_033/model.ckpt-0'
+#PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
 
@@ -65,10 +65,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--share', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guidance_acc', type=str, default="acc",
+parser.add_argument('--guidance_acc', type=str, default="one",
                     help='')
 
-parser.add_argument('--flow_model_type', type=str, default="resnet_decoder",
+parser.add_argument('--flow_model_type', type=str, default="FlowNet-S",
                     help='')
 
 
@@ -91,7 +91,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=60000,
+parser.add_argument('--training_number_of_steps', type=int, default=50000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -161,7 +161,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--transform_loss_decay', type=float, default=1e-1,
+parser.add_argument('--transform_loss_decay', type=float, default=1e-4,
                     help='')
 
 parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
@@ -410,7 +410,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
         loss_dict[common.GUIDANCE] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.guidance_loss_decay}
 
     if FLAGS.transform_loss_decay is not None:
-        loss_dict["transform"] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.transform_loss_decay}
+        loss_dict["transform"] = {"loss": "mean_dice_coefficient", "decay": FLAGS.transform_loss_decay}
         
     clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
     losses = train_utils.get_losses(output_dict, layers_dict, samples,
@@ -494,21 +494,21 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance_list[3][...,7:8], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guidance2_13', colorize(guidance_list[3][...,13:14], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'f_guidance3_6', colorize(guidance_list[4][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance3_7', colorize(guidance_list[4][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance3_13', colorize(guidance_list[4][...,13:14], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance3_6', colorize(guidance_list[4][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance3_7', colorize(guidance_list[4][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance3_13', colorize(guidance_list[4][...,13:14], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance_list[5][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance_list[5][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_13', colorize(guidance_list[5][...,13:14], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance_list[5][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance_list[5][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance3_13', colorize(guidance_list[5][...,13:14], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'f_guidance4_6', colorize(guidance_list[6][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance4_7', colorize(guidance_list[6][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'f_guidance4_13', colorize(guidance_list[6][...,13:14], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance4_6', colorize(guidance_list[6][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance4_7', colorize(guidance_list[6][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'f_guidance4_13', colorize(guidance_list[6][...,13:14], cmap='viridis'))
     
-    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance_list[7][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance_list[7][...,7:8], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_13', colorize(guidance_list[7][...,13:14], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance_list[7][...,6:7], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance_list[7][...,7:8], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guidance4_13', colorize(guidance_list[7][...,13:14], cmap='viridis'))
     
     
     tf.summary.image('guidance/%s' % 'guidance_init_6', colorize(guidance['init_guid'][...,6:7], cmap='viridis'))
@@ -821,7 +821,7 @@ def main(unused_argv):
                 scaffold=scaffold,
                 checkpoint_dir=FLAGS.train_logdir,
                 log_step_count_steps=FLAGS.log_steps,
-                save_summaries_steps=100,
+                save_summaries_steps=20,
                 # save_checkpoint_secs=FLAGS.save_interval_secs,
                 save_checkpoint_steps=FLAGS.save_checkpoint_steps,
                 hooks=[stop_hook]) as sess:

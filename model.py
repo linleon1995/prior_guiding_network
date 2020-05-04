@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 # from tensorflow.python.ops import math_ops
 from core import features_extractor, stn, voxelmorph, crn_network, utils
-from test_flownet import build_flow_model
+from test_flownet import build_flow_model, FlowNetS
 import common
 import experiments
 import math
@@ -163,13 +163,12 @@ def pgb_network(images,
                                 axis=3)                     
     else:
         prior_seg = prior_segs
-
+        
+    in_node = images
     if affine_transform:
         flow_model_inputs = tf.concat([images, prior_seg], axis=3)
         if flow_model_type=="resnet_decoder":
             in_node = flow_model_inputs
-    else:
-        in_node = images
 
     features, end_points = features_extractor.extract_features(images=in_node,
                                                             output_stride=model_options.output_stride,
@@ -194,20 +193,34 @@ def pgb_network(images,
     #                                         prior_slice, fusion_slice)
 
     if model_options.decoder_type == 'refinement_network':
-            # if "organ_label" in samples:
-            # organ_label = tf.reshape(samples, [batch_size,1,1,num_class])
-            # organ_label = tf.cast(organ_label, tf.float32)
-            # prior_seg = prior_segs * organ_label
+        
 
         # TODO: check prior shape
         
         if affine_transform:
-            with tf.variable_scope("flow_model"):
+            # output_dict = build_flow_model(inputs, samples, flow_model_type, model_options, learning_cases="img-prior")
+
+
+            # with tf.variable_scope("flow_model"):
                 output_dict["original_guidance"] = prior_seg
                 if flow_model_type == "unet":
                     flow = utils._simple_unet(flow_model_inputs, out=2, stage=5, channels=32, is_training=True)
                 elif flow_model_type == "resnet_decoder":
                     flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
+                elif flow_model_type == "FlowNet-S":
+                    training_schedule = {
+                        # 'step_values': [400000, 600000, 800000, 1000000],
+                        'step_values': [400000, 600000, 800000, 1000000],
+                        'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
+                        'momentum': 0.9,
+                        'momentum2': 0.999,
+                        'weight_decay': 0.0004,
+                        'max_iter': 30000,
+                        }
+                    net = FlowNetS()
+                    flow_model_inputs = {"input_a": images, "input_b": prior_seg}
+                    flow_dict = net.model(flow_model_inputs, training_schedule, trainable=False)
+                    flow = flow_dict["flow"]
 
                 warp_func = WarpingLayer('bilinear')
                 
@@ -217,6 +230,12 @@ def pgb_network(images,
                             
             # TODO: stn split in class --> for loop
             # TODO: variable scope for spatial transform
+        
+        # if "organ_label" in samples:
+        # TODO:
+        organ_label = tf.reshape(samples, [batch_size,1,1,num_class])
+        organ_label = tf.cast(organ_label, tf.float32)
+        prior_seg = prior_seg * organ_label
             
         output_dict[common.GUIDANCE] = prior_seg
         logits, layers_dict = refinement_network(

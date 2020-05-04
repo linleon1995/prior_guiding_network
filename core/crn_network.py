@@ -81,8 +81,13 @@ def rm_ori(in_node,
         # conv_r1 = GCN(in_node, num_filters, ks=7, is_training=is_training)
         
         # sram attention
-        def sram_attention_branch(sram_input, scope):
+        def sram_attention_branch(sram_input, feature, scope):
             feature_list = []
+            # if feature is not None:
+            #     f = tf.split(value=feature, num_or_size_splits=13, axis=3)
+            #     feature = tf.add_n(f)
+            #     sram_input = conv2d(tf.concat([sram_input, feature], axis=3), [3,3,num_filters*2,num_filters], 
+            #                   activate=tf.nn.relu, scope="low_high_fuse", is_training=is_training)
             for c in range(1, num_class):
                 if not weight_sharing:
                     sram_scope = "_".join([scope, str(c)])
@@ -93,15 +98,16 @@ def rm_ori(in_node,
                 feature_list.append(attention_class)
             attention = tf.concat(feature_list, axis=3)
             
-            if feature is not None:
-                attention += feature
+            # if feature is not None:
+            #     attention += feature
             # if feature is not None and scope == "sram2":
             #     attention += feature
             return attention
         
-        new_feature = sram_attention_branch(sram_input=conv_r1, scope="sram1")
+        new_feature = sram_attention_branch(sram_input=conv_r1, feature=feature, scope="sram1")
         if further_attention:
-            new_feature = sram_attention_branch(sram_input=new_feature, scope="sram2")
+            new_feature += feature
+            new_feature = sram_attention_branch(sram_input=new_feature, feature=feature, scope="sram2")
         
         new_guidance = conv2d(new_feature, [1,1,num_filters*(num_class-1),num_class], 
                               activate=None, scope="guidance", is_training=is_training)
@@ -110,7 +116,6 @@ def rm_ori(in_node,
             new_guidance = tf.compat.v2.image.resize(new_guidance, [scale*h, scale*w], name='new_guidance')
 
     return new_feature, new_guidance
-
 
 def refinement_network(features,
                        guidance,
@@ -147,8 +152,9 @@ def refinement_network(features,
         layers_dict["guidance_in"] = guidance
         
         for stage in range(num_stage, 0, -1):
-            guidance_last = guidance
-            _, guidance = rm_ori(in_node=layers_dict["low_level"+str(stage)],
+            if guid_acc is not None:
+                guidance_last = guidance
+            features, guidance = rm_ori(in_node=layers_dict["low_level"+str(stage)],
                                             num_filters=embed,
                                             guidance=guidance,
                                             feature=features,
@@ -166,23 +172,26 @@ def refinement_network(features,
                 guidance = tf.nn.sigmoid(guidance)
                 tf.add_to_collection("guidance", guidance)
                 
-                guidance = tf.stop_gradient(guidance)
+                # guidance = tf.stop_gradient(guidance)
+                
+                if guid_acc is not None:   
+                    h, w = guidance.get_shape().as_list()[1:3]
+                    guidance_last = tf.image.resize_bilinear(guidance_last, [h, w])
                     
-                h, w = guidance.get_shape().as_list()[1:3]
-                guidance_last = tf.image.resize_bilinear(guidance_last, [h, w])
-                    
-                if guid_acc == "acc":
-                    guidance = guidance * guidance_last + guidance_last
-                elif guid_acc == "sum":
-                    guidance = guidance + guidance_last
-                elif guid_acc == "acc_init":
-                    guidance = guidance * guidance_last + guidance_last
-                    guid_in = tf.image.resize_bilinear(guidance_in, [h, w])
-                    p = tf.get_variable(name='guid_w', shape=[1], initializer=tf.constant_initializer(0.5))
-                    guidance = p*guidance + (1-p)*guid_in
-                    
-                tf.add_to_collection("guidance", guidance)
+                    if guid_acc == "acc":
+                        guidance = guidance * guidance_last + guidance_last
+                    elif guid_acc == "sum":
+                        guidance = guidance + guidance_last
+                    elif guid_acc == "acc_init":
+                        guidance = guidance * guidance_last + guidance_last
+                        guid_in = tf.image.resize_bilinear(guidance_in, [h, w])
+                        p = tf.get_variable(name='guid_w_%d' %stage, shape=[1], initializer=tf.constant_initializer(0.5))
+                        guidance = p*guidance + (1-p)*guid_in
+                    elif guid_acc == "one":
+                        guidance = tf.image.resize_bilinear(guidance_in, [h, w])  
+                    tf.add_to_collection("guidance", guidance)
     return guidance, layers_dict
+
 
 
 # def refinement_network(features,

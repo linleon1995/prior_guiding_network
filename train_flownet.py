@@ -66,7 +66,7 @@ def create_training_path(train_logdir):
 parser = argparse.ArgumentParser()
 
 # Training configuration
-parser.add_argument('--seg_loss', type=str, default="mean_dice_coefficient",
+parser.add_argument('--seg_loss', type=str, default="cross_entropy_sigmoid",
                     help='')
 
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
@@ -81,13 +81,13 @@ parser.add_argument('--train_split', type=str, default='train',
 parser.add_argument('--batch_size', type=int, default=18,
                     help='')
 
-parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
+parser.add_argument('--tf_initial_checkpoint', type=str, default=None,
                     help='')
 
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=30000,
+parser.add_argument('--training_number_of_steps', type=int, default=35000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -124,7 +124,10 @@ parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
-parser.add_argument('--model_variant', type=str, default="resnet_decoder",
+parser.add_argument('--flow_model_variant', type=str, default="resnet_decoder",
+                    help='')
+
+parser.add_argument('--model_variant', type=str, default=None,
                     help='')
 
 parser.add_argument('--z_label_method', type=str, default=None,
@@ -282,7 +285,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   inputs = {"input_a": input_a, "input_b": input_b, "query": query}
 
 
-  output_dict = build_flow_model(inputs, samples, FLAGS.model_variant, model_options, FLAGS.learning_cases)
+  output_dict = build_flow_model(inputs, samples, FLAGS.flow_model_variant, model_options, FLAGS.learning_cases)
   
 
   # Log the summary
@@ -514,7 +517,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
 
 
 def main(unused_argv):
-    print(30*"o", FLAGS.seg_loss, FLAGS.guidance_type, FLAGS.model_variant)
+    print(30*"o", FLAGS.seg_loss, FLAGS.guidance_type, FLAGS.flow_model_variant)
     tf.logging.set_verbosity(tf.logging.INFO)
 
     tf.gfile.MakeDirs(FLAGS.train_logdir)
@@ -583,6 +586,7 @@ def main(unused_argv):
             # last_layers = model.get_extra_layer_scopes(
             #     FLAGS.last_layers_contain_logits_only)
             init_fn = None
+            print(FLAGS.tf_initial_checkpoint)
             if FLAGS.tf_initial_checkpoint:
                 init_fn = train_utils.get_model_init_fn(
                     train_logdir=FLAGS.train_logdir,
@@ -615,5 +619,7 @@ def main(unused_argv):
                 
 
 if __name__ == '__main__':
+    if None:
+      print(3)
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)

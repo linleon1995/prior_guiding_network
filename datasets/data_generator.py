@@ -192,7 +192,7 @@ class Dataset(object):
         label = sample[common.LABELS_CLASS]
         depth = sample[common.DEPTH]
         num_slices = sample[common.NUM_SLICES]
-        # organ_label = sample["organ_label"]
+        organ_label = sample["organ_label"]
         
         # z_label = self.get_z_label(organ_label, depth, num_slices, z_class)
         # TODO: clear sample problem

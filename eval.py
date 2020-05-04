@@ -61,6 +61,8 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_017/model.ckpt-50000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-40000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_014/model.ckpt-50000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_018/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_033/model.ckpt-35000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -70,9 +72,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--share', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guidance_acc', type=str, default="acc",
+parser.add_argument('--guidance_acc', type=str, default="one",
                     help='')
 
+parser.add_argument('--flow_model_type', type=str, default="FlowNet-S",
+                    help='')
 
 
 parser.add_argument('--master', type=str, default='',
@@ -123,7 +127,7 @@ parser.add_argument('--add_flipped_images', type=bool, default=False,
 parser.add_argument('--z_label_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--affine_transform', type=bool, default=False,
+parser.add_argument('--affine_transform', type=bool, default=True,
                     help='')
 
 parser.add_argument('--deformable_transform', type=bool, default=False,
@@ -132,10 +136,10 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=True,
+parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_features', type=bool, default=True,
+parser.add_argument('--vis_features', type=bool, default=False,
                     help='')
 
 parser.add_argument('--display_box_plot', type=bool, default=False,
@@ -276,7 +280,7 @@ def main(unused_argv):
     if FLAGS.guidance_type == "gt":
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 14])
+      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 14, 1])
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
     # if common.PRIOR_SEGS in samples:
     #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
@@ -297,17 +301,17 @@ def main(unused_argv):
     # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
     # guidance = tf.expand_dims(guidance, axis=0)
     
-    if FLAGS.guidance_type == "gt":
-      if FLAGS.stn_exp_angle is not None:
-        angle = FLAGS.stn_exp_angle * math.pi / 180
-      else:
-        angle = None
-      if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
-        translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
-      else:
-        translations  = None
-      samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
-                                                  translations, "NEAREST")
+    # if FLAGS.guidance_type == "gt":
+    #   if FLAGS.stn_exp_angle is not None:
+    #     angle = FLAGS.stn_exp_angle * math.pi / 180
+    #   else:
+    #     angle = None
+    #   if FLAGS.stn_exp_dx is not None and FLAGS.stn_exp_dy is not None:
+    #     translations = [FLAGS.stn_exp_dx,FLAGS.stn_exp_dy]
+    #   else:
+    #     translations  = None
+    #   samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
+    #                                               translations, "NEAREST")
 
 
     output_dict, layers_dict = model.pgb_network(
@@ -337,6 +341,7 @@ def main(unused_argv):
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
+                flow_model_type=FLAGS.flow_model_type,
                 )
                 
     guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guid' in dict_key}
@@ -476,7 +481,7 @@ def main(unused_argv):
         show_feature = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"feature/",
                                                             is_showfig=False,
                                                             is_savefig=True,
-                                                            subplot_split=(2,2),
+                                                            subplot_split=(1,3),
                                                             type_list=3*['img'])
         
     sram_conv = tf.get_collection("/sram_embed")      
@@ -533,6 +538,7 @@ def main(unused_argv):
             # TODO: The situation of prior_seg not exist
             class_list = np.arange(14)
             for c in class_list:
+              print(data["organ_label"][:,c])
               # g0, g1, g2, g3, g4, g1_dsc = sess.run([guid0, guid1, guid2, guid3, guid4, guid1_dsc], feed_dict=_feed_dict)
               g_list, pred_prob = sess.run([guid_list,preds], feed_dict=_feed_dict)
               

@@ -242,7 +242,7 @@ def get_losses(output_dict,
 
     # Calculate transformation loss  
     if "transform" in loss_dict:
-      	transform_loss = loss_utils(output_dict[common.GUIDANCE], ys, cost_name=loss_dict["transform"]["loss"])
+      	transform_loss = loss_utils(output_dict[common.GUIDANCE], samples[common.LABEL], cost_name=loss_dict["transform"]["loss"])
       	transform_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], transform_loss, 
                                      name='/'.join(['transform_loss', loss_dict["transform"]["loss"]]))                             
       	losses.append(transform_loss)
@@ -510,8 +510,9 @@ def get_model_init_fn(train_logdir,
   exclude_list = ['global_step']
   if not initialize_last_layer:
     exclude_list.extend(last_layers)
+  # TODO: parameter
   exclude_list.append('resnet_v1_50/conv1_1/weights:0')
-  
+
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
 
