@@ -234,7 +234,7 @@ def get_losses(output_dict,
         for name, value in layers_dict.items():
             if 'guidance' in name:
                 value = tf.compat.v2.image.resize(value, [ny, nx])
-                guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.GUIDANCE]["loss"])
+                guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.GUIDANCE]["loss"])
         guidance_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], guidance_loss,
                                     name='/'.join(['guidance_loss', loss_dict[common.GUIDANCE]["loss"]]))
 
@@ -242,10 +242,11 @@ def get_losses(output_dict,
 
     # Calculate transformation loss  
     if "transform" in loss_dict:
-      	transform_loss = loss_utils(output_dict[common.GUIDANCE], samples[common.LABEL], cost_name=loss_dict["transform"]["loss"])
-      	transform_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], transform_loss, 
+        guid = tf.compat.v2.image.resize(output_dict[common.GUIDANCE], [256,256])
+        transform_loss = loss_utils(guid, ys, cost_name=loss_dict["transform"]["loss"])
+        transform_loss = tf.multiply(loss_dict["transform"]["decay"], transform_loss, 
                                      name='/'.join(['transform_loss', loss_dict["transform"]["loss"]]))                             
-      	losses.append(transform_loss)
+        losses.append(transform_loss)
     
     return losses
 
@@ -515,7 +516,18 @@ def get_model_init_fn(train_logdir,
 
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
-
+  
+  new_v = []
+  for v in variables_to_restore:
+    print(v.name)
+  for v in variables_to_restore:
+    if "Adam" not in v.name:
+      new_v.append(v)
+  variables_to_restore = new_v
+  print(30*"o")
+  for v in variables_to_restore:
+    print(v.name)
+      
   if variables_to_restore:
     init_op, init_feed_dict = contrib_framework.assign_from_checkpoint(
         tf_initial_checkpoint,

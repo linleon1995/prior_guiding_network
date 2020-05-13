@@ -28,7 +28,7 @@ import model
 from datasets import data_generator
 from utils import eval_utils
 import experiments
-from test_flownet import FlowNetS, WarpingLayer
+from test_flownet import FlowNetS, WarpingLayer, build_flow_model
 import math
 from core import utils, features_extractor
 spatial_transfom_exp = experiments.spatial_transfom_exp
@@ -56,8 +56,11 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_059/model.ckpt-30000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-30000'
+
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-50000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_034/model.ckpt-35000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_038/model.ckpt-35000'
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -164,7 +167,7 @@ parser.add_argument('--learning_cases', type=str, default="img-prior",
 parser.add_argument('--threshold', type=float, default=0.5,
                     help='')
 
-parser.add_argument('--model_variant', type=str, default="unet",
+parser.add_argument('--flow_model_variant', type=str, default="resnet_flownets",
                     help='')
 
 
@@ -326,55 +329,74 @@ def main(unused_argv):
     elif FLAGS.learning_cases == "img-seg":
         input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.LABEL]
     elif FLAGS.learning_cases == "img-prior":
-        input_a, input_b, query = placeholder_dict[common.IMAGE], placeholder_dict[common.PRIOR_SEGS], placeholder_dict[common.PRIOR_SEGS]
+        samples[common.PRIOR_SEGS] = samples[common.PRIOR_SEGS][...,0]
+        input_a, input_b, query = samples[common.IMAGE], samples[common.PRIOR_SEGS], samples[common.PRIOR_SEGS]
             
     inputs = {"input_a": input_a, "input_b": input_b, "query": query}
-    training_schedule = {
-            # 'step_values': [400000, 600000, 800000, 1000000],
-            'step_values': [400000, 600000, 800000, 1000000],
-            'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
-            'momentum': 0.9,
-            'momentum2': 0.999,
-            'weight_decay': 0.0004,
-            'max_iter': 120000,
-        }
-    with tf.variable_scope("flow_model"):
-      if FLAGS.model_variant == "unet":
-        concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
-        flow = utils._simple_unet(concat_inputs, out=2, stage=3, channels=32, is_training=True)
-      elif FLAGS.model_variant == "FlowNet-S":
-        net = FlowNetS()
-        flow_dict = net.model(inputs, training_schedule, trainable=True)
-        flow = flow_dict["flow"]
-      elif FLAGS.model_variant == "resnet_decoder":
-        inputs = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
-        features, _ = features_extractor.extract_features(images=inputs,
-                                                                  output_stride=FLAGS.output_stride,
-                                                                  multi_grid=model_options.multi_grid,
-                                                                  model_variant=model_options.model_variant,
-                                                                  reuse=tf.AUTO_REUSE,
-                                                                  is_training=True,
-                                                                  fine_tune_batch_norm=model_options.fine_tune_batch_norm,
-                                                                  preprocessed_images_dtype=model_options.preprocessed_images_dtype)
 
-        flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
+
+    output_dict = build_flow_model(inputs, samples, FLAGS.flow_model_variant, model_options, FLAGS.learning_cases, 
+                                   14
+                                   )
+    pred = output_dict[common.OUTPUT_TYPE]
+    flow = output_dict["flow"]
+    # if FLAGS.learning_cases == "img-img":
+    #     input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.IMAGE]
+    # elif FLAGS.learning_cases == "seg-seg":
+    #     input_a, input_b, query = samples[common.LABEL], transform_labels, samples[common.LABEL]
+    # elif FLAGS.learning_cases == "img-seg":
+    #     input_a, input_b, query = samples[common.IMAGE], transform_images, samples[common.LABEL]
+    # elif FLAGS.learning_cases == "img-prior":
+    #     input_a, input_b, query = placeholder_dict[common.IMAGE], placeholder_dict[common.PRIOR_SEGS], placeholder_dict[common.PRIOR_SEGS]
+            
+    # inputs = {"input_a": input_a, "input_b": input_b, "query": query}
+    # training_schedule = {
+    #         # 'step_values': [400000, 600000, 800000, 1000000],
+    #         'step_values': [400000, 600000, 800000, 1000000],
+    #         'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
+    #         'momentum': 0.9,
+    #         'momentum2': 0.999,
+    #         'weight_decay': 0.0004,
+    #         'max_iter': 120000,
+    #     }
+    # with tf.variable_scope("flow_model"):
+    #   if FLAGS.model_variant == "unet":
+    #     concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
+    #     flow = utils._simple_unet(concat_inputs, out=2, stage=3, channels=32, is_training=True)
+    #   elif FLAGS.model_variant == "FlowNet-S":
+    #     net = FlowNetS()
+    #     flow_dict = net.model(inputs, training_schedule, trainable=True)
+    #     flow = flow_dict["flow"]
+    #   elif FLAGS.model_variant == "resnet_decoder":
+    #     inputs = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
+    #     features, _ = features_extractor.extract_features(images=inputs,
+    #                                                               output_stride=FLAGS.output_stride,
+    #                                                               multi_grid=model_options.multi_grid,
+    #                                                               model_variant=model_options.model_variant,
+    #                                                               reuse=tf.AUTO_REUSE,
+    #                                                               is_training=True,
+    #                                                               fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+    #                                                               preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+
+    #     flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
         
-    #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
-    if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
-        warp_func = WarpingLayer('bilinear')
-    elif FLAGS.learning_cases.split("-")[1] == "seg":
-        warp_func = WarpingLayer('nearest')
+    # #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
+    # if FLAGS.learning_cases.split("-")[1] in ("img", "prior"):
+    #     warp_func = WarpingLayer('bilinear')
+    # elif FLAGS.learning_cases.split("-")[1] == "seg":
+    #     warp_func = WarpingLayer('nearest')
         
-    pred = warp_func(query, flow)
-    output_dict = {common.OUTPUT_TYPE: pred,
-                    "flow": flow}
+    # pred = warp_func(query, flow)
+    # output_dict = {common.OUTPUT_TYPE: pred,
+    #                 "flow": flow}
     
     
     # Add name to graph node so we can add to summary.
     before_transform = query
     after_transform = pred
     pred_b = tf.reshape(before_transform, shape=[-1,])
-    
+    # if 1:
+    #   pred = input_b
     assert len(THRESHOLD) > 0
     cm_list = []
     for c in range(dataset.num_of_classes):
@@ -472,7 +494,7 @@ def main(unused_argv):
           
           if idx==0 and i in display_imgs:
             # Transform Comparision
-            pred_a, pred_b = sess.run([after_transform, before_transform], feed_dict=_feed_dict)
+            pred_a, pred_b, flows = sess.run([after_transform, before_transform, flow], feed_dict=_feed_dict)
             show_transform_results.set_title(["before", "after", "ground_truth"])
             show_transform_results.set_axis_off()
             for c in range(14):
@@ -481,7 +503,12 @@ def main(unused_argv):
                                                pred_a[0,...,c], 
                                                np.int32(data[common.LABEL][0,...,0]==c)],
                                               parameters=None)
-            
+          
+              show_transform_results.display_figure(FLAGS.eval_split+'-flow_compare-%04d-%03d-%02f' %(i,c,th),
+                                              [flows[0,...,2*c], 
+                                               flows[0,...,2*c+1], 
+                                               np.int32(data[common.LABEL][0,...,0]==c)],
+                                              parameters=None)
             # Flow Visualization
       m_dsc = []
       for c in range(1, dataset.num_of_classes):      

@@ -26,7 +26,7 @@ colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 loss_utils = train_utils.loss_utils
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -66,7 +66,7 @@ def create_training_path(train_logdir):
 parser = argparse.ArgumentParser()
 
 # Training configuration
-parser.add_argument('--seg_loss', type=str, default="cross_entropy_sigmoid",
+parser.add_argument('--seg_loss', type=str, default="mean_dice_coefficient",
                     help='')
 
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
@@ -124,7 +124,7 @@ parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
-parser.add_argument('--flow_model_variant', type=str, default="resnet_decoder",
+parser.add_argument('--flow_model_variant', type=str, default="resnet_flownets",
                     help='')
 
 parser.add_argument('--model_variant', type=str, default=None,
@@ -285,7 +285,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   inputs = {"input_a": input_a, "input_b": input_b, "query": query}
 
 
-  output_dict = build_flow_model(inputs, samples, FLAGS.flow_model_variant, model_options, FLAGS.learning_cases)
+  output_dict = build_flow_model(inputs, samples, FLAGS.flow_model_variant, model_options, FLAGS.learning_cases, 14)
   
 
   # Log the summary

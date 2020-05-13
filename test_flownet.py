@@ -14,10 +14,14 @@ from core import features_extractor, utils
 slim = tf.contrib.slim
 
 
-def build_flow_model(inputs, samples, flow_model_variant, model_options, learning_cases):
-    if flow_model_variant == "resnet_decoder":
+def build_flow_model(inputs, samples, flow_model_variant, model_options, learning_cases, num_class=None):
+    num_out = 2
+    if num_class is not None:
+        num_out = num_out * num_class
+    
+    if flow_model_variant in ("resnet_decoder", "resnet_flownets"):
         in_node = tf.concat([samples[common.IMAGE], inputs['input_b']], axis=3)
-        features, _ = features_extractor.extract_features(images=in_node,
+        features, end_points = features_extractor.extract_features(images=in_node,
                                                             output_stride=model_options.output_stride,
                                                             multi_grid=model_options.multi_grid,
                                                             model_variant=model_options.model_variant,
@@ -25,12 +29,18 @@ def build_flow_model(inputs, samples, flow_model_variant, model_options, learnin
                                                             is_training=True,
                                                             fine_tune_batch_norm=model_options.fine_tune_batch_norm,
                                                             preprocessed_images_dtype=model_options.preprocessed_images_dtype)
-
+        layers_dict = {"low_level5": features,
+                        "low_level4": end_points["resnet_v1_50/block3"],
+                        "low_level3": end_points["resnet_v1_50/block2"],
+                        "low_level2": end_points["resnet_v1_50/block1"],
+                        "low_level1": end_points["resnet_v1_50/conv1_3"]}
+        
     with tf.variable_scope("flow_model"):
         if flow_model_variant == "unet":
             concat_inputs = tf.concat([inputs['input_a'], inputs['input_b']], axis=3)
-            flow = utils._simple_unet(concat_inputs, out=2, stage=5, channels=32, is_training=True)
+            flow = utils._simple_unet(concat_inputs, out=num_out, stage=5, channels=32, is_training=True)
         elif flow_model_variant == "FlowNet-S":
+            # TODO: num_out
             training_schedule = {
                 # 'step_values': [400000, 600000, 800000, 1000000],
                 'step_values': [400000, 600000, 800000, 1000000],
@@ -44,16 +54,74 @@ def build_flow_model(inputs, samples, flow_model_variant, model_options, learnin
             flow_dict = net.model(inputs, training_schedule, trainable=True)
             flow = flow_dict["flow"]
         elif flow_model_variant == "resnet_decoder":
-            flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
-        
-        
+            flow = utils._simple_decoder(features, out=num_out, stage=3, channels=32, is_training=True)
+        elif flow_model_variant == "resnet_flownets":
+            training_schedule = {
+                # 'step_values': [400000, 600000, 800000, 1000000],
+                'step_values': [400000, 600000, 800000, 1000000],
+                'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
+                'momentum': 0.9,
+                'momentum2': 0.999,
+                'weight_decay': 0.0004,
+                'max_iter': 30000,
+                }
+            with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
+                                # Only backprop this network if trainable
+                                trainable=True,
+                                # He (aka MSRA) weight initialization
+                                weights_initializer=slim.variance_scaling_initializer(),
+                                activation_fn=LeakyReLU,
+                                # We will do our own padding to match the original Caffe code
+                                # padding='VALID'
+                                ):
+                weights_regularizer = slim.l2_regularizer(training_schedule['weight_decay'])
+                with slim.arg_scope([slim.conv2d], weights_regularizer=weights_regularizer):
+                    with slim.arg_scope([slim.conv2d], stride=2):
+                        """ START: Refinement Network """
+                        with slim.arg_scope([slim.conv2d_transpose], biases_initializer=None):
+                            deconv5 = slim.conv2d(features, 512, 3,
+                                                                    stride=1,
+                                                                    scope='deconv5')
+                            concat5 = tf.concat([layers_dict["low_level4"], deconv5], axis=3)
+
+                            deconv4 = slim.conv2d(concat5, 256, 3,
+                                                                    stride=1,
+                                                                    scope='deconv4')
+                            concat4 = tf.concat([layers_dict["low_level3"], deconv4], axis=3)
+                            
+                            deconv3 = slim.conv2d_transpose(concat4, 128, 4,
+                                                                    stride=2,
+                                                                    scope='deconv3')
+                            concat3 = tf.concat([layers_dict["low_level2"], deconv3], axis=3)
+
+                            deconv2 = slim.conv2d_transpose(concat3, 64, 4,
+                                                                    stride=2,
+                                                                    scope='deconv2')
+                            concat2 = tf.concat([layers_dict["low_level1"], deconv2], axis=3)
+                            
+                            deconv1 = slim.conv2d_transpose(concat2, 64, 4,
+                                                            stride=2,
+                                                            scope='deconv1')
+                            flow = slim.conv2d(pad(deconv1), num_out, 3,
+                                                        stride=1,
+                                                        scope='predict_flow2',
+                                                        activation_fn=None)
+                        """ END: Refinement Network """
+                    
+                    
     #   pred = stn.bilinear_sampler(query, flow[...,0], flow[...,1])
         if learning_cases.split("-")[1] in ("img", "prior"):
             warp_func = WarpingLayer('bilinear')
         elif learning_cases.split("-")[1] == "seg":
             warp_func = WarpingLayer('nearest')
         
-        pred = warp_func(inputs["query"], flow)
+        if num_class is not None:
+            p_list = []
+            for c in range(num_class):
+                p_list.append(warp_func(inputs["query"][...,c:c+1], flow[...,2*c:2*(c+1)]))
+            pred = tf.concat(p_list, axis=3)
+        else:
+            pred = warp_func(inputs["query"], flow)
         output_dict = {common.OUTPUT_TYPE: pred,
                     "flow": flow}
     return output_dict

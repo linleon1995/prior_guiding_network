@@ -95,6 +95,11 @@ def rm_ori(in_node,
                     sram_scope = scope
                 attention_class = sram(sram_input, guidance[...,c:c+1], scope=sram_scope, is_training=is_training)
                 
+                if further_attention:
+                    if feature is not None:
+                        attention_class = attention_class + feature[...,(c-1)*num_filters:c*num_filters]
+                    attention_class = sram(attention_class, guidance[...,c:c+1], scope=sram_scope+"2", is_training=is_training)
+                    
                 feature_list.append(attention_class)
             attention = tf.concat(feature_list, axis=3)
             
@@ -105,9 +110,10 @@ def rm_ori(in_node,
             return attention
         
         new_feature = sram_attention_branch(sram_input=conv_r1, feature=feature, scope="sram1")
-        if further_attention:
-            new_feature += feature
-            new_feature = sram_attention_branch(sram_input=new_feature, feature=feature, scope="sram2")
+        # if further_attention:
+        #     if feature is not None:
+        #       new_feature += feature
+        #     new_feature = sram_attention_branch(sram_input=new_feature, feature=feature, scope="sram2")
         
         new_guidance = conv2d(new_feature, [1,1,num_filters*(num_class-1),num_class], 
                               activate=None, scope="guidance", is_training=is_training)
@@ -188,7 +194,7 @@ def refinement_network(features,
                         p = tf.get_variable(name='guid_w_%d' %stage, shape=[1], initializer=tf.constant_initializer(0.5))
                         guidance = p*guidance + (1-p)*guid_in
                     elif guid_acc == "one":
-                        guidance = tf.image.resize_bilinear(guidance_in, [h, w])  
+                        guidance = tf.image.resize_bilinear(guidance_in, [h, w]) 
                     tf.add_to_collection("guidance", guidance)
     return guidance, layers_dict
 
