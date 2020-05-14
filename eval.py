@@ -32,7 +32,7 @@ import experiments
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 EVAL_CROP_SIZE = [256,256]
 # EVAL_CROP_SIZE = [512,512]
@@ -45,6 +45,7 @@ IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,34
 # TODO: train image list (optional)
 IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
 FUSIONS = 5*["sum"]
+# FUSIONS = ['guid'] + 4*["sum"]
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-50000'
@@ -53,8 +54,9 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-60000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-60000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-60000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-70000'
-CHECKPOINT = None
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-90000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_013/model.ckpt-80000'
+# CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
@@ -74,7 +76,7 @@ parser.add_argument('--master', type=str, default='',
                     help='')
 
 # Settings for log directories.
-parser.add_argument('--eval_logdir', type=str, default='eval/',
+parser.add_argument('--eval_logdir', type=str, default=CHECKPOINT+'-eval/',
                     help='')
 
 parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
@@ -345,81 +347,81 @@ def main(unused_argv):
     print(sum(var_sizes) / (1024 ** 2), 'MB')
     
     # Add name to graph node so we can add to summary.
-    # logits = output_dict[common.OUTPUT_TYPE]
-    # preds = tf.nn.softmax(logits)
-    # predictions = tf.identity(preds, name=common.OUTPUT_TYPE)
-    # predictions = tf.argmax(predictions, axis=3)
-    # predictions = tf.cast(predictions, tf.int32)
-    # pred_flat = tf.reshape(predictions, shape=[-1,])
+    logits = output_dict[common.OUTPUT_TYPE]
+    preds = tf.nn.softmax(logits)
+    predictions = tf.identity(preds, name=common.OUTPUT_TYPE)
+    predictions = tf.argmax(predictions, axis=3)
+    predictions = tf.cast(predictions, tf.int32)
+    pred_flat = tf.reshape(predictions, shape=[-1,])
 
-    # labels = tf.squeeze(placeholder_dict[common.LABEL], axis=3)
-    # label_onehot = tf.one_hot(indices=labels,
-    #                           depth=dataset.num_of_classes,
-    #                           on_value=1,
-    #                           off_value=0,
-    #                           axis=3)
-    # num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
-    # labels_flat = tf.reshape(labels, shape=[-1,])
+    labels = tf.squeeze(placeholder_dict[common.LABEL], axis=3)
+    label_onehot = tf.one_hot(indices=labels,
+                              depth=dataset.num_of_classes,
+                              on_value=1,
+                              off_value=0,
+                              axis=3)
+    num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
+    labels_flat = tf.reshape(labels, shape=[-1,])
 
-    # if FLAGS.vis_guidance:
-    #   def guid_mean_dsc(logits, label):
-    #     h, w = label.get_shape().as_list()[1:3]
-    #     logits = tf.compat.v2.image.resize(logits, [h, w])
-    #     loss = train_utils.loss_utils(logits, label, "mean_dice_coefficient")
-    #     return 1 - loss
-    #   guid0 = layers_dict["guidance_in"]
-    #   guid1 = layers_dict["guidance1"]
-    #   guid2 = layers_dict["guidance2"]
-    #   guid3 = layers_dict["guidance3"]
-    #   guid4 = layers_dict["guidance4"]
+    if FLAGS.vis_guidance:
+      def guid_mean_dsc(logits, label):
+        h, w = label.get_shape().as_list()[1:3]
+        logits = tf.compat.v2.image.resize(logits, [h, w])
+        loss = train_utils.loss_utils(logits, label, "mean_dice_coefficient")
+        return 1 - loss
+      guid0 = layers_dict["guidance_in"]
+      guid1 = layers_dict["guidance1"]
+      guid2 = layers_dict["guidance2"]
+      guid3 = layers_dict["guidance3"]
+      guid4 = layers_dict["guidance4"]
 
-    #   guid1_dsc = guid_mean_dsc(logits, labels)
+      guid1_dsc = guid_mean_dsc(logits, labels)
 
-    #   guid_list = tf.get_collection("guidance")
+      guid_list = tf.get_collection("guidance")
       
       
-    # if FLAGS.affine_transform or FLAGS.deformable_transform:
-    #   pp = output_dict[common.GUIDANCE]
-    #   # pp = tf.image.resize_bilinear(output_dict[common.PRIOR_SEGS], 
-    #   #                               [EVAL_CROP_SIZE[0]//FLAGS.output_stride,EVAL_CROP_SIZE[1]//FLAGS.output_stride])
-    # else:
-    #   pp = label_onehot                   
+    if FLAGS.affine_transform or FLAGS.deformable_transform:
+      pp = output_dict[common.GUIDANCE]
+      # pp = tf.image.resize_bilinear(output_dict[common.PRIOR_SEGS], 
+      #                               [EVAL_CROP_SIZE[0]//FLAGS.output_stride,EVAL_CROP_SIZE[1]//FLAGS.output_stride])
+    else:
+      pp = label_onehot                   
                  
-    # if common.OUTPUT_Z in output_dict:
-    #   z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
+    if common.OUTPUT_Z in output_dict:
+      z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
       
-    # # Define the evaluation metric.
-    # predictions_tag = 'miou'
-    # mIoU, update_op = tf.contrib.metrics.streaming_mean_iou(pred_flat, labels_flat, num_classes=dataset.num_of_classes,
-    #                                                         )
-    # tf.summary.scalar(predictions_tag, mIoU)
+    # Define the evaluation metric.
+    predictions_tag = 'miou'
+    mIoU, update_op = tf.contrib.metrics.streaming_mean_iou(pred_flat, labels_flat, num_classes=dataset.num_of_classes,
+                                                            )
+    tf.summary.scalar(predictions_tag, mIoU)
 
-    # # Define Confusion Maxtrix
-    # cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
-    # # if FLAGS.vis_guidance:
-    # #   def cm_in_each_stage(pred, label):
-    # #     h, w = pred.get_shape().as_list()[1:3]
-    # #     label =tf.expand_dims(label, axis=3)
-    # #     label = tf.compat.v2.image.resize(label, [h, w], method='nearest')
+    # Define Confusion Maxtrix
+    cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
+    # if FLAGS.vis_guidance:
+    #   def cm_in_each_stage(pred, label):
+    #     h, w = pred.get_shape().as_list()[1:3]
+    #     label =tf.expand_dims(label, axis=3)
+    #     label = tf.compat.v2.image.resize(label, [h, w], method='nearest')
         
-    # #     label_flat = tf.reshape(label, shape=[-1,])
-    # #     pred_flat = tf.reshape(pred, shape=[-1,])
-    # #     cm = tf.confusion_matrix(label_flat, pred_flat, num_classes=dataset.num_of_classes)
-    # #     return cm, label
-    # #   cm_g1, label_g1 = cm_in_each_stage(pred_stage1, labels)
-    # #   cm_g2, label_g2 = cm_in_each_stage(pred_stage2, labels)
-    # #   cm_g3, label_g3 = cm_in_each_stage(pred_stage3, labels)
-    # #   cm_g4, label_g4 = cm_in_each_stage(pred_stage4, labels)
-    #   # guid_pred = [pred_stage1, pred_stage2, pred_stage3, pred_stage4]
-    #   # guid_label = [label_g1, label_g2, label_g3, label_g4]
-    # summary_op = tf.summary.merge_all()
-    # summary_hook = tf.contrib.training.SummaryAtEndHook(
-    #     log_dir=FLAGS.eval_logdir, summary_op=summary_op)
-    # hooks = [summary_hook]
+    #     label_flat = tf.reshape(label, shape=[-1,])
+    #     pred_flat = tf.reshape(pred, shape=[-1,])
+    #     cm = tf.confusion_matrix(label_flat, pred_flat, num_classes=dataset.num_of_classes)
+    #     return cm, label
+    #   cm_g1, label_g1 = cm_in_each_stage(pred_stage1, labels)
+    #   cm_g2, label_g2 = cm_in_each_stage(pred_stage2, labels)
+    #   cm_g3, label_g3 = cm_in_each_stage(pred_stage3, labels)
+    #   cm_g4, label_g4 = cm_in_each_stage(pred_stage4, labels)
+      # guid_pred = [pred_stage1, pred_stage2, pred_stage3, pred_stage4]
+      # guid_label = [label_g1, label_g2, label_g3, label_g4]
+    summary_op = tf.summary.merge_all()
+    summary_hook = tf.contrib.training.SummaryAtEndHook(
+        log_dir=FLAGS.eval_logdir, summary_op=summary_op)
+    hooks = [summary_hook]
 
-    # num_eval_iters = None
-    # if FLAGS.max_number_of_evaluations > 0:
-    #   num_eval_iters = FLAGS.max_number_of_evaluations
+    num_eval_iters = None
+    if FLAGS.max_number_of_evaluations > 0:
+      num_eval_iters = FLAGS.max_number_of_evaluations
 
     # Set up tf session and initialize variables.
     sess = tf.Session()
@@ -482,29 +484,31 @@ def main(unused_argv):
     else:
         display_imgs = IMG_LIST
 
-    eval_utils.compute_params_and_flops(graph)  
-    print(30*"xyz")   
-    output_graph_def = tf.graph_util.convert_variables_to_constants(
-            sess,
-            tf.get_default_graph().as_graph_def(),
-            ["output"])
+  #   eval_utils.compute_params_and_flops(graph)  
+  #   print(30*"xyz")   
+  #   output_graph_def = tf.graph_util.convert_variables_to_constants(
+  #           sess,
+  #           tf.get_default_graph().as_graph_def(),
+  #           ["output"])
 
-    with tf.gfile.GFile('graph2.pb', "wb") as f:
-      f.write(output_graph_def.SerializeToString())
+  #   with tf.gfile.GFile('graph2.pb', "wb") as f:
+  #     f.write(output_graph_def.SerializeToString())
 
-  def load_pb(pb):
-    with tf.gfile.GFile(pb, "rb") as f:
-        graph_def = tf.GraphDef()
-        graph_def.ParseFromString(f.read())
-    with tf.Graph().as_default() as graph:
-        tf.import_graph_def(graph_def, name='')
-        return graph
+  # def load_pb(pb):
+  #   with tf.gfile.GFile(pb, "rb") as f:
+  #       graph_def = tf.GraphDef()
+  #       graph_def.ParseFromString(f.read())
+  #   with tf.Graph().as_default() as graph:
+  #       tf.import_graph_def(graph_def, name='')
+  #       return graph
 
-  g2 = load_pb('./graph2.pb')
-  with g2.as_default():
-    eval_utils.compute_params_and_flops(g2) 
+  # g2 = load_pb('./graph2.pb')
+  # with g2.as_default():
+  #   eval_utils.compute_params_and_flops(g2) 
 
     aa = tf.trainable_variables()
+    for v in aa:
+      print(30*"-", v.name)
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}

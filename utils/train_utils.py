@@ -60,7 +60,8 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
         add_softmax_cross_entropy_loss_for_each_scale(logits,
                                                     labels,
                                                     14,
-                                                    -1)
+                                                    -1,
+                                                    loss_weight=[0.04]+13*[1.0])
         loss = tf.losses.get_losses()[0]
         # flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
         # flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])

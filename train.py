@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -39,7 +39,7 @@ DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 HU_WINDOW = [-125, 275]
 TRAIN_CROP_SIZE = [256, 256]
 # TRAIN_CROP_SIZE = [512, 512]
-FUSIONS = 5*["concat"]
+FUSIONS = 5*["sum"]
 FUSIONS = ["guid", "sum", "sum", "sum", "sum"]
 
 # TODO: tf argparse
@@ -75,7 +75,7 @@ parser.add_argument('--guidance_acc', type=str, default=None,
 parser.add_argument('--flow_model_type', type=str, default="resnet-guid",
                     help='')
 
-parser.add_argument('--weight_decay', type=float, default=0.0,
+parser.add_argument('--weight_decay', type=float, default=1e-3,
                     help='')
 
 # Training configuration
@@ -170,7 +170,7 @@ parser.add_argument('--z_loss_decay', type=float, default=None,
 parser.add_argument('--transform_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--guidance_loss_decay', type=float, default=1e-1,
+parser.add_argument('--guidance_loss_decay', type=float, default=None,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -181,7 +181,7 @@ parser.add_argument('--regularization_weight', type=float, default=None,
 parser.add_argument('--learning_policy', type=str, default='poly',
                     help='')
 
-parser.add_argument('--base_learning_rate', type=float, default=5e-3,
+parser.add_argument('--base_learning_rate', type=float, default=7.5e-3,
                     help='')
 
 parser.add_argument('--learning_rate_decay_step', type=float, default=0,
@@ -405,7 +405,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                                 model_options, ignore_label)
 
     loss_dict = {}
-    loss_dict[common.OUTPUT_TYPE] = {"loss": "mean_dice_coefficient","decay": None}
+    loss_dict[common.OUTPUT_TYPE] = {"loss": "cross_entropy","decay": None}
 
     if FLAGS.z_loss_decay is not None:
         if FLAGS.z_label_method == 'regression':

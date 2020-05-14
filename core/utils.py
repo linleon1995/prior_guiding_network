@@ -44,32 +44,32 @@ class Refine(object):
           y_tm1 = None
           preds = {}
           
-#          embed5 = self.low_level["low_level5"]
-#          y5 = tf.identity(embed5, name="identity5")
-#          
-#          embed4 = self.low_level["low_level4"]
-#          h, w = embed4.get_shape().as_list()[1:3]
-#          y_tm1 = tf.image.resize_bilinear(y5, [h, w], align_corners=True)
-#          y_tm1 = slim.conv2d(y_tm1, 256, scope="conv4_1")
-#          y4 = self.get_fusion_method(self.fusions[0])(embed4, y_tm1, 256, self.fusions[0]+str(4))
-#
-#          embed3 = self.low_level["low_level3"]
-#          h, w = embed3.get_shape().as_list()[1:3]
-#          y_tm1 = tf.image.resize_bilinear(y4, [h, w], align_corners=True)
-#          y_tm1 = slim.conv2d(y_tm1, 128, scope="conv3_1")
-#          y3 = self.get_fusion_method(self.fusions[1])(embed3, y_tm1, 128, self.fusions[1]+str(3))
-#
-#          embed2 = self.low_level["low_level2"]
-#          h, w = embed2.get_shape().as_list()[1:3]
-#          y_tm1 = tf.image.resize_bilinear(y3, [h, w], align_corners=True)
-#          y_tm1 = slim.conv2d(y_tm1, 64, scope="conv2_1")
-#          y2 = self.get_fusion_method(self.fusions[2])(embed2, y_tm1, 64, self.fusions[2]+str(2))
-#
-#          embed1 = self.low_level["low_level1"]
-#          h, w = embed1.get_shape().as_list()[1:3]
-#          y_tm1 = tf.image.resize_bilinear(y2, [h, w], align_corners=True)
-#          y_tm1 = slim.conv2d(y_tm1, 32, scope="conv1_1")
-#          y = self.get_fusion_method(self.fusions[3])(embed1, y_tm1, 32, self.fusions[3]+str(1))
+          embed5 = self.low_level["low_level5"]
+          y5 = tf.identity(embed5, name="identity5")
+         
+          # embed4 = self.low_level["low_level4"]
+          # h, w = embed4.get_shape().as_list()[1:3]
+          # y_tm1 = tf.image.resize_bilinear(y5, [h, w], align_corners=True)
+          # y_tm1 = slim.conv2d(y_tm1, 256, scope="conv4_1")
+          # y4 = self.get_fusion_method(self.fusions[0])(embed4, y_tm1, 256, self.fusions[0]+str(4))
+
+          # embed3 = self.low_level["low_level3"]
+          # h, w = embed3.get_shape().as_list()[1:3]
+          # y_tm1 = tf.image.resize_bilinear(y4, [h, w], align_corners=True)
+          # y_tm1 = slim.conv2d(y_tm1, 128, scope="conv3_1")
+          # y3 = self.get_fusion_method(self.fusions[1])(embed3, y_tm1, 128, self.fusions[1]+str(3))
+
+          # embed2 = self.low_level["low_level2"]
+          # h, w = embed2.get_shape().as_list()[1:3]
+          # y_tm1 = tf.image.resize_bilinear(y3, [h, w], align_corners=True)
+          # y_tm1 = slim.conv2d(y_tm1, 64, scope="conv2_1")
+          # y2 = self.get_fusion_method(self.fusions[2])(embed2, y_tm1, 64, self.fusions[2]+str(2))
+
+          # embed1 = self.low_level["low_level1"]
+          # h, w = embed1.get_shape().as_list()[1:3]
+          # y_tm1 = tf.image.resize_bilinear(y2, [h, w], align_corners=True)
+          # y_tm1 = slim.conv2d(y_tm1, 32, scope="conv1_1")
+          # y = self.get_fusion_method(self.fusions[3])(embed1, y_tm1, 32, self.fusions[3]+str(1))
 
           out_node = self.embed_node
           for i, (k, v) in enumerate(self.low_level.items()):
@@ -88,12 +88,12 @@ class Refine(object):
               tf.add_to_collection("f", guid)
               y = fuse_func(embed, y_tm1, guid, out_node, self.fusions[i]+str(self.num_stage-i))
               
-            
-#            out_node //= 2
-            preds["guidance%d" %(self.num_stage-i)] = slim.conv2d(y, self.num_class, kernel_size=[1,1], 
-                                                                  activation_fn=None, 
-                                                                  stride=1, scope="pred%d" %(self.num_stage-i))
             y_tm1 = y
+#            out_node //= 2
+            # preds["guidance%d" %(self.num_stage-i)] = slim.conv2d(y, self.num_class, kernel_size=[1,1], 
+            #                                                       activation_fn=None, 
+            #                                                       stride=1, scope="pred%d" %(self.num_stage-i))
+            
           y = tf.image.resize_bilinear(y, [256, 256], align_corners=True)
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
           y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits')
