@@ -165,7 +165,8 @@ class Dataset(object):
             common.WIDTH: parsed_features['image/width'],
             common.DEPTH: parsed_features['image/depth'],
             common.NUM_SLICES: parsed_features['image/num_slices'],
-            "organ_label": organ_label
+            "organ_label": organ_label,
+            "split": self.split_name
         }
         
 
@@ -212,7 +213,7 @@ class Dataset(object):
             
             prior_segs = tf.convert_to_tensor(prior_segs)
 
-            prior_segs = tf.split(prior_segs, num_or_size_splits=self.z_class, axis=3)
+            prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=3)
             prior_segs = tf.concat(prior_segs, axis=2)
             prior_segs = tf.squeeze(prior_segs, axis=3)
         else:
@@ -266,7 +267,7 @@ class Dataset(object):
         if self.guidance_type == "gt":
             sample[common.PRIOR_SEGS] = label
         elif self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-            prior_segs = tf.split(prior_segs, num_or_size_splits=self.z_class, axis=2)
+            prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
             prior_segs = tf.stack(prior_segs, axis=3)
             sample[common.PRIOR_SEGS] = prior_segs
         elif self.guidance_type == "ones":
@@ -314,8 +315,8 @@ class Dataset(object):
           dataset = dataset.repeat(1)
     
         dataset = dataset.batch(self.batch_size).prefetch(self.batch_size)
-        return dataset.make_one_shot_iterator()
-        
+        # return dataset.make_one_shot_iterator()
+        return dataset
     
     def _get_all_files(self, split_name):
         """Gets all the files to read data from.

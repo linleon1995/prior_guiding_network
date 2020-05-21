@@ -32,7 +32,7 @@ import experiments
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 EVAL_CROP_SIZE = [256,256]
 # EVAL_CROP_SIZE = [512,512]
@@ -44,8 +44,13 @@ HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
 # TODO: train image list (optional)
 IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
+
 FUSIONS = 5*["sum"]
-# FUSIONS = ['guid'] + 4*["sum"]
+
+SEG_LOSS = "softmax_dice_loss"
+GUID_LOSS = "softmax_dice_loss"
+STAGE_PRED_LOSS = "softmax_dice_loss"
+SEG_WEIGHT_FLAG = False
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-50000'
@@ -55,7 +60,14 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-60000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-60000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-90000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_013/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_013/model.ckpt-100000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_015/model.ckpt-60000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_015/model.ckpt-100000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_019/model.ckpt-100000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_015/model.ckpt-100000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-95000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-115000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_029/model.ckpt-40000'
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
@@ -63,13 +75,19 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
+                    help='')
+
+parser.add_argument('--guid_method', type=str, default="guid_uni",
+                    help='')
+
+parser.add_argument('--out_node', type=int, default=64,
+                    help='')
+
 parser.add_argument('--share', type=bool, default=True,
                     help='')
 
 parser.add_argument('--guidance_acc', type=str, default=None,
-                    help='')
-
-parser.add_argument('--flow_model_type', type=str, default="resnet-fpn",
                     help='')
 
 parser.add_argument('--master', type=str, default='',
@@ -146,7 +164,7 @@ parser.add_argument('--store_all_imgs', type=bool, default=False,
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
 
-parser.add_argument('--eval_split', type=str, default='val',
+parser.add_argument('--eval_split', type=str, default='train',
                     help='')
 
 parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
@@ -186,8 +204,15 @@ def load_model(saver, sess, ckpt_path):
     saver.restore(sess, ckpt_path)
     print("Restored model parameters from {}".format(ckpt_path))
 
-
 def main(unused_argv):
+  from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+  import os
+  checkpoint_path = FLAGS.checkpoint_dir
+
+  # List ALL tensors example output: v0/Adam (DT_FLOAT) [3,3,1,80]
+  print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False, 
+                                   all_tensor_names=True)
+
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # TODO:
@@ -228,8 +253,9 @@ def main(unused_argv):
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
   with tf.Graph().as_default() as graph:
-    samples = dataset.get_one_shot_iterator().get_next()
-
+    iterator = dataset.get_one_shot_iterator().make_one_shot_iterator()
+    samples = iterator.get_next()
+    
     # Add name to input and label nodes so we can add to summary.
     samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
     samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
@@ -306,7 +332,9 @@ def main(unused_argv):
     #   samples[common.PRIOR_SEGS] = spatial_transfom_exp(samples[common.LABEL], angle, 
     #                                               translations, "NEAREST")
 
-
+    if FLAGS.guid_method is not None:
+      FUSIONS[0] = FLAGS.guid_method
+      
     output_dict, layers_dict = model.pgb_network(
                 placeholder_dict[common.IMAGE],
                 model_options=model_options,
@@ -334,8 +362,11 @@ def main(unused_argv):
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
-                flow_model_type=FLAGS.flow_model_type,
                 fusions=FUSIONS,
+                out_node=FLAGS.out_node,
+                guid_encoder=FLAGS.guid_encoder,
+                guidance_loss=GUID_LOSS,
+                stage_pred_loss=STAGE_PRED_LOSS,
                 )
     # a = tf.tra           
     # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guid' in dict_key}
@@ -363,21 +394,21 @@ def main(unused_argv):
     num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     labels_flat = tf.reshape(labels, shape=[-1,])
 
-    if FLAGS.vis_guidance:
-      def guid_mean_dsc(logits, label):
-        h, w = label.get_shape().as_list()[1:3]
-        logits = tf.compat.v2.image.resize(logits, [h, w])
-        loss = train_utils.loss_utils(logits, label, "mean_dice_coefficient")
-        return 1 - loss
-      guid0 = layers_dict["guidance_in"]
-      guid1 = layers_dict["guidance1"]
-      guid2 = layers_dict["guidance2"]
-      guid3 = layers_dict["guidance3"]
-      guid4 = layers_dict["guidance4"]
+    # if FLAGS.vis_guidance:
+    #   def guid_mean_dsc(logits, label):
+    #     h, w = label.get_shape().as_list()[1:3]
+    #     logits = tf.compat.v2.image.resize(logits, [h, w])
+    #     loss = train_utils.loss_utils(logits, label, "mean_dice_coefficient")
+    #     return 1 - loss
+    #   guid0 = layers_dict["guidance_in"]
+    #   guid1 = layers_dict["guidance1"]
+    #   guid2 = layers_dict["guidance2"]
+    #   guid3 = layers_dict["guidance3"]
+    #   guid4 = layers_dict["guidance4"]
 
-      guid1_dsc = guid_mean_dsc(logits, labels)
+    #   guid1_dsc = guid_mean_dsc(logits, labels)
 
-      guid_list = tf.get_collection("guidance")
+    #   guid_list = tf.get_collection("guidance")
       
       
     if FLAGS.affine_transform or FLAGS.deformable_transform:
@@ -398,6 +429,8 @@ def main(unused_argv):
 
     # Define Confusion Maxtrix
     cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
+
+    ggsmida = tf.get_collection("f")
     # if FLAGS.vis_guidance:
     #   def cm_in_each_stage(pred, label):
     #     h, w = pred.get_shape().as_list()[1:3]
@@ -484,7 +517,7 @@ def main(unused_argv):
     else:
         display_imgs = IMG_LIST
 
-  #   eval_utils.compute_params_and_flops(graph)  
+    eval_utils.compute_params_and_flops(graph)  
   #   print(30*"xyz")   
   #   output_graph_def = tf.graph_util.convert_variables_to_constants(
   #           sess,
@@ -506,9 +539,9 @@ def main(unused_argv):
   # with g2.as_default():
   #   eval_utils.compute_params_and_flops(g2) 
 
-    aa = tf.trainable_variables()
-    for v in aa:
-      print(30*"-", v.name)
+  #   aa = tf.trainable_variables()
+  #   for v in aa:
+  #     print(30*"-", v.name)
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
@@ -542,21 +575,31 @@ def main(unused_argv):
 
         # Guidance Visualization
         if FLAGS.vis_guidance:
-          g0, g1, g2, g3, g4, g1_dsc = sess.run([guid0, guid1, guid2, guid3, guid4, guid1_dsc], feed_dict=_feed_dict)
-          g1_dsc_t += g1_dsc
-          # _cm_g1, _cm_g2, _cm_g3, _cm_g4 = sess.run([cm_g1, cm_g2, cm_g3, cm_g4], feed_dict=_feed_dict)
-          # _cm_g1_t += _cm_g1
-          # _cm_g2_t += _cm_g2
-          # _cm_g3_t += _cm_g3
-          # _cm_g4_t += _cm_g4
-          # _guid_pred, _guid_label = sess.run([guid_pred, guid_label], feed_dict=_feed_dict)
           if i in display_imgs:
-            # TODO: cc, pp
-            # TODO: The situation of prior_seg not exist
-            class_list = np.arange(14)
-            for c in class_list:
-              f = tf.get_collection
-              guid = sess.run(f, feed_dict=_feed_dict)
+            ggsmida_np, ll = sess.run([ggsmida,logits], feed_dict=_feed_dict)
+            fig, ax = plt.subplots(1,1)
+            for j in range(14):
+              ax.imshow(ll[0,...,j])
+              fig.savefig(FLAGS.eval_logdir+"logits%03d_class%03d.png" %(i,j))
+              # ax.imshow(ggsmida_np[0][0,...,j])
+              # # plt.show()
+              # fig.savefig(FLAGS.eval_logdir+"guid_sample%03d_feature%03d.png" %(i,j))
+              
+          # g0, g1, g2, g3, g4, g1_dsc = sess.run([guid0, guid1, guid2, guid3, guid4, guid1_dsc], feed_dict=_feed_dict)
+          # g1_dsc_t += g1_dsc
+          # # _cm_g1, _cm_g2, _cm_g3, _cm_g4 = sess.run([cm_g1, cm_g2, cm_g3, cm_g4], feed_dict=_feed_dict)
+          # # _cm_g1_t += _cm_g1
+          # # _cm_g2_t += _cm_g2
+          # # _cm_g3_t += _cm_g3
+          # # _cm_g4_t += _cm_g4
+          # # _guid_pred, _guid_label = sess.run([guid_pred, guid_label], feed_dict=_feed_dict)
+          # if i in display_imgs:
+          #   # TODO: cc, pp
+          #   # TODO: The situation of prior_seg not exist
+          #   class_list = np.arange(14)
+          #   for c in class_list:
+          #     f = tf.get_collection
+          #     guid = sess.run(f, feed_dict=_feed_dict)
               # print(data["organ_label"][:,c])
               # g0, g1, g2, g3, g4, g1_dsc = sess.run([guid0, guid1, guid2, guid3, guid4, guid1_dsc], feed_dict=_feed_dict)
               # g_list, pred_prob = sess.run([guid_list,preds], feed_dict=_feed_dict)

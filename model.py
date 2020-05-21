@@ -106,6 +106,7 @@ class WarpingLayer(object):
                 x_warped = bilinear_warp(x, flow)
             return x_warped
         
+        
 def pgb_network(images, 
                 model_options,
                 affine_transform,
@@ -123,7 +124,6 @@ def pgb_network(images,
                 fusion_slice=None,
                 prior_dir=None,
                 drop_prob=None,
-                guid_weight=None,
                 stn_in_each_class=None,
                 reuse=None,
                 is_training=None,
@@ -140,153 +140,93 @@ def pgb_network(images,
     """
     output_dict = {}
     h, w = images.get_shape().as_list()[1:3]
-    flow_model_type = kwargs.pop("flow_model_type", None)
     weight_decay = kwargs.pop("weight_decay", None)
     fusions = kwargs.pop("fusions", None)
+    out_node = kwargs.pop("out_node", None)  
+    guid_encoder = kwargs.pop("guid_encoder", None)
+    z_model = kwargs.pop("z_model", None)
+    guidance_loss = kwargs.pop("guidance_loss", None)
+    stage_pred_loss = kwargs.pop("stage_pred_loss", None)
     
-    # with tf.variable_scope(scope, 'pgb_network', reuse=reuse):
-    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-        prior_seg = prior_segs[...,0]
-        # TODO: if tf.rank<4
-        # prior_segs = tf.split(prior_segs, num_or_size_splits=z_class, axis=3)
-        # prior_segs = tf.concat(prior_segs, axis=2)
-        # prior_segs = tf.squeeze(prior_segs, axis=3)
-    elif guidance_type == "gt":
-        prior_seg = tf.one_hot(indices=prior_segs[...,0],
-                                depth=num_class,
-                                on_value=1,
-                                off_value=0,
-                                axis=3)                     
-    else:
-        prior_seg = prior_segs
-        
-    in_node = images
-    # if affine_transform:
-    #     flow_model_inputs = tf.concat([images, prior_seg], axis=3)
-    #     if flow_model_type=="resnet_decoder":
-    #         in_node = flow_model_inputs
-            
-    features, end_points = features_extractor.extract_features(images=in_node,
-                                                            output_stride=model_options.output_stride,
-                                                            multi_grid=model_options.multi_grid,
-                                                            model_variant=model_options.model_variant,
-                                                            reuse=tf.AUTO_REUSE,
-                                                            is_training=is_training,
-                                                            fine_tune_batch_norm=model_options.fine_tune_batch_norm,
-                                                            preprocessed_images_dtype=model_options.preprocessed_images_dtype)
-    # features = tf.identity(features, "output")
-    layers_dict = {"low_level5": features,
-                "low_level4": end_points["resnet_v1_50/block3"],
-                "low_level3": end_points["resnet_v1_50/block2"],
-                "low_level2": end_points["resnet_v1_50/block1"],
-                "low_level1": end_points["resnet_v1_50/conv1_3"]}
-    
-    # if z_label_method is not None:
-    #     z_pred = predict_z_dimension(features, z_label_method, z_class)
-    #     output_dict[common.OUTPUT_Z] = z_pred
-    #     if z_to_prior:
-    #         prior_seg = get_adaptive_guidance(prior_segs, z_pred, z_label_method, num_class, 
-    #                                         prior_slice, fusion_slice)
-
-    if model_options.decoder_type == 'refinement_network':
-        
-
-        # TODO: check prior shape
-        
-        if affine_transform:
-            # output_dict = build_flow_model(inputs, samples, flow_model_type, model_options, learning_cases="img-prior")
-
-
-            # with tf.variable_scope("flow_model"):
-                output_dict["original_guidance"] = prior_seg
-                if flow_model_type == "unet":
-                    flow = utils._simple_unet(flow_model_inputs, out=2, stage=5, channels=32, is_training=True)
-                elif flow_model_type == "resnet_decoder":
-                    flow = utils._simple_decoder(features, out=2, stage=3, channels=32, is_training=True)
-                elif flow_model_type == "FlowNet-S":
-                    training_schedule = {
-                        # 'step_values': [400000, 600000, 800000, 1000000],
-                        'step_values': [400000, 600000, 800000, 1000000],
-                        'learning_rates': [0.0001, 0.00005, 0.000025, 0.0000125, 0.00000625],
-                        'momentum': 0.9,
-                        'momentum2': 0.999,
-                        'weight_decay': 0.0004,
-                        'max_iter': 30000,
-                        }
-                    net = FlowNetS()
-                    flow_model_inputs = {"input_a": images, "input_b": prior_seg}
-                    flow_dict = net.model(flow_model_inputs, training_schedule, trainable=True)
-                    flow = flow_dict["flow"]
-
-                warp_func = WarpingLayer('bilinear')
+    # Produce Prior
+    prior_seg = get_prior(prior_segs, guidance_type, num_class)
                 
-                prior_seg = warp_func(prior_seg, flow)
-                prior_seg = tf.cast(prior_seg, tf.float32)
-                output_dict["flow"] = flow
-                            
-            # TODO: stn split in class --> for loop
-            # TODO: variable scope for spatial transform
-        
-        # if "organ_label" in samples:
-        # TODO:
-        # organ_label = tf.reshape(samples, [batch_size,1,1,num_class])
-        # organ_label = tf.cast(organ_label, tf.float32)
-        # prior_seg = prior_seg * organ_label
+    if guid_encoder == "last_stage_feature":
+        in_node = tf.concat([images, prior_seg], axis=3)
+    else:
+        in_node = images
+    features, end_points = features_extractor.extract_features(images=in_node,
+                                                               output_stride=model_options.output_stride,
+                                                               multi_grid=model_options.multi_grid,
+                                                               model_variant=model_options.model_variant,
+                                                               reuse=reuse,
+                                                               is_training=is_training,
+                                                               fine_tune_batch_norm=model_options.fine_tune_batch_norm,
+                                                               preprocessed_images_dtype=model_options.preprocessed_images_dtype)
+
+    layers_dict = {"low_level5": features,
+                   "low_level4": end_points["resnet_v1_50/block3"],
+                   "low_level3": end_points["resnet_v1_50/block2"],
+                   "low_level2": end_points["resnet_v1_50/block1"],
+                   "low_level1": end_points["resnet_v1_50/conv1_3"]}
+    
+    # Multi-task 
+    if z_label_method is not None:
+        if z_label_method.split("_")[1] == "regression":
+            multi_task_node = 1
+        elif z_label_method.split("_")[1] == "classification": 
+            if z_label_method.split("_")[0] == "z": 
+                multi_task_node = z_class
+            elif z_label_method.split("_")[0] == "organ": 
+                multi_task_node = num_class
             
-        output_dict[common.GUIDANCE] = prior_seg
-        # prior_seg = tf.stop_gradient(prior_seg)
-        logits, layers_dict = refinement_network(
-                                                features,
-                                                prior_seg,
-                                                model_options.output_stride,
-                                                batch_size,
-                                                layers_dict,
-                                                num_class,
-                                                kwargs,
-                                                further_attention=False,
-                                                rm_type="feature_guided",
-                                                input_guidance_in_each_stage=False,
-                                                is_training=is_training,
-                                                )
-    elif model_options.decoder_type == 'unet_structure':
-        logits = __2d_unet_decoder(features, layers_dict, num_class, channels=256, is_training=is_training)
-    elif model_options.decoder_type == 'upsample':
-        # features =slim.conv2d(features, 256, [3, 3], stride=1, scope='embed1')
-        # features = tf.compat.v2.image.resize(features, [64, 64])
-        # features =slim.conv2d(features, 128, [3, 3], stride=1, scope='embed2')
-        # features = tf.compat.v2.image.resize(features, [128, 128])
-        features =slim.conv2d(features, 256, [3, 3], stride=1, scope='embed3')
-        # features = tf.compat.v2.image.resize(features, [256, 256])
-        features = tf.image.resize_bilinear(features, [256,256], align_corners=True)
-        logits = slim.conv2d(features, num_class, [1, 1], stride=1, scope='logits')
-    elif model_options.decoder_type == 'refine':
-        if "guid" in fusions:
-            guidance = tf.concat([images, prior_seg], axis=3)
-#            if flow_model_type in ("unet_3_32_p", "unet_3_32_ps", "unet_guid_p"):
-#                inputs = tf.concat([images, prior_seg], axis=3)    
-#            elif flow_model_type in ("unet_3_32", "unet_3_32s", "unet_guid"):
-#                inputs = images     
-#                
-#            feature = utils.slim_extractor(inputs, num_stage=3, weight_decay=weight_decay, is_training=is_training)
-#            guidance = slim.conv2d(feature , num_class, kernel_size=[1, 1], weights_initializer=tf.initializers.he_normal(), 
-#                                weights_regularizer=slim.l2_regularizer(weight_decay),scope="guidance")
-#            output_dict[common.GUIDANCE] = guidance
-#            guidance = tf.nn.sigmoid(guidance)
-        else:
-            guidance = None
-        refine_model = utils.Refine(layers_dict, fusions, guidance=guidance, embed_node=64, weight_decay=weight_decay, 
-                       scope=flow_model_type, is_training=is_training)  
-        logits, preds = refine_model.model()
-        layers_dict.update(preds)
-        # logits = slim.conv2d(feature, num_class, [1, 1], stride=1, activation_fn=None, scope='logits')
+        z_logits = predict_z_dimension(features, out_node=multi_task_node, 
+                                       extractor_type="simple")
+        output_dict[common.OUTPUT_Z] = z_logits
+    
+    with slim.arg_scope([slim.batch_norm],
+                        is_training=is_training):
+        with slim.arg_scope([slim.conv2d], 
+                          trainable=True,
+                          activation_fn=tf.nn.relu, 
+                          weights_initializer=tf.initializers.he_normal(), 
+                          weights_regularizer=slim.l2_regularizer(weight_decay),
+                          kernel_size=[3, 3], 
+                          padding='SAME',
+                          normalizer_fn=slim.batch_norm):
+            if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions:
+                # Refined by Decoder
+                if guid_encoder == "last_stage_feature":
+                    prior_seg = slim.conv2d(layers_dict["low_level4"], out_node, kernel_size=[1,1], scope="guidance_embedding")
+                elif guid_encoder == "shallow_net":
+                    prior_seg = utils.get_guidance(tf.concat([images, prior_seg], axis=3), out_node)
+                    
+                prior_pred = slim.conv2d(prior_seg, num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='prior_pred')
+                output_dict[common.GUIDANCE] = prior_pred
+                
+                if "softmax" in guidance_loss:
+                    prior_pred = tf.nn.softmax(prior_pred, axis=3)
+                elif "sigmoid" in guidance_loss:
+                    prior_pred = tf.nn.sigmoid(prior_pred)
+                    
+            else:
+                prior_seg = None
+                prior_pred = None
+        
+    logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
+                                      out_node=out_node, weight_decay=weight_decay, reuse=reuse, 
+                                      is_training=is_training)
+    layers_dict.update(preds)
     
     if drop_prob is not None:
         logits = tf.nn.dropout(logits, rate=drop_prob)
-        
+    
+    # logits = tf.identity(logits, "output")    
+    output_dict[common.OUTPUT_TYPE] = logits    
+    
     aa = tf.trainable_variables()
     for v in aa:
       print(30*"-", v.name)
-    output_dict[common.OUTPUT_TYPE] = logits
     return output_dict, layers_dict
 
 
@@ -525,21 +465,35 @@ def get_slice_indice(indice, num_prior_slice, fused_slice):
     return indice
     
 
-def predict_z_dimension(features, z_label_method, z_class):
-    with tf.variable_scope('z_prediction_branch'):
-        gap = tf.reduce_mean(features, axis=[1,2], keep_dims=False)
-        if z_label_method == 'regression':
-            z_logits = mlp(gap, output_dims=1, scope='z_info_extractor')
-            z_pred = tf.nn.sigmoid(z_logits)
-            z_pred = tf.squeeze(z_pred, axis=1)
-        elif z_label_method == "classification":
-            z_logits = mlp(gap, output_dims=z_class, scope='z_info_extractor')
-            z_pred = tf.nn.softmax(z_logits, axis=1)
-            z_pred = tf.expand_dims(tf.expand_dims(z_pred, axis=1), axis=1)  
+def predict_z_dimension(feature, out_node, extractor_type):
+    with tf.variable_scope('multi_task_branch'):
+        # TODO: neighbor slices
+        if extractor_type == "simple":
+            gap = tf.reduce_mean(feature, axis=[1,2], keep_dims=False)
+            z_logits = mlp(gap, output_dims=out_node, num_layers=2, 
+                           decreasing_root=16, scope='z_info_extractor')
+        elif extractor_type == "region":
+            pass
         else:
-            raise ValueError("Unknown z prediction model type")
+            raise ValueError("Unknown Extractor Type")
+    return z_logits
+
+
+# def predict_z_dimension(features, z_label_method, z_class):
+#     with tf.variable_scope('z_prediction_branch'):
+#         gap = tf.reduce_mean(features, axis=[1,2], keep_dims=False)
+#         if z_label_method == 'regression':
+#             z_logits = mlp(gap, output_dims=1, scope='z_info_extractor')
+#             z_pred = tf.nn.sigmoid(z_logits)
+#             z_pred = tf.squeeze(z_pred, axis=1)
+#         elif z_label_method == "classification":
+#             z_logits = mlp(gap, output_dims=z_class, scope='z_info_extractor')
+#             z_pred = tf.nn.softmax(z_logits, axis=1)
+#             z_pred = tf.expand_dims(tf.expand_dims(z_pred, axis=1), axis=1)  
+#         else:
+#             raise ValueError("Unknown z prediction model type")
         
-    return z_pred
+#     return z_pred
 
 
 def get_adaptive_guidance(prior_segs, 
@@ -564,8 +518,48 @@ def get_adaptive_guidance(prior_segs,
     return prior_seg
 
 
+def get_prior(prior_segs, guidance_type, num_class):
+    # TODO: else guidance type should raise ValueError
+    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+        prior_seg = prior_segs[...,0]
+        # TODO: if tf.rank<4
+        # prior_segs = tf.split(prior_segs, num_or_size_splits=z_class, axis=3)
+        # prior_segs = tf.concat(prior_segs, axis=2)
+        # prior_segs = tf.squeeze(prior_segs, axis=3)
+    elif guidance_type == "gt":
+        prior_seg = tf.one_hot(indices=prior_segs[...,0],
+                                depth=num_class,
+                                on_value=1,
+                                off_value=0,
+                                axis=3)                     
+    else:
+        prior_seg = prior_segs
+    return prior_seg
     
 
-
-
+def refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, out_node, 
+                      fine_tune_batch_norm=True, weight_decay=0.0, reuse=None, is_training=None):
+    batch_norm_params = utils.get_batch_norm_params(
+        decay=0.9997,
+        epsilon=1e-5,
+        scale=True,
+        is_training=(is_training and fine_tune_batch_norm),
+        # sync_batch_norm_method=model_options.sync_batch_norm_method
+        )
+    # batch_norm = utils.get_batch_norm_fn(
+    #     model_options.sync_batch_norm_method)
+    batch_norm = slim.batch_norm
+    with slim.arg_scope(
+        [slim.conv2d, slim.separable_conv2d],
+        weights_regularizer=slim.l2_regularizer(weight_decay),
+        activation_fn=tf.nn.relu,
+        normalizer_fn=slim.batch_norm,
+        padding='SAME',
+        stride=1,
+        reuse=reuse):
+        with slim.arg_scope([batch_norm], **batch_norm_params):
+            refine_model = utils.Refine(layers_dict, fusions, prior=prior_seg, stage_pred_loss=stage_pred_loss, prior_pred=prior_pred, 
+                                        embed_node=out_node, weight_decay=weight_decay, is_training=is_training)  
+            logits, preds = refine_model.model()
+    return logits, preds
 

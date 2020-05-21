@@ -592,3 +592,5 @@ def sram(in_node,
                                              "output": output})
         # tf.add_to_collection("/sram_embed", [in_node, conv1, conv2, guidance_tile, output])
         return output
+    
+    

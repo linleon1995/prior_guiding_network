@@ -10,12 +10,39 @@ slim = contrib_slim
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
 
 
+def slim_sram(in_node,
+              guidance,
+              scope=None):
+    """Single Residual Attention Module"""
+    with tf.variable_scope(scope, "sram", reuse=tf.AUTO_REUSE):
+        channel = in_node.get_shape().as_list()[3]
+        net = slim.conv2d(in_node, channel, kernel_size=[3,3], scope='conv1')
+        # net = slim.conv2d(net, channel, kernel_size=[3,3], scope='conv%d_2' %s)
+        
+        guidance_filters = guidance.get_shape().as_list()[3]
+        if guidance_filters == 1:
+            guidance_tile = tf.tile(guidance, [1,1,1,channel])
+        elif guidance_filters == channel:
+            guidance_tile = guidance
+        else:
+            raise ValueError("Unknown guidance filters number")
+
+        # tf.add_to_collection("/sram_embed", {"in_node": in_node,
+        #                                      "conv2": conv2, 
+        #                                      "guidance_tile": guidance_tile, 
+        #                                      "output": output})
+        output = in_node + tf.multiply(net, guidance_tile)
+        return output
+      
+      
 class Refine(object):
-  def __init__(self, low_level, fusions, guidance=None, embed_node=32, num_class=14, 
+  def __init__(self, low_level, fusions, prior=None, prior_pred=None, stage_pred_loss=None, embed_node=32, num_class=14, 
                weight_decay=0.0, scope=None, is_training=None):
     self.low_level = low_level
     self.fusions = fusions
-    self.guidance = guidance
+    self.prior = prior
+    self.prior_pred = prior_pred
+    self.stage_pred_loss = stage_pred_loss
     self.embed_node = embed_node
     self.num_class = num_class
     self.weight_decay = weight_decay
@@ -31,7 +58,13 @@ class Refine(object):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
     
   def model(self):
+    # TODO: reolve_shape
+    # TODO: image size
+    # TODO: Remove after finish code
+    if "slim_guid_class" in self.fusions:
+      raise ValueError("Bugs Fixing")
     with tf.variable_scope(self.scope, 'Refine_Network'):
+    # with tf.variable_scope(self.scope, 'resnet-fpn'):
       with self.arg_scope:
         with slim.arg_scope([slim.conv2d], 
                           trainable=True,
@@ -44,55 +77,57 @@ class Refine(object):
           y_tm1 = None
           preds = {}
           
-          embed5 = self.low_level["low_level5"]
-          y5 = tf.identity(embed5, name="identity5")
-         
-          # embed4 = self.low_level["low_level4"]
-          # h, w = embed4.get_shape().as_list()[1:3]
-          # y_tm1 = tf.image.resize_bilinear(y5, [h, w], align_corners=True)
-          # y_tm1 = slim.conv2d(y_tm1, 256, scope="conv4_1")
-          # y4 = self.get_fusion_method(self.fusions[0])(embed4, y_tm1, 256, self.fusions[0]+str(4))
-
-          # embed3 = self.low_level["low_level3"]
-          # h, w = embed3.get_shape().as_list()[1:3]
-          # y_tm1 = tf.image.resize_bilinear(y4, [h, w], align_corners=True)
-          # y_tm1 = slim.conv2d(y_tm1, 128, scope="conv3_1")
-          # y3 = self.get_fusion_method(self.fusions[1])(embed3, y_tm1, 128, self.fusions[1]+str(3))
-
-          # embed2 = self.low_level["low_level2"]
-          # h, w = embed2.get_shape().as_list()[1:3]
-          # y_tm1 = tf.image.resize_bilinear(y3, [h, w], align_corners=True)
-          # y_tm1 = slim.conv2d(y_tm1, 64, scope="conv2_1")
-          # y2 = self.get_fusion_method(self.fusions[2])(embed2, y_tm1, 64, self.fusions[2]+str(2))
-
-          # embed1 = self.low_level["low_level1"]
-          # h, w = embed1.get_shape().as_list()[1:3]
-          # y_tm1 = tf.image.resize_bilinear(y2, [h, w], align_corners=True)
-          # y_tm1 = slim.conv2d(y_tm1, 32, scope="conv1_1")
-          # y = self.get_fusion_method(self.fusions[3])(embed1, y_tm1, 32, self.fusions[3]+str(1))
-
+          # TODO: input guid in each stage?
+          # TODO: Would default vars value causes error?
+          if self.prior is not None and self.prior_pred is not None:
+            if "guid" in self.fusions:
+              guid = self.prior
+            elif "guid_class" in self.fusions:
+              guid = self.prior_pred
+            elif "guid_uni" in self.fusions:
+              guid = tf.reduce_mean(self.prior_pred[...,1:], axis=3, keepdims=True)
+              
+            tf.add_to_collection("f", guid)
+          
           out_node = self.embed_node
           for i, (k, v) in enumerate(self.low_level.items()):
-            embed = self.embed(v, out_node, scope="embed%d" %(self.num_stage-i))
-            
-            fuse_func = self.get_fusion_method(self.fusions[i])
-            if self.fusions[i] in ("concat", "sum"):
+            module_order = self.num_stage-i
+            fuse_method = self.fusions[i]
+            embed = self.embed(v, out_node, scope="embed%d" %module_order)
+            fuse_func = self.get_fusion_method(fuse_method)
+            h, w = embed.get_shape().as_list()[1:3]
+            if y_tm1 is not None:
+              y_tm1 = tf.image.resize_bilinear(y_tm1, [h, w], align_corners=True)
+                
+            if fuse_method in ("concat", "sum"):
               if y_tm1 is not None:
-                h, w = embed.get_shape().as_list()[1:3]
-                y_tm1 = tf.image.resize_bilinear(y_tm1, [h, w], align_corners=True)
-                y = fuse_func(embed, y_tm1, out_node, self.fusions[i]+str(self.num_stage-i))
+                y = fuse_func(embed, y_tm1, out_node, fuse_method+str(module_order))
               else:
-                y = tf.identity(embed, name="identity%d" %(self.num_stage-i))
-            elif self.fusions[i] in ("guid"):
-              guid = self.get_guidance(self.guidance, out_node, self.fusions[i]+str(self.num_stage-i))
-              tf.add_to_collection("f", guid)
-              y = fuse_func(embed, y_tm1, guid, out_node, self.fusions[i]+str(self.num_stage-i))
+                y = tf.identity(embed, name="identity%d" %module_order)
+            elif fuse_method in ("guid", "guid_class", "guid_uni"):
+              guid = tf.image.resize_bilinear(guid, [h, w], align_corners=True)
+              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order), num_classes=self.num_class)
               
-            y_tm1 = y
-#            out_node //= 2
-            # preds["guidance%d" %(self.num_stage-i)] = slim.conv2d(y, self.num_class, kernel_size=[1,1], 
-            #                                                       activation_fn=None, 
-            #                                                       stride=1, scope="pred%d" %(self.num_stage-i))
+            if self.stage_pred_loss is not None:
+              stage_pred =  slim.conv2d(y, self.num_class, kernel_size=[1,1], activation_fn=None, 
+                                          scope="stage_pred%d" %module_order)
+              preds["guidance%d" %module_order] = stage_pred
+            
+            if fuse_method in ("guid"):
+              guid = y
+              y_tm1 = None
+            elif fuse_method in ("guid_class", "guid_uni"):
+              if "softmax" in self.stage_pred_loss:
+                guid = tf.nn.softmax(stage_pred, axis=3)
+              elif "sigmoid" in self.stage_pred_loss:
+                guid = tf.nn.sigmoid(guid)
+              
+              if fuse_method == "guid_uni":
+                guid = tf.reduce_mean(guid[...,1:], axis=3, keepdims=True)
+                
+              y_tm1 = y
+            elif fuse_method in ("concat", "sum"):
+              y_tm1 = y
             
           y = tf.image.resize_bilinear(y, [256, 256], align_corners=True)
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
@@ -104,42 +139,51 @@ class Refine(object):
       return self.concat_convolution
     elif method == "sum":
       return self.sum_convolution
-    elif method == "guid":
+    elif method in ("guid", "guid_uni"):
       return self.guid_attention
-  
+    elif method == "guid_class":
+      return self.guid_class_attention
+    
   def concat_convolution(self, x1, x2, out_node, scope):
-    net = slim.conv2d(tf.concat([x1, x2], axis=3), out_node, scope=scope+"_1")
-#    net = slim.conv2d(net, out_node, scope=scope+"_2")
-    return net
+    with tf.variable_scope(scope, "concat_conv"):
+      net = slim.conv2d(tf.concat([x1, x2], axis=3), out_node, scope="conv1")
+  #    net = slim.conv2d(net, out_node, scope=scope+"_2")
+      return net
   
   def sum_convolution(self, x1, x2, out_node, scope):
-    net = slim.conv2d(x1 + x2, out_node, scope=scope+"_1")
-#    net = slim.conv2d(net, out_node, scope=scope+"_2")
-    return net
-  
-  def guid_attention(self, x1, x2, guid, out_node, scope):
-    net = slim.conv2d(x1, out_node, scope=scope+"_1")
-    y1 = x1 + net * guid
-    if x2 is not None:
-      mid = x2 + y1
-    else:
-      mid = y1
-    net = slim.conv2d(mid, out_node, scope=scope+"_2")
-    y2 = mid + net * guid
-    return y2
-  
-  def get_guidance(self, guidance, out_node, scope):
-    num_stage = 3
-    root = 1
-    net = guidance
-    for s in range(1, num_stage+1):
-      channel = out_node * root**(s-1)
-      net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
-      net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
-      net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
-    net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
-    net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
-    return tf.nn.sigmoid(net)
+    with tf.variable_scope(scope, "sum_cocnv"):
+      net = slim.conv2d(x1 + x2, out_node, scope="conv1")
+  #    net = slim.conv2d(net, out_node, scope=scope+"_2")
+      return net
+
+  def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    guid_node = guid.get_shape().as_list()[3]
+    if guid_node != out_node and guid_node != 1:
+      raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+    with tf.variable_scope(scope, 'guid'):
+      net = slim_sram(x1, guid, "sram1")
+      if x2 is not None:
+        net = net + x2
+        net = slim_sram(net, guid, "sram2")
+      return net
+    
+  def guid_class_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    num_classes = kwargs.pop("num_classes", None)
+    guid_node = guid.get_shape().as_list()[3]
+    if guid_node != num_classes:
+      raise ValueError("Unknown guidance node number %d, should equal class number" %guid_node)
+    with tf.variable_scope(scope, "guid_class"):
+      total_att = []
+      for i in range(1, num_classes):
+        net = slim_sram(x1, guid[...,i:i+1], "sram1")
+        if x2 is not None:
+          net = net + x2
+          net = slim_sram(net, guid[...,i:i+1], "sram2")
+        total_att.append(net)
+      fuse = slim.conv2d(tf.concat(total_att, axis=3), out_node, kernel_size=[1,1], scope="fuse")
+    return fuse
+
+
 
 def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):  
     # TODO: batch_norm parameter 
@@ -175,7 +219,20 @@ def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=
               net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
     return net      
             
-            
+def get_guidance(guidance, out_node, scope=None):
+    with tf.variable_scope(scope, 'guidance_embedding'):
+      num_stage = 3
+      root = 1
+      net = guidance
+      for s in range(1, num_stage+1):
+        channel = out_node * root**(s-1)
+        net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+        net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+        net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+      net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
+      net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
+    return net
+              
 def slim_extractor(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):  
     # TODO: batch_norm parameter 
     with tf.variable_scope(scope, 'U-net'):
@@ -782,3 +839,9 @@ def scale_dimension(dim, scale):
 #       scope=scope + '_pointwise')
 
 
+# def non_local_block(x1, x2):
+#   """
+#   """
+#   e1
+#   e2
+#   e1 = preprocess_utils.resolve_shape(logits, 4)[1:3]

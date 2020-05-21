@@ -63,9 +63,9 @@ def get_z_label(method, num_slices, depth, z_class=None):
     # z_label = tf.cond(is_classify, lambda: tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int64), 
     #                                lambda: tf.cast(tf.divide(depth, num_slices-1). tf.float32))
 
-    if method == 'regression':
+    if method.split("_")[1] == "regression":
         z_label = tf.cast(tf.divide(depth, num_slices-1), tf.float32)
-    elif method == 'classification':
+    elif method.split("_")[1] == 'classification':
         z_class = tf.cast(z_class, tf.float32)
         depth = tf.cast(depth, tf.float32)
         num_slices = tf.cast(num_slices, tf.float32)

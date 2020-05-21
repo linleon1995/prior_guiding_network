@@ -1,3 +1,4 @@
+import functools
 import six
 import numpy as np
 import nibabel as nib
@@ -6,12 +7,14 @@ import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
 
+from utils import losses
 from core import preprocess_utils
 from core import utils
 import common
 # from utils import loss_utils
 _EPSILON = 1e-5
-
+losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
+              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale}
 
 def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
     ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
@@ -150,10 +153,10 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
                               off_value=0,
                               axis=-1,
                               )
-        gt = tf.reshape(labels, [-1, labels.get_shape()[-1]])
+        gt = tf.reshape(labels, [-1, labels.get_shape()[3]])
         gt = tf.cast(gt, tf.float32)
         prediction = tf.nn.softmax(logits)
-        prediction = tf.reshape(prediction, [-1, logits.get_shape()[-1]])
+        prediction = tf.reshape(prediction, [-1, logits.get_shape()[3]])
         
         intersection = tf.reduce_sum(gt*prediction, 0)
         union = tf.reduce_sum(gt, 0) + tf.reduce_sum(prediction, 0)
@@ -199,59 +202,64 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
     #     loss += (regularizer * regularizers)
     return loss
     
-    
+def get_loss_func(loss_name):
+  if loss_name not in losses_map:
+    raise ValueError('Unsupported loss %s.' % loss_name)
+  
+  func = losses_map[loss_name]
+  @functools.wraps(func)
+  def network_fn(*args, **kwargs):
+      return func(*args, **kwargs)
+  return network_fn    
+     
+     
 def get_losses(output_dict, 
                layers_dict, 
                samples, 
-               loss_dict, 
+               loss_dict,
+               num_classes,
                batch_size=None):
-    # TODO: auxlarity loss in latent
-    losses = []
-    ys = tf.one_hot(samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
+    
+    # TODO: layers_dict and output_dict diff, should just input one of them
 
     # Calculate segmentation loss
-    seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], samples[common.LABEL], 
-                          cost_name=loss_dict[common.OUTPUT_TYPE]["loss"],
-                          batch_size=batch_size)
-    seg_loss = tf.identity(seg_loss, name='/'.join(['segmentation_loss', loss_dict[common.OUTPUT_TYPE]["loss"]]))
-    losses.append(seg_loss)
+    scales_to_logits = {"full": output_dict[common.OUTPUT_TYPE]}
+    get_loss_func(loss_dict[common.OUTPUT_TYPE]["loss"])(
+      scales_to_logits=scales_to_logits,
+      labels=samples[common.LABEL],
+      num_classes=num_classes,
+      ignore_label=255,
+      loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
+      scope=loss_dict[common.OUTPUT_TYPE]["scope"])
     
-    # Calculate z loss
-    if common.OUTPUT_Z in loss_dict:
-        z_loss = loss_utils(output_dict[common.OUTPUT_Z], samples[common.Z_LABEL], cost_name=loss_dict[common.OUTPUT_Z]["loss"])
-        z_loss = tf.multiply(loss_dict[common.OUTPUT_Z]["decay"], z_loss, 
-							 name='/'.join(['z_loss', loss_dict[common.OUTPUT_Z]["loss"]]))
-        losses.append(z_loss)
-
-    # Calculate guidance loss
-    if common.GUIDANCE in loss_dict:
-        guidance_loss = 0
-        
-		# Upsample logits in each stage with tf loss func# Upsample logits in each stage with tf loss func
-        ny = samples[common.LABEL].get_shape()[1]
-        nx = samples[common.LABEL].get_shape()[2]
-        
-        
+    # Calculate stage prediction loss
+    # TODO: the way to form guid_dict
+    if "stage_pred" in loss_dict:
+        guid_dict = {}
         for name, value in layers_dict.items():
-            if 'guidance' in name:
-                value = tf.compat.v2.image.resize(value, [ny, nx])
-                guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.GUIDANCE]["loss"])
-        guidance_loss = tf.multiply(loss_dict[common.GUIDANCE]["decay"], guidance_loss,
-                                    name='/'.join(['guidance_loss', loss_dict[common.GUIDANCE]["loss"]]))
+          if "guidance" in name:
+            guid_dict[name] = value
+        get_loss_func(loss_dict["stage_pred"]["loss"])(
+          scales_to_logits=guid_dict,
+          labels=samples[common.LABEL],
+          num_classes=num_classes,
+          ignore_label=255,
+          loss_weight=loss_dict["stage_pred"]["weights"],
+          scope=loss_dict["stage_pred"]["scope"])
 
-        losses.append(guidance_loss)  
-
-    # Calculate transformation loss  
-    if "transform" in loss_dict:
-        guid = tf.compat.v2.image.resize(output_dict[common.GUIDANCE], [256,256])
-        transform_loss = loss_utils(guid, ys, cost_name=loss_dict["transform"]["loss"])
-        transform_loss = tf.multiply(loss_dict["transform"]["decay"], transform_loss, 
-                                     name='/'.join(['transform_loss', loss_dict["transform"]["loss"]]))                             
-        losses.append(transform_loss)
+    # Calculate guidance loss  
+    if common.GUIDANCE in loss_dict:
+        # TODO: modify g
+        g = {"transform": output_dict[common.GUIDANCE]}
+        get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
+          scales_to_logits=g,
+          labels=samples[common.LABEL],
+          num_classes=num_classes,
+          ignore_label=255,
+          loss_weight=loss_dict[common.GUIDANCE]["weights"],
+          scope=loss_dict[common.GUIDANCE]["scope"])
+      
     
-    return losses
-
-
 def get_files_name(path, data_suffix='*.jpg'):
     subject = glob.glob(path + data_suffix)
     if not subject:
@@ -259,6 +267,11 @@ def get_files_name(path, data_suffix='*.jpg'):
     subject.sort()
     return subject
 
+def get_dice_loss_weight():
+  pass
+
+def get_cross_entropy_loss_weight():
+  pass
 
 def load_nibabel_data(path, num_of_class=None, processing_list=None, onehot_label=False):
     # get file list
