@@ -46,7 +46,7 @@ IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,34
 IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
 
 FUSIONS = 5*["sum"]
-FUSIONS = 5*["guid_uni"]
+# FUSIONS = 5*["guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
@@ -54,7 +54,7 @@ STAGE_PRED_LOSS = "softmax_dice_loss"
 SEG_WEIGHT_FLAG = False
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-85000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-85000'
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
@@ -65,10 +65,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
                     help='')
 
-parser.add_argument('--guid_method', type=str, default=None,
+parser.add_argument('--guid_method', type=str, default="guid_uni",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=64,
+                    help='')
+
+parser.add_argument('--guid_conv_type', type=str, default="conv",
+                    help='')
+                    
+parser.add_argument('--guid_conv_nums', type=int, default=1,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
@@ -134,7 +140,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=True,
+parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -147,7 +153,6 @@ parser.add_argument('--store_all_imgs', type=bool, default=False,
                     help='')
 
 # Dataset settings.
-
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
 
@@ -192,14 +197,25 @@ def load_model(saver, sess, ckpt_path):
     print("Restored model parameters from {}".format(ckpt_path))
 
 def main(unused_argv):
-  from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-  import os
-  checkpoint_path = FLAGS.checkpoint_dir
+  # from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+  # import os
+  # checkpoint_path = FLAGS.checkpoint_dir
 
-  # List ALL tensors example output: v0/Adam (DT_FLOAT) [3,3,1,80]
-  print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False, 
-                                   all_tensor_names=True)
+  # # List ALL tensors example output: v0/Adam (DT_FLOAT) [3,3,1,80]
+  # print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False, 
+  #                                  all_tensor_names=True)
 
+  path = FLAGS.checkpoint_dir.split("model.ckpt")[0]
+  parameters_dict = vars(FLAGS)
+  with open(os.path.join(path, 'eval_logging.txt'), 'w') as f:
+    f.write("Start Evaluation\n")
+    f.write(60*"="+"\n")
+    for key in parameters_dict:
+      f.write( "{}: {}".format(str(key), str(parameters_dict[key])))
+      f.write("\n")
+    f.write("\n")
+  
+    
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # TODO:
@@ -354,6 +370,8 @@ def main(unused_argv):
                 guid_encoder=FLAGS.guid_encoder,
                 guidance_loss=GUID_LOSS,
                 stage_pred_loss=STAGE_PRED_LOSS,
+                guid_conv_nums=FLAGS.guid_conv_nums,
+                guid_conv_type=FLAGS.guid_conv_type,
                 )
     # a = tf.tra           
     guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
@@ -363,9 +381,9 @@ def main(unused_argv):
     # feature_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'feature' in dict_key}
     # sram_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'sram' in dict_key}
 
-    var_sizes = [np.product(list(map(int, v.shape))) * v.dtype.size
-                for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
-    print(sum(var_sizes) / (1024 ** 2), 'MB')
+    # var_sizes = [np.product(list(map(int, v.shape))) * v.dtype.size
+    #             for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
+    # print(sum(var_sizes) / (1024 ** 2), 'MB')
     
     # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
@@ -507,31 +525,13 @@ def main(unused_argv):
     else:
         display_imgs = IMG_LIST
 
-    eval_utils.compute_params_and_flops(graph)  
-  #   print(30*"xyz")   
-  #   output_graph_def = tf.graph_util.convert_variables_to_constants(
-  #           sess,
-  #           tf.get_default_graph().as_graph_def(),
-  #           ["output"])
-
-  #   with tf.gfile.GFile('graph2.pb', "wb") as f:
-  #     f.write(output_graph_def.SerializeToString())
-
-  # def load_pb(pb):
-  #   with tf.gfile.GFile(pb, "rb") as f:
-  #       graph_def = tf.GraphDef()
-  #       graph_def.ParseFromString(f.read())
-  #   with tf.Graph().as_default() as graph:
-  #       tf.import_graph_def(graph_def, name='')
-  #       return graph
-
-  # g2 = load_pb('./graph2.pb')
-  # with g2.as_default():
-  #   eval_utils.compute_params_and_flops(g2) 
-
-  #   aa = tf.trainable_variables()
-  #   for v in aa:
-  #     print(30*"-", v.name)
+    flops, params = eval_utils.compute_params_and_flops(graph)
+    with open(os.path.join(path, 'eval_logging.txt'), 'a') as f:
+      f.write("\nFLOPs: {}".format(flops))
+      f.write("\nGFLOPs: {}".format(flops/1e9))
+      f.write("\nParameters: {} MB".format(params))
+      f.write("\n")  
+        
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
@@ -681,9 +681,21 @@ def main(unused_argv):
     mean_iou = eval_utils.compute_mean_iou(cm_total)
     mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
     pixel_acc = eval_utils.compute_accuracy(cm_total)
-    _, _ = eval_utils.precision_and_recall(cm_total)
+    p_mean, p_std, r_mean, r_std = eval_utils.precision_and_recall(cm_total)
     print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
 
+    with open(os.path.join(path, 'eval_logging.txt'), 'a') as f:
+      f.write("\nPixel ACC: {}".format(pixel_acc))
+      f.write("\nMean IoU: {}".format(mean_iou))
+      f.write("\nMean DSC: {}".format(mean_dice_score))
+      for i, dsc in enumerate(dice_score):
+          f.write("\n    class {}: {:.4f}".format(i, dsc))
+      f.write("\nPrecision mean: {} std: {}".format(p_mean, p_std))
+      f.write("\nRecall mean: {} std: {}".format(r_mean, r_std))
+      f.write("\n")  
+      f.write(60*"="+"\n")
+      f.write("End Evaluation\n")
+    
     if FLAGS.vis_guidance:
       print(10*"=", "Guidance Evaluation", 10*"=")
       print(g1_dsc_t, dataset.splits_to_sizes[FLAGS.eval_split])

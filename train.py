@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -47,7 +47,7 @@ FUSIONS = 5*["slim_guid"]
 FUSIONS = ["slim_guid_plain", "sum", "sum", "sum", "sum"]
 FUSIONS = ["slim_guid", "sum", "sum", "sum", "sum"]
 FUSIONS = 5*["sum"]
-FUSIONS = ["guid_uni", "guid_uni", "guid_uni", "guid_uni", "guid_uni"]
+# FUSIONS = ["guid_uni", "guid_uni", "guid_uni", "guid_uni", "guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
@@ -87,6 +87,12 @@ parser.add_argument('--guid_method', type=str, default=None,
 parser.add_argument('--out_node', type=int, default=64,
                     help='')
 
+parser.add_argument('--guid_conv_type', type=str, default="conv",
+                    help='')
+                    
+parser.add_argument('--guid_conv_nums', type=int, default=1,
+                    help='')
+
 parser.add_argument('--share', type=bool, default=True,
                     help='')
 
@@ -115,7 +121,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=140000,
+parser.add_argument('--training_number_of_steps', type=int, default=100,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -370,6 +376,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 z_class=FLAGS.z_class,
                 guidance_loss=GUID_LOSS,
                 stage_pred_loss=STAGE_PRED_LOSS,
+                guid_conv_nums=FLAGS.guid_conv_nums,
+                guid_conv_type=FLAGS.guid_conv_type,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -883,7 +891,9 @@ def main(unused_argv):
                         
                       # step+=1
 
-
+            with open(os.path.join(path, 'logging.txt'), 'a') as f:
+              f.write("\nEnd time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+              f.write("\n")
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)

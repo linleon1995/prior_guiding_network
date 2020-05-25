@@ -12,17 +12,28 @@ q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
 
 def slim_sram(in_node,
               guidance,
+              num_conv=1,
+              conv_type="conv",
+              conv_node=64,
               scope=None):
     """Single Residual Attention Module"""
     with tf.variable_scope(scope, "sram", reuse=tf.AUTO_REUSE):
-        channel = in_node.get_shape().as_list()[3]
-        net = slim.conv2d(in_node, channel, kernel_size=[3,3], scope='conv1')
-        # net = slim.conv2d(net, channel, kernel_size=[3,3], scope='conv%d_2' %s)
+        # channel = in_node.get_shape().as_list()[3]
+        net = in_node
+        if conv_type == "conv":
+          conv_op = slim.conv2d
+        elif conv_type == "separable_conv":
+          conv_op = slim.separable_conv2d
+        else:
+          raise ValueError("Unknown convolution type")
+
+        for i in range(num_conv):
+          net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
         
         guidance_filters = guidance.get_shape().as_list()[3]
         if guidance_filters == 1:
-            guidance_tile = tf.tile(guidance, [1,1,1,channel])
-        elif guidance_filters == channel:
+            guidance_tile = tf.tile(guidance, [1,1,1,conv_node])
+        elif guidance_filters == conv_node:
             guidance_tile = guidance
         else:
             raise ValueError("Unknown guidance filters number")
@@ -36,14 +47,16 @@ def slim_sram(in_node,
       
       
 class Refine(object):
-  def __init__(self, low_level, fusions, prior=None, prior_pred=None, stage_pred_loss=None, embed_node=32, num_class=14, 
-               weight_decay=0.0, scope=None, is_training=None):
+  def __init__(self, low_level, fusions, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
+               guid_conv_type="conv2d", embed_node=32, num_class=14, weight_decay=0.0, scope=None, is_training=None):
     self.low_level = low_level
     self.fusions = fusions
     self.prior = prior
     self.prior_pred = prior_pred
     self.stage_pred_loss = stage_pred_loss
     self.embed_node = embed_node
+    self.guid_conv_type = guid_conv_type
+    self.guid_conv_nums = guid_conv_nums
     self.num_class = num_class
     self.weight_decay = weight_decay
     self.scope = scope
@@ -166,10 +179,10 @@ class Refine(object):
     if guid_node != out_node and guid_node != 1:
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
     with tf.variable_scope(scope, 'guid'):
-      net = slim_sram(x1, guid, "sram1")
+      net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
       if x2 is not None:
         net = net + x2
-        net = slim_sram(net, guid, "sram2")
+        net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
       return net
     
   def guid_class_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
@@ -180,10 +193,10 @@ class Refine(object):
     with tf.variable_scope(scope, "guid_class"):
       total_att = []
       for i in range(1, num_classes):
-        net = slim_sram(x1, guid[...,i:i+1], "sram1")
+        net = slim_sram(x1, guid[...,i:i+1], self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
         if x2 is not None:
           net = net + x2
-          net = slim_sram(net, guid[...,i:i+1], "sram2")
+          net = slim_sram(net, guid[...,i:i+1], self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
         total_att.append(net)
       fuse = slim.conv2d(tf.concat(total_att, axis=3), out_node, kernel_size=[1,1], scope="fuse")
     return fuse

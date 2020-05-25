@@ -147,7 +147,8 @@ def pgb_network(images,
     z_model = kwargs.pop("z_model", None)
     guidance_loss = kwargs.pop("guidance_loss", None)
     stage_pred_loss = kwargs.pop("stage_pred_loss", None)
-    
+    guid_conv_nums = kwargs.pop("guid_conv_nums", None)
+    guid_conv_type = kwargs.pop("guid_conv_type", None)
     # Produce Prior
     prior_seg = get_prior(prior_segs, guidance_type, num_class)
                 
@@ -212,10 +213,14 @@ def pgb_network(images,
             else:
                 prior_seg = None
                 prior_pred = None
-        
-    logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
-                                      out_node=out_node, weight_decay=weight_decay, reuse=reuse, 
-                                      is_training=is_training)
+
+    refine_model = utils.Refine(layers_dict, fusions, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
+                                prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type, 
+                                embed_node=out_node, weight_decay=weight_decay, is_training=is_training)  
+    logits, preds = refine_model.model()    
+    # logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
+    #                                   out_node=out_node, weight_decay=weight_decay, reuse=reuse, 
+    #                                   is_training=is_training)
     layers_dict.update(preds)
     
     if drop_prob is not None:
@@ -537,29 +542,30 @@ def get_prior(prior_segs, guidance_type, num_class):
     return prior_seg
     
 
-def refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, out_node, 
-                      fine_tune_batch_norm=True, weight_decay=0.0, reuse=None, is_training=None):
-    # batch_norm_params = utils.get_batch_norm_params(
-    #     decay=0.9997,
-    #     epsilon=1e-5,
-    #     scale=True,
-    #     is_training=(is_training and fine_tune_batch_norm),
-    #     # sync_batch_norm_method=model_options.sync_batch_norm_method
-    #     )
-    # # batch_norm = utils.get_batch_norm_fn(
-    # #     model_options.sync_batch_norm_method)
-    # batch_norm = slim.batch_norm
-    # with slim.arg_scope(
-    #     [slim.conv2d, slim.separable_conv2d],
-    #     weights_regularizer=slim.l2_regularizer(weight_decay),
-    #     activation_fn=tf.nn.relu,
-    #     normalizer_fn=slim.batch_norm,
-    #     padding='SAME',
-    #     stride=1,
-    #     reuse=reuse):
-    #     with slim.arg_scope([batch_norm], **batch_norm_params):
-    refine_model = utils.Refine(layers_dict, fusions, prior=prior_seg, stage_pred_loss=stage_pred_loss, prior_pred=prior_pred, 
-                                embed_node=out_node, weight_decay=weight_decay, is_training=is_training)  
-    logits, preds = refine_model.model()
-    return logits, preds
+# def refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, out_node, 
+#                       fine_tune_batch_norm=True, weight_decay=0.0, reuse=None, is_training=None):
+#     # batch_norm_params = utils.get_batch_norm_params(
+#     #     decay=0.9997,
+#     #     epsilon=1e-5,
+#     #     scale=True,
+#     #     is_training=(is_training and fine_tune_batch_norm),
+#     #     # sync_batch_norm_method=model_options.sync_batch_norm_method
+#     #     )
+#     # # batch_norm = utils.get_batch_norm_fn(
+#     # #     model_options.sync_batch_norm_method)
+#     # batch_norm = slim.batch_norm
+#     # with slim.arg_scope(
+#     #     [slim.conv2d, slim.separable_conv2d],
+#     #     weights_regularizer=slim.l2_regularizer(weight_decay),
+#     #     activation_fn=tf.nn.relu,
+#     #     normalizer_fn=slim.batch_norm,
+#     #     padding='SAME',
+#     #     stride=1,
+#     #     reuse=reuse):
+#     #     with slim.arg_scope([batch_norm], **batch_norm_params):
+#     refine_model = utils.Refine(layers_dict, fusions, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
+#                                 prior_pred=prior_pred, guid_conv_nums=64, guid_conv_type="conv", 
+#                                 embed_node=out_node, weight_decay=weight_decay, is_training=is_training)  
+#     logits, preds = refine_model.model()
+#     return logits, preds
 

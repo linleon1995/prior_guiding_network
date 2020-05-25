@@ -138,10 +138,12 @@ def plot_box_diagram(path):
 
 
 def compute_params_and_flops(graph):
-    flops = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
-    params = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
-    print("FLOPs: {}; GFLOPs: {}".format(flops.total_float_ops, flops.total_float_ops / 1e9))
-    print("Trainable params:{} MB".format(params.total_parameters/(1024**2)))
+    flops_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
+    params_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
+    flops = flops_proto.total_float_ops
+    params = params_proto.total_parameters/(1024**2)
+    print("FLOPs: {}; GFLOPs: {}".format(flops, flops/1e9))
+    print("Trainable params:{} MB".format(params))
     return flops, params
 
 
@@ -178,7 +180,6 @@ def compute_mean_dsc(total_cm):
           num_valid_entries > 0,
           np.sum(dscs) / num_valid_entries,
           0)
-      m_dsc = float(m_dsc)
       print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
       return m_dsc, dscs
   
@@ -202,57 +203,55 @@ def precision_and_recall(total_cm):
     r_std = np.std(recall)
     print('    precision: mean {:.4f}  std {:.4f}'.format(p_mean, p_std))
     print('    recall: mean {:.4f}  std {:.4f}'.format(r_mean, r_std))
-    return  precision, recall
+    return  p_mean, p_std, r_mean, r_std
 
 
 def compute_mean_iou(total_cm):
-      """Compute the mean intersection-over-union via the confusion matrix."""
-      sum_over_row = np.sum(total_cm, axis=0).astype(float)
-      sum_over_col = np.sum(total_cm, axis=1).astype(float)
-      cm_diag = np.diagonal(total_cm).astype(float)
-      denominator = sum_over_row + sum_over_col - cm_diag
-    
-      # The mean is only computed over classes that appear in the
-      # label or prediction tensor. If the denominator is 0, we need to
-      # ignore the class.
-      num_valid_entries = np.sum((denominator != 0).astype(float))
-    
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = np.where(
-          denominator > 0,
-          denominator,
-          np.ones_like(denominator))
-    
-      ious = cm_diag / denominator
-    
-      print('Intersection over Union for each class:')
-      for i, iou in enumerate(ious):
+    """Compute the mean intersection-over-union via the confusion matrix."""
+    sum_over_row = np.sum(total_cm, axis=0).astype(float)
+    sum_over_col = np.sum(total_cm, axis=1).astype(float)
+    cm_diag = np.diagonal(total_cm).astype(float)
+    denominator = sum_over_row + sum_over_col - cm_diag
+
+    # The mean is only computed over classes that appear in the
+    # label or prediction tensor. If the denominator is 0, we need to
+    # ignore the class.
+    num_valid_entries = np.sum((denominator != 0).astype(float))
+
+    # If the value of the denominator is 0, set it to 1 to avoid
+    # zero division.
+    denominator = np.where(
+        denominator > 0,
+        denominator,
+        np.ones_like(denominator))
+
+    ious = cm_diag / denominator
+
+    print('Intersection over Union for each class:')
+    for i, iou in enumerate(ious):
         print('    class {}: {:.4f}'.format(i, iou))
-    
-      # If the number of valid entries is 0 (no classes) we return 0.
-      m_iou = np.where(
-          num_valid_entries > 0,
-          np.sum(ious) / num_valid_entries,
-          0)
-      m_iou = float(m_iou)
-      print('mean Intersection over Union: {:.4f}'.format(float(m_iou)))
-      return m_iou
+
+    # If the number of valid entries is 0 (no classes) we return 0.
+    m_iou = np.where(
+        num_valid_entries > 0,
+        np.sum(ious) / num_valid_entries,
+        0)
+    print('mean Intersection over Union: {:.4f}'.format(float(m_iou)))
+    return m_iou
 
 
 def compute_accuracy(total_cm):
-      """Compute the accuracy via the confusion matrix."""
-      denominator = total_cm.sum().astype(float)
-      cm_diag_sum = np.diagonal(total_cm).sum().astype(float)
+    """Compute the accuracy via the confusion matrix."""
+    denominator = total_cm.sum().astype(float)
+    cm_diag_sum = np.diagonal(total_cm).sum().astype(float)
 
-      # If the number of valid entries is 0 (no classes) we return 0.
-      accuracy = np.where(
-          denominator > 0,
-          cm_diag_sum / denominator,
-          0)
-      accuracy = float(accuracy)
-      print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
-      return accuracy
+    # If the number of valid entries is 0 (no classes) we return 0.
+    accuracy = np.where(
+        denominator > 0,
+        cm_diag_sum / denominator,
+        0)
+    print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
+    return accuracy
     
     
 def load_model(saver, sess, ckpt_path):
