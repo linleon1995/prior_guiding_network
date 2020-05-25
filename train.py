@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -32,7 +32,8 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
-
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-40000'
+# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-5000'
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
 
@@ -46,6 +47,7 @@ FUSIONS = 5*["slim_guid"]
 FUSIONS = ["slim_guid_plain", "sum", "sum", "sum", "sum"]
 FUSIONS = ["slim_guid", "sum", "sum", "sum", "sum"]
 FUSIONS = 5*["sum"]
+FUSIONS = ["guid_uni", "guid_uni", "guid_uni", "guid_uni", "guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
@@ -79,7 +81,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
                     help='')
 
-parser.add_argument('--guid_method', type=str, default="guid_class",
+parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
 parser.add_argument('--out_node', type=int, default=64,
@@ -113,7 +115,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=100,
+parser.add_argument('--training_number_of_steps', type=int, default=140000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -185,10 +187,10 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss_decay', type=float, default=0.1,
+parser.add_argument('--stage_pred_loss_decay', type=float, default=1.0,
                     help='')
 
-parser.add_argument('--guidance_loss_decay', type=float, default=0.1,
+parser.add_argument('--guidance_loss_decay', type=float, default=1.0,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -647,7 +649,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
       FLAGS.learning_rate_decay_step, FLAGS.learning_rate_decay_factor,
       FLAGS.training_number_of_steps, FLAGS.learning_power,
       FLAGS.slow_start_step, FLAGS.slow_start_learning_rate)
-
+  
   optimizer = tf.train.AdamOptimizer(learning_rate)
   # optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
 

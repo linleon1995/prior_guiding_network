@@ -49,10 +49,8 @@ class Refine(object):
     self.scope = scope
     assert len(self.low_level) == len(self.fusions)
     self.num_stage = len(self.low_level)
-    if is_training is not None:
-      self.arg_scope = slim.arg_scope([slim.batch_norm], is_training=is_training)
-    else:
-      self.arg_scope = slim.arg_scope([])
+    self.is_training = is_training
+    self.fine_tune_batch_norm = True
   
   def embed(self, x, out_node, scope):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
@@ -61,19 +59,26 @@ class Refine(object):
     # TODO: reolve_shape
     # TODO: image size
     # TODO: Remove after finish code
+    batch_norm = slim.batch_norm
+    batch_norm_params = get_batch_norm_params(
+        decay=0.9997,
+        epsilon=1e-5,
+        scale=True,
+        is_training=(self.is_training and self.fine_tune_batch_norm),
+        # sync_batch_norm_method=model_options.sync_batch_norm_method
+        )
     if "slim_guid_class" in self.fusions:
       raise ValueError("Bugs Fixing")
     with tf.variable_scope(self.scope, 'Refine_Network'):
-    # with tf.variable_scope(self.scope, 'resnet-fpn'):
-      with self.arg_scope:
-        with slim.arg_scope([slim.conv2d], 
-                          trainable=True,
-                          activation_fn=tf.nn.relu, 
-                          weights_initializer=tf.initializers.he_normal(), 
-                          weights_regularizer=slim.l2_regularizer(self.weight_decay),
-                          kernel_size=[3, 3], 
-                          padding='SAME',
-                          normalizer_fn=slim.batch_norm):
+      with slim.arg_scope([slim.conv2d], 
+                        trainable=True,
+                        activation_fn=tf.nn.relu, 
+                        weights_initializer=tf.initializers.he_normal(), 
+                        weights_regularizer=slim.l2_regularizer(self.weight_decay),
+                        kernel_size=[3, 3], 
+                        padding='SAME',
+                        normalizer_fn=slim.batch_norm):
+        with slim.arg_scope([batch_norm], **batch_norm_params):
           y_tm1 = None
           preds = {}
           

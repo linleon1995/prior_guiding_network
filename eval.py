@@ -32,7 +32,7 @@ import experiments
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 EVAL_CROP_SIZE = [256,256]
 # EVAL_CROP_SIZE = [512,512]
@@ -46,28 +46,15 @@ IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,34
 IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
 
 FUSIONS = 5*["sum"]
+FUSIONS = 5*["guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "softmax_dice_loss"
 SEG_WEIGHT_FLAG = False
 
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-50000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-50000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-50000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-60000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_005/model.ckpt-60000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_057/model.ckpt-60000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-90000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_013/model.ckpt-100000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_015/model.ckpt-60000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_015/model.ckpt-100000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_019/model.ckpt-100000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_015/model.ckpt-100000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-95000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-115000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_029/model.ckpt-40000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-85000'
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
@@ -78,7 +65,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
                     help='')
 
-parser.add_argument('--guid_method', type=str, default="guid_uni",
+parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
 parser.add_argument('--out_node', type=int, default=64,
@@ -147,7 +134,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=bool, default=True,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=False,
@@ -164,7 +151,7 @@ parser.add_argument('--store_all_imgs', type=bool, default=False,
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
 
-parser.add_argument('--eval_split', type=str, default='train',
+parser.add_argument('--eval_split', type=str, default='val',
                     help='')
 
 parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
@@ -334,7 +321,7 @@ def main(unused_argv):
 
     if FLAGS.guid_method is not None:
       FUSIONS[0] = FLAGS.guid_method
-      
+
     output_dict, layers_dict = model.pgb_network(
                 placeholder_dict[common.IMAGE],
                 model_options=model_options,
@@ -369,7 +356,10 @@ def main(unused_argv):
                 stage_pred_loss=STAGE_PRED_LOSS,
                 )
     # a = tf.tra           
-    # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guid' in dict_key}
+    guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
+    pred_dict = {dict_key: tf.arg_max(guidance_dict[dict_key],3) for dict_key in guidance_dict}
+    guidance_dict["guidance0"] = tf.nn.softmax(output_dict[common.GUIDANCE], 3)
+    pred_dict["guidance0"] = tf.argmax(guidance_dict["guidance0"], 3)
     # feature_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'feature' in dict_key}
     # sram_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'sram' in dict_key}
 
@@ -576,11 +566,40 @@ def main(unused_argv):
         # Guidance Visualization
         if FLAGS.vis_guidance:
           if i in display_imgs:
-            ggsmida_np, ll = sess.run([ggsmida,logits], feed_dict=_feed_dict)
-            fig, ax = plt.subplots(1,1)
-            for j in range(14):
-              ax.imshow(ll[0,...,j])
-              fig.savefig(FLAGS.eval_logdir+"logits%03d_class%03d.png" %(i,j))
+            layers, pred_layers = sess.run([guidance_dict, pred_dict], feed_dict=_feed_dict)
+            
+            show_guidance.set_title(["pred0", "pred1", "pred2"])
+            show_guidance.display_figure(FLAGS.eval_split+'-pred012-%04d' %i,
+                                          [pred_layers["guidance0"][0],
+                                          pred_layers["guidance5"][0],
+                                          pred_layers["guidance4"][0]])
+
+            show_guidance.set_title(["pred3", "pred4", "pred5"])
+            show_guidance.display_figure(FLAGS.eval_split+'-pred345-%04d' %i,
+                                          [pred_layers["guidance3"][0],
+                                          pred_layers["guidance2"][0],
+                                          pred_layers["guidance1"][0]])
+              
+            for c in range(dataset.num_of_classes):
+              show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
+              show_guidance.display_figure(FLAGS.eval_split+'-guid012-%04d-%03d' % (i,c),
+                                            [layers["guidance0"][0,...,c],
+                                            layers["guidance5"][0,...,c],
+                                            layers["guidance4"][0,...,c]])
+              
+              show_guidance.set_title(["guidance3", "guidance4", "guidance5"])
+              show_guidance.display_figure(FLAGS.eval_split+'-guid345-%04d-%03d' % (i,c),
+                                            [layers["guidance3"][0,...,c],
+                                            layers["guidance2"][0,...,c],
+                                            layers["guidance1"][0,...,c]])
+              
+              
+              
+            # ggsmida_np, ll = sess.run([ggsmida,logits], feed_dict=_feed_dict)
+            # fig, ax = plt.subplots(1,1)
+            # for j in range(14):
+            #   ax.imshow(ll[0,...,j])
+            #   fig.savefig(FLAGS.eval_logdir+"logits%03d_class%03d.png" %(i,j))
               # ax.imshow(ggsmida_np[0][0,...,j])
               # # plt.show()
               # fig.savefig(FLAGS.eval_logdir+"guid_sample%03d_feature%03d.png" %(i,j))
