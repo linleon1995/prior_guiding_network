@@ -14,7 +14,8 @@ import common
 # from utils import loss_utils
 _EPSILON = 1e-5
 losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
-              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale}
+              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
+              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,}
 
 def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
     ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
@@ -218,7 +219,8 @@ def get_losses(output_dict,
                samples, 
                loss_dict,
                num_classes,
-               batch_size=None):
+               batch_size=None,
+               predict_without_background=None):
     
     # TODO: layers_dict and output_dict diff, should just input one of them
 
@@ -232,20 +234,42 @@ def get_losses(output_dict,
       loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
       scope=loss_dict[common.OUTPUT_TYPE]["scope"])
     
+    label = samples[common.LABEL]
+    if predict_without_background:
+      num_classes -= 1
+      label = label[...,1:]
     # Calculate stage prediction loss
     # TODO: the way to form guid_dict
     if "stage_pred" in loss_dict:
         guid_dict = {}
+        size = [4,4,4,3,2]
+        i = 0
+        
         for name, value in layers_dict.items():
           if "guidance" in name:
-            guid_dict[name] = value
-        get_loss_func(loss_dict["stage_pred"]["loss"])(
-          scales_to_logits=guid_dict,
-          labels=samples[common.LABEL],
-          num_classes=num_classes,
-          ignore_label=255,
-          loss_weight=loss_dict["stage_pred"]["weights"],
-          scope=loss_dict["stage_pred"]["scope"])
+            kernel = tf.ones((size[i], size[i], num_classes))
+            kernel = None
+            
+            get_loss_func(loss_dict["stage_pred"]["loss"])(
+              scales_to_logits={name: value},
+              labels=label,
+              num_classes=num_classes,
+              ignore_label=255,
+              dilated_kernel=None,
+              loss_weight=loss_dict["stage_pred"]["weights"],
+              scope=loss_dict["stage_pred"]["scope"])
+            i+=1
+        # guid_dict = {}
+        # for name, value in layers_dict.items():
+        #   if "guidance" in name:
+        #     guid_dict[name] = value
+        # get_loss_func(loss_dict["stage_pred"]["loss"])(
+        #   scales_to_logits=guid_dict,
+        #   labels=samples[common.LABEL],
+        #   num_classes=num_classes,
+        #   ignore_label=255,
+        #   loss_weight=loss_dict["stage_pred"]["weights"],
+        #   scope=loss_dict["stage_pred"]["scope"])
 
     # Calculate guidance loss  
     if common.GUIDANCE in loss_dict:
@@ -253,7 +277,7 @@ def get_losses(output_dict,
         g = {"transform": output_dict[common.GUIDANCE]}
         get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
           scales_to_logits=g,
-          labels=samples[common.LABEL],
+          labels=label,
           num_classes=num_classes,
           ignore_label=255,
           loss_weight=loss_dict[common.GUIDANCE]["weights"],

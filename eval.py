@@ -46,29 +46,35 @@ IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,34
 IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
 
 FUSIONS = 5*["sum"]
-# FUSIONS = 5*["guid_uni"]
+FUSIONS = 5*["guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
+GUID_LOSS = "sigmoid_cross_entropy"
 STAGE_PRED_LOSS = "softmax_dice_loss"
+STAGE_PRED_LOSS = "sigmoid_cross_entropy"
 SEG_WEIGHT_FLAG = False
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
-# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-85000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-110000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-140000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_1.0_uni_binary_convfuse/model.ckpt-140000'
+
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
+PRIOR_PATH = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
                     help='')
 
-parser.add_argument('--guid_method', type=str, default="guid_uni",
+parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--out_node', type=int, default=64,
+parser.add_argument('--out_node', type=int, default=32,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -143,7 +149,7 @@ parser.add_argument('--zero_guidance', type=bool, default=False,
 parser.add_argument('--vis_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_features', type=bool, default=False,
+parser.add_argument('--vis_features', type=bool, default=True,
                     help='')
 
 parser.add_argument('--display_box_plot', type=bool, default=False,
@@ -373,18 +379,17 @@ def main(unused_argv):
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
                 )
-    # a = tf.tra           
-    guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
-    pred_dict = {dict_key: tf.arg_max(guidance_dict[dict_key],3) for dict_key in guidance_dict}
-    guidance_dict["guidance0"] = tf.nn.softmax(output_dict[common.GUIDANCE], 3)
-    pred_dict["guidance0"] = tf.argmax(guidance_dict["guidance0"], 3)
-    # feature_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'feature' in dict_key}
-    # sram_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'sram' in dict_key}
-
-    # var_sizes = [np.product(list(map(int, v.shape))) * v.dtype.size
-    #             for v in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]
-    # print(sum(var_sizes) / (1024 ** 2), 'MB')
+          
+    # guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
+    # pred_dict = {dict_key: tf.arg_max(guidance_dict[dict_key],3) for dict_key in guidance_dict}
+    # guidance_dict["guidance0"] = tf.nn.softmax(output_dict[common.GUIDANCE], 3)
+    # pred_dict["guidance0"] = tf.argmax(guidance_dict["guidance0"], 3)
     
+    guidance_dict = {dict_key: tf.nn.sigmoid(layers_dict[dict_key]) for dict_key in layers_dict if 'guidance' in dict_key}
+    pred_dict = guidance_dict
+    guidance_dict["guidance0"] = tf.nn.sigmoid(output_dict[common.GUIDANCE])
+    pred_dict["guidance0"] = guidance_dict["guidance0"]
+
     # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
     preds = tf.nn.softmax(logits)
@@ -396,12 +401,25 @@ def main(unused_argv):
     labels = tf.squeeze(placeholder_dict[common.LABEL], axis=3)
     label_onehot = tf.one_hot(indices=labels,
                               depth=dataset.num_of_classes,
-                              on_value=1,
-                              off_value=0,
+                              on_value=1.0,
+                              off_value=0.0,
                               axis=3)
     num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     labels_flat = tf.reshape(labels, shape=[-1,])
 
+    kernel2 = tf.ones((6, 6, dataset.num_of_classes))
+    # kernel2 = tf.cast(kernel2, tf.int32)
+    kernel3 = tf.ones((7, 7, dataset.num_of_classes))
+    # kernel3 = tf.cast(kernel3, tf.int32)
+    kernel4 = tf.ones((8, 8, dataset.num_of_classes))
+    # kernel4 = tf.cast(kernel4, tf.int32)
+    
+    label2 = tf.nn.dilation2d(label_onehot, filter=kernel2, strides=(1,1,1,1), 
+                              rates=(1,1,1,1), padding="SAME")
+    label3 = tf.nn.dilation2d(label_onehot, filter=kernel3, strides=(1,1,1,1), 
+                              rates=(1,1,1,1), padding="SAME")
+    label4 = tf.nn.dilation2d(label_onehot, filter=kernel4, strides=(1,1,1,1), 
+                              rates=(1,1,1,1), padding="SAME")
     # if FLAGS.vis_guidance:
     #   def guid_mean_dsc(logits, label):
     #     h, w = label.get_shape().as_list()[1:3]
@@ -438,7 +456,7 @@ def main(unused_argv):
     # Define Confusion Maxtrix
     cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
 
-    ggsmida = tf.get_collection("f")
+    # ggsmida = tf.get_collection("f")
     # if FLAGS.vis_guidance:
     #   def cm_in_each_stage(pred, label):
     #     h, w = pred.get_shape().as_list()[1:3]
@@ -552,7 +570,14 @@ def main(unused_argv):
             show_seg_results.display_figure(FLAGS.eval_split+'_pred_%04d' %i,
                                             [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
                                             parameters=parameters)
-      
+            
+            
+            show_seg_results.set_title(["label2", "label3","label4"])
+            show_seg_results.display_figure(FLAGS.eval_split+'_dilated_label_%04d' %i,
+                                            [l2[0,...,6], l3[0,...,6], l4[0,...,6]])
+            plt.imshow(l2[0,...,6]+l3[0,...,6]+l4[0,...,6]+np.int32(data[common.LABEL][0,...,0]==6))
+            plt.show()
+            plt.savefig(FLAGS.eval_logdir+"sample{}-label_compare.png".format(i))
         # foreground_pixel += sess.run(num_fg_pixel, _feed_dict)
         
         # Z-information Evaluation
@@ -566,19 +591,33 @@ def main(unused_argv):
         # Guidance Visualization
         if FLAGS.vis_guidance:
           if i in display_imgs:
+            guid_avg = tf.get_collection("guid_avg")
+            guid_avgs = sess.run(guid_avg, feed_dict=_feed_dict)
             layers, pred_layers = sess.run([guidance_dict, pred_dict], feed_dict=_feed_dict)
             
-            show_guidance.set_title(["pred0", "pred1", "pred2"])
-            show_guidance.display_figure(FLAGS.eval_split+'-pred012-%04d' %i,
-                                          [pred_layers["guidance0"][0],
-                                          pred_layers["guidance5"][0],
-                                          pred_layers["guidance4"][0]])
+            show_guidance.set_title(["guid_avg0", "guid_avg1", "guid_avg2"])
+            show_guidance.display_figure(FLAGS.eval_split+'-guid_avg012-%04d' %i,
+                                          [guid_avgs[0][0,...,0],
+                                          guid_avgs[1][0,...,0],
+                                          guid_avgs[2][0,...,0]])
 
-            show_guidance.set_title(["pred3", "pred4", "pred5"])
-            show_guidance.display_figure(FLAGS.eval_split+'-pred345-%04d' %i,
-                                          [pred_layers["guidance3"][0],
-                                          pred_layers["guidance2"][0],
-                                          pred_layers["guidance1"][0]])
+            show_guidance.set_title(["guid_avg3", "guid_avg4", "guid_avg5"])
+            show_guidance.display_figure(FLAGS.eval_split+'-guid_avg345-%04d' %i,
+                                          [guid_avgs[3][0,...,0],
+                                          guid_avgs[4][0,...,0],
+                                          guid_avgs[4][0,...,0]])
+
+            # show_guidance.set_title(["pred0", "pred1", "pred2"])
+            # show_guidance.display_figure(FLAGS.eval_split+'-pred012-%04d' %i,
+            #                               [pred_layers["guidance0"][0],
+            #                               pred_layers["guidance5"][0],
+            #                               pred_layers["guidance4"][0]])
+
+            # show_guidance.set_title(["pred3", "pred4", "pred5"])
+            # show_guidance.display_figure(FLAGS.eval_split+'-pred345-%04d' %i,
+            #                               [pred_layers["guidance3"][0],
+            #                               pred_layers["guidance2"][0],
+            #                               pred_layers["guidance1"][0]])
               
             for c in range(dataset.num_of_classes):
               show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
@@ -663,19 +702,29 @@ def main(unused_argv):
         # Features Visualization
         if FLAGS.vis_features:
           if i in display_imgs:
-            sram_conv = tf.get_collection("/sram_embed")
-            s = 0
-            in_node = sram_conv[s]["in_node"]
-            conv2 = sram_conv[s]["conv2"]
-            guidance = sram_conv[s]["guidance_tile"]
-            output = sram_conv[s]["output"]
-            inputs, c2, guid, out = sess.run([in_node, conv2, guidance, output], feed_dict=_feed_dict)
-            for cc in range(0, 32, 4):
-              filename = [FLAGS.eval_split, "sram_feature", "sample%04d" %i, "sram%03d" %s, "feature%04d" %cc]
-              filename = "-".join(filename)
-              show_feature.display_figure(filename, [c2[0,...,cc],guid[0,...,cc],out[0,...,cc]])
-          
-          # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
+            sram1 = tf.get_collection("sram1")
+            sram2 = tf.get_collection("sram2")
+            s1, s2 = sess.run([sram1, sram2], feed_dict=_feed_dict)
+            # if i in display_imgs:
+            #   sram_conv = tf.get_collection("/sram_embed")
+            #   s = 0
+            #   in_node = sram_conv[s]["in_node"]
+            #   conv2 = sram_conv[s]["conv2"]
+            #   guidance = sram_conv[s]["guidance_tile"]
+            #   output = sram_conv[s]["output"]
+            #   inputs, c2, guid, out = sess.run([in_node, conv2, guidance, output], feed_dict=_feed_dict)
+            
+            for w in range(4):
+              for cc in range(0, 32, 4):
+                filename = "{}-sram1-sample{}-stage{}-feature{}".format(FLAGS.eval_split, i, w+1, cc)
+                show_feature.set_title(["x1", "y1", "y1"])
+                show_feature.display_figure(filename, [s1[w*2][0,...,cc], s1[w*2+1][0,...,cc], s1[w*2+1][0,...,cc]])
+                
+                show_feature.set_title(["x2", "x2+y1", "y2"])
+                filename = "{}-sram2-sample{}-stage{}-feature{}".format(FLAGS.eval_split, i, w+1, cc)
+                show_feature.display_figure(filename, [s2[w*3][0,...,cc], s2[w*3+1][0,...,cc], s2[w*3+2][0,...,cc]])
+            
+            # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
 
     print(10*"=", "Segmentation Evaluation", 10*"=")
     mean_iou = eval_utils.compute_mean_iou(cm_total)
@@ -685,13 +734,14 @@ def main(unused_argv):
     print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
 
     with open(os.path.join(path, 'eval_logging.txt'), 'a') as f:
-      f.write("\nPixel ACC: {}".format(pixel_acc))
-      f.write("\nMean IoU: {}".format(mean_iou))
-      f.write("\nMean DSC: {}".format(mean_dice_score))
+      f.write("\nPixel ACC: {:.4f}".format(pixel_acc))
+      f.write("\nMean IoU: {:.4f}".format(mean_iou))
+      
       for i, dsc in enumerate(dice_score):
           f.write("\n    class {}: {:.4f}".format(i, dsc))
-      f.write("\nPrecision mean: {} std: {}".format(p_mean, p_std))
-      f.write("\nRecall mean: {} std: {}".format(r_mean, r_std))
+      f.write("\nMean DSC: {:.4f}".format(mean_dice_score))
+      f.write("\nPrecision mean: {:.4f} std: {:.4f}".format(p_mean, p_std))
+      f.write("\nRecall mean: {:.4f} std: {:.4f}".format(r_mean, r_std))
       f.write("\n")  
       f.write(60*"="+"\n")
       f.write("End Evaluation\n")

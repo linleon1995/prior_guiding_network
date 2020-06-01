@@ -54,6 +54,7 @@ class ImageReader(object):
   def decode_image(self, image_path):
       """
       """
+      # TODO: don't need swapaxes + flip, maybe just transpose and flip?
       if self._image_format == 'nii.gz':
           imgs = nib.load(image_path).get_data()
           _decode = np.flip(np.swapaxes(imgs, 0, -1), 1)
@@ -129,19 +130,19 @@ def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth,
           organ_label),
   }))
   
-def priors_to_tfexample(priors, parse_name, num_slices, prior_id):
-  """Converts one image/segmentation pair to tf example.
-  Args:
-    image_data: string of image data.
-    filename: image filename.
-    height: image height.
-    width: image width.
-    seg_data: string of semantic segmentation data.
-  Returns:
-    tf example of one image/segmentation pair.
-  """
-  return tf.train.Example(features=tf.train.Features(feature={
-      'prior/num_slices': _int64_list_feature(num_slices),
-      'prior/prior_id': _int64_list_feature(prior_id),
-      'prior/'+parse_name: _bytes_list_feature(priors)
-  }))
+# def priors_to_tfexample(priors, parse_name, num_slices, prior_id):
+#   """Converts one image/segmentation pair to tf example.
+#   Args:
+#     image_data: string of image data.
+#     filename: image filename.
+#     height: image height.
+#     width: image width.
+#     seg_data: string of semantic segmentation data.
+#   Returns:
+#     tf example of one image/segmentation pair.
+#   """
+#   return tf.train.Example(features=tf.train.Features(feature={
+#       'prior/num_slices': _int64_list_feature(num_slices),
+#       'prior/prior_id': _int64_list_feature(prior_id),
+#       'prior/'+parse_name: _bytes_list_feature(priors)
+#   }))

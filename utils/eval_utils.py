@@ -150,38 +150,47 @@ def compute_params_and_flops(graph):
 def save_evaluation():
     pass
 
+def display_classify_performance(label, pred):
+    """
+    label: binary mask in shape [N,H,W,C]
+    pred: corresponding shape and data_type with label
+    3: tp, 2: fp, 1: fn, 0: tn
+    """
+    return label + 2*pred
+
+    
 def compute_mean_dsc(total_cm):
-      """Compute the mean intersection-over-union via the confusion matrix."""
-      sum_over_row = np.sum(total_cm, axis=0).astype(float)
-      sum_over_col = np.sum(total_cm, axis=1).astype(float)
-      cm_diag = np.diagonal(total_cm).astype(float)
-      denominator = sum_over_row + sum_over_col
-    
-      # The mean is only computed over classes that appear in the
-      # label or prediction tensor. If the denominator is 0, we need to
-      # ignore the class.
-      num_valid_entries = np.sum((denominator != 0).astype(float))
-    
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = np.where(
-          denominator > 0,
-          denominator,
-          np.ones_like(denominator))
-    
-      dscs = 2*cm_diag / denominator
-    
-      print('Dice Score Simililarity for each class:')
-      for i, dsc in enumerate(dscs):
+    """Compute the mean intersection-over-union via the confusion matrix."""
+    sum_over_row = np.sum(total_cm, axis=0).astype(float)
+    sum_over_col = np.sum(total_cm, axis=1).astype(float)
+    cm_diag = np.diagonal(total_cm).astype(float)
+    denominator = sum_over_row + sum_over_col
+
+    # The mean is only computed over classes that appear in the
+    # label or prediction tensor. If the denominator is 0, we need to
+    # ignore the class.
+    num_valid_entries = np.sum((denominator != 0).astype(float))
+
+    # If the value of the denominator is 0, set it to 1 to avoid
+    # zero division.
+    denominator = np.where(
+        denominator > 0,
+        denominator,
+        np.ones_like(denominator))
+
+    dscs = 2*cm_diag / denominator
+
+    print('Dice Score Simililarity for each class:')
+    for i, dsc in enumerate(dscs):
         print('    class {}: {:.4f}'.format(i, dsc))
-    
-      # If the number of valid entries is 0 (no classes) we return 0.
-      m_dsc = np.where(
-          num_valid_entries > 0,
-          np.sum(dscs) / num_valid_entries,
-          0)
-      print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
-      return m_dsc, dscs
+
+    # If the number of valid entries is 0 (no classes) we return 0.
+    m_dsc = np.where(
+        num_valid_entries > 0,
+        np.sum(dscs) / num_valid_entries,
+        0)
+    print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
+    return m_dsc, dscs
   
 def precision_and_recall(total_cm):
     """"""    

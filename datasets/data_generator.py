@@ -185,8 +185,76 @@ class Dataset(object):
       
         return sample
     
-    # def get_z_label(self, organ_label, depth, num_slices, z_class):
-    #     tf.cond(tf.reduce_sum(organ_label)>0, 
+    def _parse_sequence(self, serialized_example):
+        """Function to parse the example"""
+        keys_to_context_features = {
+            'image/format': tf.FixedLenFeature((), tf.string, default_value=''),
+            'image/height': tf.FixedLenFeature((), tf.int64, default_value=0),
+            'image/width': tf.FixedLenFeature((), tf.int64, default_value=0),
+            'segmentation/format': tf.FixedLenFeature(
+                (), tf.string, default_value='png'),
+            'video_id': tf.FixedLenFeature((), tf.string, default_value='')
+        }
+
+        # TODO    
+        # label_name = 'class' if dataset_name == 'davis_2016' else 'object'
+        label_name = 'miccai_2013'
+        keys_to_sequence_features = {
+            'image/encoded': tf.FixedLenSequenceFeature((), dtype=tf.string),
+            'segmentation/encoded':
+                tf.FixedLenSequenceFeature((), tf.string),
+            'image/depth':
+                tf.FixedLenSequenceFeature((), tf.int64),
+        }
+    
+        context, feature_list = tf.parse_single_sequence_example(
+            serialized_example, keys_to_context_features,
+            keys_to_sequence_features)
+        
+        
+        image = tf.decode_raw(feature_list['image/encoded'], tf.int32)
+        image = tf.reshape(image, [-1,512,512,1])
+        sel_indices = tf.constant([70, 71], dtype=tf.int32)
+        image = tf.gather(image, indices=sel_indices, axis=0)
+        
+        label = tf.decode_raw(feature_list['segmentation/encoded'], tf.int32)
+        label = tf.reshape(label, [-1,512,512,1])
+        label = tf.gather(label, indices=sel_indices, axis=0)
+        # # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
+
+        # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
+        
+        # # import prior
+        # # TODO: paramarize subject selection
+        # # TODO: 'priors' --> common.PRIORS
+        
+        # sample = {
+        #     common.IMAGE: image,
+        #     common.HEIGHT: parsed_features['image/height'],
+        #     common.WIDTH: parsed_features['image/width'],
+        #     common.DEPTH: parsed_features['image/depth'],
+        #     common.NUM_SLICES: parsed_features['image/num_slices'],
+        #     "organ_label": organ_label,
+        #     "split": self.split_name
+        # }
+        
+
+        # if label is not None:
+        #   if label.get_shape().ndims == 2:
+        #     label = tf.expand_dims(label, 2)
+        #   elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
+        #     pass
+        #   else:
+        #     raise ValueError('Input label shape must be [height, width], or '
+        #                      '[height, width, 1].')
+    
+        #   label.set_shape([None, None, 1])
+    
+        #   sample[common.LABELS_CLASS] = label
+        sample = {common.IMAGE: image,
+                  common.LABEL: label,
+                  "depth": feature_list["image/depth"]}
+        return sample
             
     def _preprocessing(self, sample):
         image = sample[common.IMAGE]
@@ -287,11 +355,6 @@ class Dataset(object):
             
         return sample
     
-    # def test(self, pp):
-    #     for k in pp:
-    #         tf.summary.image(k, pp[k][...,6])
-    #     return tf.summary.merge_all()  
-    
     def get_one_shot_iterator(self):
         """Gets an iterator that iterates across the dataset once.
         Returns:
@@ -299,13 +362,17 @@ class Dataset(object):
         """
     
         files = self._get_all_files(self.split_name)
-        
+         
+        # dataset = (
+        #      tf.data.TFRecordDataset(files)
+        #      .map(self._parse_function, num_parallel_calls=self.num_readers)
+        #      .map(self._preprocessing, num_parallel_calls=self.num_readers)
+        #      )
         dataset = (
              tf.data.TFRecordDataset(files)
-             .map(self._parse_function, num_parallel_calls=self.num_readers)
-             .map(self._preprocessing, num_parallel_calls=self.num_readers)
+             .map(self._parse_sequence, num_parallel_calls=self.num_readers)
              )
-    
+        
         if self.shuffle_data:
           dataset = dataset.shuffle(buffer_size=100)
     
@@ -315,7 +382,6 @@ class Dataset(object):
           dataset = dataset.repeat(1)
     
         dataset = dataset.batch(self.batch_size).prefetch(self.batch_size)
-        # return dataset.make_one_shot_iterator()
         return dataset
     
     def _get_all_files(self, split_name):
@@ -328,12 +394,3 @@ class Dataset(object):
                                     file_pattern % split_name)
         return tf.gfile.Glob(file_pattern)       
      
-    # def get_fixed_guidance(self, prior_dir):
-    #     np_prior = np.load(prior_dir)
-    #     prior = tf.convert_to_tensor(np_prior)
-    #     prior = tf.tile(prior, [self.batch_size,1,1,1])  
-    #     # guidance = tf.convert_to_tensor(np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_010.npy"))
-    #     # guidance = tf.expand_dims(guidance, axis=0)
-    #     # guidance = tf.tile(guidance, [clone_batch_size,1,1,1])  
-    #     # guidance = tf.image.resize_bilinear(guidance, [256,256])
-    #     return prior

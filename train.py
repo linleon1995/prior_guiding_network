@@ -31,6 +31,7 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
+# DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-40000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-5000'
@@ -47,11 +48,14 @@ FUSIONS = 5*["slim_guid"]
 FUSIONS = ["slim_guid_plain", "sum", "sum", "sum", "sum"]
 FUSIONS = ["slim_guid", "sum", "sum", "sum", "sum"]
 FUSIONS = 5*["sum"]
-# FUSIONS = ["guid_uni", "guid_uni", "guid_uni", "guid_uni", "guid_uni"]
+FUSIONS = 5*["guid_uni"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
+GUID_LOSS = "sigmoid_cross_entropy"
 STAGE_PRED_LOSS = "softmax_dice_loss"
+STAGE_PRED_LOSS = "sigmoid_cross_entropy"
+# STAGE_PRED_LOSS = "softmax_cross_entropy"
 SEG_WEIGHT_FLAG = False
 
 # TODO: tf argparse
@@ -78,13 +82,16 @@ def create_training_path(train_logdir):
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument('--predict_without_background', type=bool, default=False,
+                    help='')
+
 parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--out_node', type=int, default=64,
+parser.add_argument('--out_node', type=int, default=32,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -121,7 +128,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=100,
+parser.add_argument('--training_number_of_steps', type=int, default=140000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -216,7 +223,7 @@ parser.add_argument('--learning_rate_decay_step', type=float, default=0,
 parser.add_argument('--learning_rate_decay_factor', type=float, default=1e-1,
                     help='')
 
-parser.add_argument('--learning_power', type=float, default=0.75,
+parser.add_argument('--learning_power', type=float, default=0.9,
                     help='')
 
 parser.add_argument('--slow_start_step', type=int, default=0,
@@ -342,6 +349,11 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
     if FLAGS.guidance_loss_decay is None:
       raise ValueError("guidance loss")
     FUSIONS[0] = FLAGS.guid_method
+
+  num_class = outputs_to_num_classes['semantic']  
+  if FLAGS.predict_without_background:
+    num_class -= 1
+    
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
@@ -351,7 +363,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 samples=samples["organ_label"],
                 # prior_imgs=samples[common.PRIOR_IMGS],
                 prior_segs=samples[common.PRIOR_SEGS],
-                num_class=outputs_to_num_classes['semantic'],
+                num_class=num_class,
                 # num_slices=samples[common.NUM_SLICES],
                 prior_slice=prior_slices,
                 batch_size=clone_batch_size,
@@ -448,6 +460,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     seg_weight = 1.0
     guidance_loss_weight = FLAGS.guidance_loss_decay
     stage_pred_loss_weight = FLAGS.stage_pred_loss_decay
+    # stage_pred_loss_weight = [0.04] + 13*[1.0]
     
     # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
       
@@ -460,12 +473,13 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], STAGE_PRED_LOSS, 
       #                                                      decay=FLAGS.stage_pred_loss_decay)
       loss_dict["stage_pred"] = {"loss": STAGE_PRED_LOSS, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
-        
+
     train_utils.get_losses(output_dict, 
                            layers_dict, 
                            samples, 
                            loss_dict,
-                           num_of_classes)
+                           num_of_classes,
+                           predict_without_background=FLAGS.predict_without_background)
     
     # if FLAGS.z_loss_decay is not None:
     #     if FLAGS.z_label_method.split("_")[1] == 'regression':
@@ -542,65 +556,20 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
       tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
       tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
 
-    # tf.summary.image('guidance/%s' % 'guidance_fullres_6', colorize(guidance_fullres[...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance_fullres_7', colorize(guidance_fullres[...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
 
-    # guidance_list = tf.get_collection("guidance")
+    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
 
-    # tf.summary.image('guidance/%s' % 'f_guidance1_6', colorize(guidance_list[0][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance1_7', colorize(guidance_list[0][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance1_13', colorize(guidance_list[0][...,13:14], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
 
-    # tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance_list[1][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance_list[1][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance1_13', colorize(guidance_list[1][...,13:14], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
 
-    # tf.summary.image('guidance/%s' % 'f_guidance2_6', colorize(guidance_list[2][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance2_7', colorize(guidance_list[2][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance2_13', colorize(guidance_list[2][...,13:14], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance_list[3][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance_list[3][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance2_13', colorize(guidance_list[3][...,13:14], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'f_guidance3_6', colorize(guidance_list[4][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance3_7', colorize(guidance_list[4][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance3_13', colorize(guidance_list[4][...,13:14], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance_list[5][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance_list[5][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance3_13', colorize(guidance_list[5][...,13:14], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'f_guidance4_6', colorize(guidance_list[6][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance4_7', colorize(guidance_list[6][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'f_guidance4_13', colorize(guidance_list[6][...,13:14], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance_list[7][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance_list[7][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance4_13', colorize(guidance_list[7][...,13:14], cmap='viridis'))
-
-
-    # tf.summary.image('guidance/%s' % 'guidance_init_6', colorize(guidance['init_guid'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance_init_7', colorize(guidance['init_guid'][...,7:8], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance_init_13', colorize(guidance['init_guid'][...,13:14], cmap='viridis'))
-    
-    # tf.summary.image('guidance/%s' % 'guidance0_6', colorize(guidance['guidance_in'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance0_7', colorize(guidance['guidance_in'][...,7:8], cmap='viridis'))
-
-    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
-
-    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
-
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
-
-    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
-
-    # tf.summary.image('guidance/%s' % 'guidance5_6', colorize(guidance['guidance5'][...,6:7], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guidance5_7', colorize(guidance['guidance5'][...,7:8], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
 
   if z_label is not None and z_pred is not None:
     clone_batch_size = FLAGS.batch_size // FLAGS.num_clones

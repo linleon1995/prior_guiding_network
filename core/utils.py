@@ -125,7 +125,9 @@ class Refine(object):
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
               guid = tf.image.resize_bilinear(guid, [h, w], align_corners=True)
               y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order), num_classes=self.num_class)
-              
+              fuse_flag = True
+              if fuse_flag:
+                y = slim.conv2d(y, self.embed_node, scope='fuse'+str(i))
             if self.stage_pred_loss is not None:
               stage_pred =  slim.conv2d(y, self.num_class, kernel_size=[1,1], activation_fn=None, 
                                           scope="stage_pred%d" %module_order)
@@ -141,8 +143,12 @@ class Refine(object):
                 guid = tf.nn.sigmoid(guid)
               
               if fuse_method == "guid_uni":
-                guid = tf.reduce_mean(guid[...,1:], axis=3, keepdims=True)
+                norm = False
+                if norm:
+                  guid = tf.reduce_sum(guid, axis=[1,2], keepdims=True) / guid
+                guid = tf.reduce_mean(guid, axis=3, keepdims=True)
                 
+                tf.add_to_collection("guid_avg", guid)
               y_tm1 = y
             elif fuse_method in ("concat", "sum"):
               y_tm1 = y
@@ -180,9 +186,14 @@ class Refine(object):
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
     with tf.variable_scope(scope, 'guid'):
       net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+      tf.add_to_collection("sram1", x1)
+      tf.add_to_collection("sram1", net)
       if x2 is not None:
         net = net + x2
+        tf.add_to_collection("sram2", x2)
+        tf.add_to_collection("sram2", net)
         net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
+        tf.add_to_collection("sram2", net)
       return net
     
   def guid_class_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
@@ -811,55 +822,13 @@ def scale_dimension(dim, scale):
     return int((float(dim) - 1.0) * scale + 1.0)
 
 
-# def split_separable_conv2d(inputs,
-#                            filters,
-#                            kernel_size=3,
-#                            rate=1,
-#                            weight_decay=0.00004,
-#                            depthwise_weights_initializer_stddev=0.33,
-#                            pointwise_weights_initializer_stddev=0.06,
-#                            scope=None):
-#   """Splits a separable conv2d into depthwise and pointwise conv2d.
-#   This operation differs from `tf.layers.separable_conv2d` as this operation
-#   applies activation function between depthwise and pointwise conv2d.
-#   Args:
-#     inputs: Input tensor with shape [batch, height, width, channels].
-#     filters: Number of filters in the 1x1 pointwise convolution.
-#     kernel_size: A list of length 2: [kernel_height, kernel_width] of
-#       of the filters. Can be an int if both values are the same.
-#     rate: Atrous convolution rate for the depthwise convolution.
-#     weight_decay: The weight decay to use for regularizing the model.
-#     depthwise_weights_initializer_stddev: The standard deviation of the
-#       truncated normal weight initializer for depthwise convolution.
-#     pointwise_weights_initializer_stddev: The standard deviation of the
-#       truncated normal weight initializer for pointwise convolution.
-#     scope: Optional scope for the operation.
-#   Returns:
-#     Computed features after split separable conv2d.
-#   """
-#   outputs = slim.separable_conv2d(
-#       inputs,
-#       None,
-#       kernel_size=kernel_size,
-#       depth_multiplier=1,
-#       rate=rate,
-#       weights_initializer=tf.truncated_normal_initializer(
-#           stddev=depthwise_weights_initializer_stddev),
-#       weights_regularizer=None,
-#       scope=scope + '_depthwise')
-#   return slim.conv2d(
-#       outputs,
-#       filters,
-#       1,
-#       weights_initializer=tf.truncated_normal_initializer(
-#           stddev=pointwise_weights_initializer_stddev),
-#       weights_regularizer=slim.l2_regularizer(weight_decay),
-#       scope=scope + '_pointwise')
-
-
-# def non_local_block(x1, x2):
-#   """
-#   """
-#   e1
-#   e2
-#   e1 = preprocess_utils.resolve_shape(logits, 4)[1:3]
+def se_block(inputs, node=32, scope=None):
+  with tf.variable_scope(scope, "se_block", reuse=tf.AUTO_REUSE):
+      channel = inputs.get_shape().as_list()[3]
+      net = inputs
+      net = tf.reduce_mean(net, [1,2], keep_dims=False)
+      net = fc_layer(net, [channel, 32], _std=1, scope="fc1")
+      net = tf.nn.relu(net)
+      net = fc_layer(net, [32, channel], _std=1, scope="fc2")
+      net = tf.nn.sigmoid(net)
+  return net
