@@ -236,8 +236,10 @@ def get_losses(output_dict,
     
     label = samples[common.LABEL]
     if predict_without_background:
-      num_classes -= 1
+      label = tf.one_hot(samples[common.LABEL][...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
       label = label[...,1:]
+      num_classes -= 1
+      
     # Calculate stage prediction loss
     # TODO: the way to form guid_dict
     if "stage_pred" in loss_dict:

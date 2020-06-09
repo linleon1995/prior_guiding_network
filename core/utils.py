@@ -47,16 +47,19 @@ def slim_sram(in_node,
       
       
 class Refine(object):
-  def __init__(self, low_level, fusions, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
-               guid_conv_type="conv2d", embed_node=32, num_class=14, weight_decay=0.0, scope=None, is_training=None):
+  def __init__(self, low_level, fusions, fuse_flag, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
+               guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
+               num_class=14, weight_decay=0.0, scope=None, is_training=None):
     self.low_level = low_level
     self.fusions = fusions
+    self.fuse_flag = fuse_flag
     self.prior = prior
     self.prior_pred = prior_pred
     self.stage_pred_loss = stage_pred_loss
     self.embed_node = embed_node
     self.guid_conv_type = guid_conv_type
     self.guid_conv_nums = guid_conv_nums
+    self.predict_without_background = predict_without_background
     self.num_class = num_class
     self.weight_decay = weight_decay
     self.scope = scope
@@ -103,19 +106,25 @@ class Refine(object):
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
-              guid = tf.reduce_mean(self.prior_pred[...,1:], axis=3, keepdims=True)
+              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
               
-            tf.add_to_collection("f", guid)
+            
           
           out_node = self.embed_node
           for i, (k, v) in enumerate(self.low_level.items()):
             module_order = self.num_stage-i
             fuse_method = self.fusions[i]
             embed = self.embed(v, out_node, scope="embed%d" %module_order)
+            tf.add_to_collection("embed", embed)
+            
             fuse_func = self.get_fusion_method(fuse_method)
             h, w = embed.get_shape().as_list()[1:3]
             if y_tm1 is not None:
-              y_tm1 = tf.image.resize_bilinear(y_tm1, [h, w], align_corners=True)
+              y_tm1 = resize_bilinear(y_tm1, [h, w])
+              tf.add_to_collection("feature", y_tm1)
+            else:
+              # TODO: remove
+              tf.add_to_collection("feature", tf.zeros_like(embed))  
                 
             if fuse_method in ("concat", "sum"):
               if y_tm1 is not None:
@@ -123,13 +132,22 @@ class Refine(object):
               else:
                 y = tf.identity(embed, name="identity%d" %module_order)
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
-              guid = tf.image.resize_bilinear(guid, [h, w], align_corners=True)
+              guid = resize_bilinear(guid, [h, w])
+              tf.add_to_collection("guid", guid)
               y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order), num_classes=self.num_class)
-              fuse_flag = True
-              if fuse_flag:
+              
+              
+              if self.fuse_flag:
                 y = slim.conv2d(y, self.embed_node, scope='fuse'+str(i))
+                tf.add_to_collection("refining", y)
+                # y = slim.conv2d(y, self.embed_node, scope='fuse2_'+str(i))
+                # tf.add_to_collection("refining2", y)
+                
             if self.stage_pred_loss is not None:
-              stage_pred =  slim.conv2d(y, self.num_class, kernel_size=[1,1], activation_fn=None, 
+              num_class = self.num_class
+              if self.predict_without_background:
+                num_class -= 1
+              stage_pred =  slim.conv2d(y, num_class, kernel_size=[1,1], activation_fn=None, 
                                           scope="stage_pred%d" %module_order)
               preds["guidance%d" %module_order] = stage_pred
             
@@ -140,20 +158,23 @@ class Refine(object):
               if "softmax" in self.stage_pred_loss:
                 guid = tf.nn.softmax(stage_pred, axis=3)
               elif "sigmoid" in self.stage_pred_loss:
-                guid = tf.nn.sigmoid(guid)
-              
+                # guid = tf.nn.sigmoid(guid)
+                guid = tf.nn.sigmoid(stage_pred)
+                
               if fuse_method == "guid_uni":
-                norm = False
-                if norm:
-                  guid = tf.reduce_sum(guid, axis=[1,2], keepdims=True) / guid
-                guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+                # guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+                
+                guid = tf.clip_by_value(guid, 1e-10, 1.0)
+                guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
                 
                 tf.add_to_collection("guid_avg", guid)
+                
               y_tm1 = y
             elif fuse_method in ("concat", "sum"):
               y_tm1 = y
-            
-          y = tf.image.resize_bilinear(y, [256, 256], align_corners=True)
+              
+          h, w = y.get_shape().as_list()[1:3]  
+          y = resize_bilinear(y, [2*h, 2*w])
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
           y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits')
     return y, preds
@@ -180,20 +201,35 @@ class Refine(object):
   #    net = slim.conv2d(net, out_node, scope=scope+"_2")
       return net
 
+
+  # def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+  #   guid_node = guid.get_shape().as_list()[3]
+  #   if guid_node != out_node and guid_node != 1:
+  #     raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+  #   with tf.variable_scope(scope, 'guid'):
+  #     inputs = x1
+  #     if x2 is not None:
+  #       inputs += x2
+  #     net = slim_sram(inputs, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+  #     # tf.add_to_collection("sram1", x1)
+  #     tf.add_to_collection("sram1", net)
+      
+  #     return net
+    
+    
   def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
     guid_node = guid.get_shape().as_list()[3]
     if guid_node != out_node and guid_node != 1:
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+    
     with tf.variable_scope(scope, 'guid'):
       net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
-      tf.add_to_collection("sram1", x1)
       tf.add_to_collection("sram1", net)
       if x2 is not None:
         net = net + x2
-        tf.add_to_collection("sram2", x2)
-        tf.add_to_collection("sram2", net)
         net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
-        tf.add_to_collection("sram2", net)
+
+      tf.add_to_collection("sram2", net)
       return net
     
   def guid_class_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
@@ -242,7 +278,7 @@ def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=
               h, w = low_level[s-1].get_shape().as_list()[1:3]
               channel = base_channel * root**s
               
-              net = tf.image.resize_bilinear(net, [h, w])
+              net = resize_bilinear(net, [h, w])
               net = tf.concat([net, low_level[s-1]], axis=3)
               net = slim.conv2d(net, channel, scope='up_conv%d_1' %s)
               net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
@@ -754,27 +790,27 @@ def batch_norm(inputs, scope=None, is_training=None):
     return output
 
     
-def upsampling_layer(inputs, n, mode, scope='upsampling'):
-    """upsampling layer
-    Args:
-    Return:
-    """
-    assert inputs.get_shape().ndims == 4
-    x_shape = tf.shape(inputs)
-    new_h = x_shape[1]*n
-    new_w = x_shape[2]*n
+# def upsampling_layer(inputs, n, mode, scope='upsampling'):
+#     """upsampling layer
+#     Args:
+#     Return:
+#     """
+#     assert inputs.get_shape().ndims == 4
+#     x_shape = tf.shape(inputs)
+#     new_h = x_shape[1]*n
+#     new_w = x_shape[2]*n
     
-    with tf.variable_scope(scope):
-        if mode is 'Nearest_Neighbor':
-            output = tf.image.resize_nearest_neighbor(inputs, [new_h, new_w], name='nearest_neighbor')
+#     with tf.variable_scope(scope):
+#         if mode is 'Nearest_Neighbor':
+#             output = tf.image.resize_nearest_neighbor(inputs, [new_h, new_w], name='nearest_neighbor')
             
-        if mode is 'Bilinear':
-            output = tf.image.resize_bilinear(inputs, [new_h, new_w], name='bilinear')
+#         if mode is 'Bilinear':
+#             output = tf.image.resize_bilinear(inputs, [new_h, new_w], name='bilinear')
         
-        if mode is 'Bicubic':
-            output = tf.image.resize_bicubic(inputs, [new_h, new_w], name='bicubic')
+#         if mode is 'Bicubic':
+#             output = tf.image.resize_bicubic(inputs, [new_h, new_w], name='bicubic')
 
-    return output
+#     return output
 
 
 # def global_avg_pool(inputs, keep_dims=False):
@@ -793,19 +829,19 @@ def upsampling_layer(inputs, n, mode, scope='upsampling'):
 #     return output
 
 
-# def resize_bilinear(images, size, output_dtype=tf.float32):
-#   """Returns resized images as output_type.
-#   Args:
-#     images: A tensor of size [batch, height_in, width_in, channels].
-#     size: A 1-D int32 Tensor of 2 elements: new_height, new_width. The new size
-#       for the images.
-#     output_dtype: The destination type.
-#   Returns:
-#     A tensor of size [batch, height_out, width_out, channels] as a dtype of
-#       output_dtype.
-#   """
-#   images = tf.image.resize_bilinear(images, size, align_corners=True)
-#   return tf.cast(images, dtype=output_dtype)
+def resize_bilinear(images, size, output_dtype=tf.float32):
+  """Returns resized images as output_type.
+  Args:
+    images: A tensor of size [batch, height_in, width_in, channels].
+    size: A 1-D int32 Tensor of 2 elements: new_height, new_width. The new size
+      for the images.
+    output_dtype: The destination type.
+  Returns:
+    A tensor of size [batch, height_out, width_out, channels] as a dtype of
+      output_dtype.
+  """
+  images = tf.image.resize_bilinear(images, size, align_corners=False)
+  return tf.cast(images, dtype=output_dtype)
 
 
 def scale_dimension(dim, scale):

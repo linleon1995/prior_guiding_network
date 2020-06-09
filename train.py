@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -32,15 +32,12 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_104/model.ckpt-50000'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-40000'
-# PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-5000'
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
 
 HU_WINDOW = [-125, 275]
-TRAIN_CROP_SIZE = [256, 256]
-# TRAIN_CROP_SIZE = [512, 512]
+#TRAIN_CROP_SIZE = [257, 257]
+#TRAIN_CROP_SIZE = [512, 512]
 
 FUSIONS = 5*["concat"]
 # FUSIONS = ["guid", "sum", "sum", "sum", "sum"]
@@ -81,6 +78,9 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+
+parser.add_argument('--fuse_flag', type=bool, default=True,
+                    help='')
 
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
@@ -128,7 +128,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=140000,
+parser.add_argument('--training_number_of_steps', type=int, default=200000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -248,19 +248,22 @@ parser.add_argument('--output_stride', type=int, default=None,
 parser.add_argument('--num_clones', type=int, default=1,
                     help='')
 
-parser.add_argument('--min_scale_factor', type=float, default=0.75,
+parser.add_argument('--crop_size', type=int, default=256,
                     help='')
 
-parser.add_argument('--max_scale_factor', type=float, default=1.25,
+parser.add_argument('--min_scale_factor', type=float, default=0.375,
+                    help='')
+
+parser.add_argument('--max_scale_factor', type=float, default=0.625,
                     help='')
 
 parser.add_argument('--scale_factor_step_size', type=float, default=0.125,
                     help='')
 
-parser.add_argument('--min_resize_value', type=int, default=256,
+parser.add_argument('--min_resize_value', type=int, default=None,
                     help='')
 
-parser.add_argument('--max_resize_value', type=int, default=256,
+parser.add_argument('--max_resize_value', type=int, default=None,
                     help='')
 
 parser.add_argument('--resize_factor', type=int, default=None,
@@ -315,11 +318,11 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   else:
     prior_slices = None
 
-  if common.PRIOR_IMGS in samples:
-    samples[common.PRIOR_IMGS] = tf.identity(
-        samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
-  else:
-    samples[common.PRIOR_IMGS] = None
+  # if common.PRIOR_IMGS in samples:
+  #   samples[common.PRIOR_IMGS] = tf.identity(
+  #       samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
+  # else:
+  #   samples[common.PRIOR_IMGS] = None
 
   if common.PRIOR_SEGS in samples:
     samples[common.PRIOR_SEGS] = tf.identity(
@@ -327,10 +330,10 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   else:
     samples[common.PRIOR_SEGS] = None
 
-  if common.GUIDANCE in samples:
-    samples[common.GUIDANCE] = tf.identity(samples[common.GUIDANCE], name=common.GUIDANCE)
-  else:
-    samples[common.GUIDANCE] = None
+  # if common.GUIDANCE in samples:
+  #   samples[common.GUIDANCE] = tf.identity(samples[common.GUIDANCE], name=common.GUIDANCE)
+  # else:
+  #   samples[common.GUIDANCE] = None
 
   # TODO: moving_segs
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
@@ -351,8 +354,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
     FUSIONS[0] = FLAGS.guid_method
 
   num_class = outputs_to_num_classes['semantic']  
-  if FLAGS.predict_without_background:
-    num_class -= 1
+  # if FLAGS.predict_without_background:
+  #   num_class -= 1
     
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
@@ -390,6 +393,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 stage_pred_loss=STAGE_PRED_LOSS,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
+                fuse_flag=FLAGS.fuse_flag,
+                predict_without_background=FLAGS.predict_without_background,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -397,14 +402,14 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
   if common.Z_LABEL in samples:
-    samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
+    z_label = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
   else:
-    samples[common.Z_LABEL] = None
+    z_label = None
 
-  if common.PRIOR_IMGS in output_dict:
-    prior_img = output_dict[common.PRIOR_IMGS]
-  else:
-    prior_img = None
+  # if common.PRIOR_IMGS in output_dict:
+  #   prior_img = output_dict[common.PRIOR_IMGS]
+  # else:
+  #   prior_img = None
 
   if common.PRIOR_SEGS in output_dict:
     prior_seg = output_dict[common.PRIOR_SEGS]
@@ -430,9 +435,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                  samples[common.LABEL],
                  outputs_to_num_classes['semantic'],
                  output_dict[common.OUTPUT_TYPE],
-                 z_label=samples[common.Z_LABEL],
+                 z_label=z_label,
                  z_pred=z_pred,
-                 prior_imgs=prior_img,
                  prior_segs=prior_seg,
                  guidance=layers_dict,
                  guidance_original=guidance_original)
@@ -516,8 +520,8 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     return total_loss, seg_loss
 
 
-def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, prior_imgs, prior_segs,
-                   guidance, guidance_original):
+def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_segs,
+                   guidance, guidance_original, **kwargs):
   """Logs the summaries for the model.
   Args:
     input_image: Input image of the model. Its shape is [batch_size, height,
@@ -526,6 +530,7 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     num_of_classes: The number of classes of the dataset.
     output: Output of the model. Its shape is [batch_size, height, width].
   """
+  z_label = kwargs.pop("z_label", None)
   # Add summaries for model variables.
   for model_var in tf.model_variables():
     tf.summary.histogram(model_var.op.name, model_var)
@@ -545,9 +550,6 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
 
   # TODO: parameterization
-  if prior_imgs is not None:
-    tf.summary.image('samples/%s' % 'prior_imgs', colorize(prior_imgs, cmap='viridis'))
-
   if guidance is not None:
     # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
     # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
@@ -571,6 +573,13 @@ def _log_summaries(input_image, label, num_of_classes, output, z_label, z_pred, 
     tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
 
+    guid_avg = tf.get_collection("guid_avg")
+    tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
+    
   if z_label is not None and z_pred is not None:
     clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
@@ -730,14 +739,14 @@ def main(unused_argv):
                 dataset_name=FLAGS.dataset,
                 split_name=FLAGS.train_split,
                 dataset_dir=FLAGS.dataset_dir,
-                affine_transform=FLAGS.affine_transform,
-                deformable_transform=FLAGS.deformable_transform,
+                # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
-                z_label_method=FLAGS.z_label_method,
+                mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
-                z_class=FLAGS.z_class,
-                crop_size=TRAIN_CROP_SIZE,
+                mt_class=FLAGS.z_class,
+                mt_label_type="class_label",
+                crop_size=[FLAGS.crop_size, FLAGS.crop_size],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
                 resize_factor=FLAGS.resize_factor,
@@ -751,21 +760,23 @@ def main(unused_argv):
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir)
+                prior_dir=FLAGS.prior_dir,
+                seq_length=3,
+                seq_type="forward")
 
 
             dataset2 = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name="val",
                 dataset_dir=FLAGS.dataset_dir,
-                affine_transform=FLAGS.affine_transform,
-                deformable_transform=FLAGS.deformable_transform,
+                # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
-                z_label_method=FLAGS.z_label_method,
+                mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
-                z_class=FLAGS.z_class,
-                crop_size=TRAIN_CROP_SIZE,
+                mt_class=FLAGS.z_class,
+                mt_label_type="class_label",
+                crop_size=[FLAGS.crop_size, FLAGS.crop_size],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
                 resize_factor=FLAGS.resize_factor,
@@ -779,11 +790,13 @@ def main(unused_argv):
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir)
+                prior_dir=FLAGS.prior_dir,
+                seq_length=5,
+                seq_type="forward")
             
             model_options = common.ModelOptions(
               outputs_to_num_classes=dataset.num_of_classes,
-              crop_size=TRAIN_CROP_SIZE,
+              crop_size=[FLAGS.crop_size, FLAGS.crop_size],
               output_stride=FLAGS.output_stride)
             check_model_conflict(model_options)
             

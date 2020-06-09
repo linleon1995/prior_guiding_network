@@ -144,6 +144,7 @@ def _convert_dataset(dataset_split):
         raise RuntimeError('Invalid image filename: ' + image_files[shard_id])
       filename = os.path.basename(re_match.group(1))
 
+      # TODO: 14, organ label
       if _DATA_TYPE == "2D":
         seg_onehot = np.eye(14)[seg_data]
         organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
