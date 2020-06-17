@@ -35,7 +35,7 @@ spatial_transfom_exp = experiments.spatial_transfom_exp
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 EVAL_CROP_SIZE = [256,256]
-# EVAL_CROP_SIZE = [512,512]
+EVAL_CROP_SIZE = [512,512]
 ATROUS_RATES = None
 # TODO: Multi-Scale Test
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
@@ -43,6 +43,7 @@ EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
 # TODO: train image list (optional)
+# TODO: if dir not exist. Don't build new one
 IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
 
 FUSIONS = 5*["sum"]
@@ -62,7 +63,18 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-30000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_bug_fix_aligne_false/model.ckpt-200000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-80000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_bug_fix_align_corner_false_entropy/model.ckpt-130000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_bug_fix_align_corner_false_entropy/model.ckpt-200000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_2convs_in_sram/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_010/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_012/model.ckpt-165000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_014/model.ckpt-145000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-165000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_017/model.ckpt-200000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_014/model.ckpt-195000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_018/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_013/model.ckpt-160000'
+
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
@@ -77,7 +89,7 @@ parser.add_argument('--predict_without_background', type=bool, default=False,
 parser.add_argument('--fuse_flag', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -89,7 +101,7 @@ parser.add_argument('--out_node', type=int, default=32,
 parser.add_argument('--guid_conv_type', type=str, default="conv",
                     help='')
                     
-parser.add_argument('--guid_conv_nums', type=int, default=1,
+parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
@@ -155,10 +167,10 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=bool, default=True,
                     help='')
 
-parser.add_argument('--vis_features', type=bool, default=False,
+parser.add_argument('--vis_features', type=bool, default=True,
                     help='')
 
 parser.add_argument('--display_box_plot', type=bool, default=False,
@@ -264,7 +276,9 @@ def main(unused_argv):
                 repeat_data=False,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir)             
+                prior_dir=FLAGS.prior_dir,
+                seq_length=3,
+                seq_type="forward")            
   # TODO: make dirs?
   # TODO: Add model name in dir to distinguish
   
@@ -429,10 +443,13 @@ def main(unused_argv):
     
     label2 = tf.nn.dilation2d(label_onehot, filter=kernel2, strides=(1,1,1,1), 
                               rates=(1,1,1,1), padding="SAME")
+    label2 = label2 - tf.ones_like(label2)                          
     label3 = tf.nn.dilation2d(label_onehot, filter=kernel3, strides=(1,1,1,1), 
                               rates=(1,1,1,1), padding="SAME")
+    label3 = label3 - tf.ones_like(label3)                          
     label4 = tf.nn.dilation2d(label_onehot, filter=kernel4, strides=(1,1,1,1), 
                               rates=(1,1,1,1), padding="SAME")
+    label4 = label4 - tf.ones_like(label4)                          
     image_128 = tf.image.resize_bilinear(samples[common.IMAGE],[128, 128], align_corners=True)
     # image_diff = samples[common.IMAGE] - image_128
 
@@ -502,8 +519,8 @@ def main(unused_argv):
     loader = tf.train.Saver()
     if FLAGS.checkpoint_dir is not None:
         load_model(loader, sess, FLAGS.checkpoint_dir)
-    # else:
-    #     raise ValueError("model checkpoint not exist")
+    else:
+        raise ValueError("model checkpoint not exist")
     
     
     cm_total = 0
@@ -558,14 +575,17 @@ def main(unused_argv):
       f.write("\nGFLOPs: {}".format(flops/1e9))
       f.write("\nParameters: {} MB".format(params))
       f.write("\n")  
-        
+    
+    num_class = dataset.num_of_classes
+    if FLAGS.predict_without_background:
+      num_class -= 1    
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
         
         # Segmentation Evaluation
-        cm_slice, pred = sess.run([cm, predictions], feed_dict=_feed_dict)
+        cm_slice, pred, l2,l3,l4 = sess.run([cm, predictions, label2, label3, label4], feed_dict=_feed_dict)
         _, dscs = eval_utils.compute_mean_dsc(cm_slice)
         DSC_slice.append(dscs)
         cm_total += cm_slice
@@ -594,11 +614,10 @@ def main(unused_argv):
             # show_seg_results.set_title(["label2", "label3","label4"])
             # show_seg_results.display_figure(FLAGS.eval_split+'_dilated_label_%04d' %i,
             #                                 [l2[0,...,6], l3[0,...,6], l4[0,...,6]])
-            # plt.imshow(l2[0,...,6]+l3[0,...,6]+l4[0,...,6]+np.int32(data[common.LABEL][0,...,0]==6))
-            # plt.show()
+            # # plt.imshow(l2[0,...,6]+l3[0,...,6]+l4[0,...,6]+np.int32(data[common.LABEL][0,...,0]==6))
+            # # plt.show()
             # plt.savefig(FLAGS.eval_logdir+"sample{}-label_compare.png".format(i))
-        # foreground_pixel += sess.run(num_fg_pixel, _feed_dict)
-        
+            
         # Z-information Evaluation
         if common.OUTPUT_Z in output_dict:
           eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
@@ -643,7 +662,7 @@ def main(unused_argv):
             #                               pred_layers["guidance2"][0],
             #                               pred_layers["guidance1"][0]])
               
-            for c in range(dataset.num_of_classes):
+            for c in range(num_class):
               show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
               show_guidance.display_figure(FLAGS.eval_split+'-guid012-%04d-%03d' % (i,c),
                                             [layers["guidance0"][0,...,c],
@@ -666,7 +685,8 @@ def main(unused_argv):
                                                                tf.get_collection("sram2"), 
                                                                tf.get_collection("embed"), 
                                                                tf.get_collection("feature"), 
-                                                               tf.get_collection("refining"),
+                                                              #  tf.get_collection("refining"),
+                                                               tf.get_collection("feature"),
                                                                tf.get_collection("guid_f")], feed_dict=_feed_dict)
 
             for cc in range(0, 32, 4):
@@ -769,7 +789,6 @@ if __name__ == '__main__':
     # for i in range(14):
     #   plt.imshow(guidance[...,i])
     #   plt.show()
-      
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
     

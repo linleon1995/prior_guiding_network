@@ -2,7 +2,7 @@ import tensorflow as tf
 # TODO: Remove numpy dependency
 import numpy as np
 # from tensorflow.python.ops import math_ops
-from core import features_extractor, stn, voxelmorph, crn_network, utils
+from core import features_extractor, stn, voxelmorph, crn_network, utils, resnet_v1_beta
 from test_flownet import build_flow_model, FlowNetS
 import common
 import experiments
@@ -154,9 +154,9 @@ def pgb_network(images,
     # Produce Prior
     prior_seg = get_prior(prior_segs, guidance_type, num_class)
                 
-    if guid_encoder == "last_stage_feature":
+    if guid_encoder == "early":
         in_node = tf.concat([images, prior_seg], axis=3)
-    else:
+    elif guid_encoder in ("late", "image_only"):
         in_node = images
     features, end_points = features_extractor.extract_features(images=in_node,
                                                                output_stride=model_options.output_stride,
@@ -190,20 +190,19 @@ def pgb_network(images,
     with slim.arg_scope([slim.batch_norm],
                         is_training=is_training):
         with slim.arg_scope([slim.conv2d], 
-                          trainable=True,
                           activation_fn=tf.nn.relu, 
                           weights_initializer=tf.initializers.he_normal(), 
                           weights_regularizer=slim.l2_regularizer(weight_decay),
-                          kernel_size=[3, 3], 
-                          padding='SAME',
                           normalizer_fn=slim.batch_norm):
             if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions:
                 # Refined by Decoder
-                if guid_encoder == "last_stage_feature":
-                    prior_seg = slim.conv2d(layers_dict["low_level4"], out_node, kernel_size=[1,1], scope="guidance_embedding")
-                elif guid_encoder == "shallow_net":
-                    prior_seg = utils.get_guidance(tf.concat([images, prior_seg], axis=3), out_node)
-                tf.add_to_collection("guid_f", prior_seg)    
+                if guid_encoder in ("early", "image_only"):
+                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
+                elif guid_encoder == "late":
+                    img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
+                    prior_embed = utils.get_guidance(tf.concat([images, prior_seg], axis=3), out_node, model_options.output_stride)
+                    prior_seg = slim.conv2d(tf.concat([img_embed,prior_embed],axis=3), out_node, 3, scope="prior_seg")
+                tf.add_to_collection("guid_f", prior_seg)   
 
                 c = num_class
                 if predict_without_background:
@@ -220,7 +219,6 @@ def pgb_network(images,
                 prior_seg = None
                 prior_pred = None
 
-    
     refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type, 
                                 embed_node=out_node, predict_without_background=predict_without_background,

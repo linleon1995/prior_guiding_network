@@ -52,6 +52,7 @@ GUID_LOSS = "softmax_dice_loss"
 GUID_LOSS = "sigmoid_cross_entropy"
 STAGE_PRED_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "sigmoid_cross_entropy"
+STAGE_PRED_LOSS = "sigmoid_dice_loss"
 # STAGE_PRED_LOSS = "softmax_cross_entropy"
 SEG_WEIGHT_FLAG = False
 
@@ -85,7 +86,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -97,7 +98,7 @@ parser.add_argument('--out_node', type=int, default=32,
 parser.add_argument('--guid_conv_type', type=str, default="conv",
                     help='')
                     
-parser.add_argument('--guid_conv_nums', type=int, default=1,
+parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
@@ -791,7 +792,7 @@ def main(unused_argv):
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 prior_dir=FLAGS.prior_dir,
-                seq_length=5,
+                seq_length=3,
                 seq_type="forward")
             
             model_options = common.ModelOptions(

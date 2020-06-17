@@ -28,11 +28,11 @@ import model
 from datasets import data_generator
 from utils import eval_utils, train_utils
 import experiments
-
+import cv2
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 EVAL_CROP_SIZE = [256,256]
 EVAL_CROP_SIZE = [512,512]
@@ -43,7 +43,8 @@ EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
 IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
 # TODO: train image list (optional)
-IMG_LIST = [50, 60, 64, 70, 82, 222, 227, 350, 481]
+# TODO: if dir not exist. Don't build new one
+IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
 
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
@@ -59,15 +60,28 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-110000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-140000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_1.0_uni_binary_convfuse/model.ckpt-140000'
-
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-30000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_bug_fix_aligne_false/model.ckpt-200000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_bug_fix_align_corner_false_entropy/model.ckpt-200000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/guid_2convs_in_sram/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_010/model.ckpt-200000'
 # CHECKPOINT = None
 
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
+
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--guid_encoder', type=str, default="last_stage_feature",
+parser.add_argument('--predict_without_background', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--fuse_flag', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -79,7 +93,7 @@ parser.add_argument('--out_node', type=int, default=32,
 parser.add_argument('--guid_conv_type', type=str, default="conv",
                     help='')
                     
-parser.add_argument('--guid_conv_nums', type=int, default=1,
+parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
@@ -145,7 +159,7 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--zero_guidance', type=bool, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=bool, default=True,
                     help='')
 
 parser.add_argument('--vis_features', type=bool, default=True,
@@ -161,7 +175,7 @@ parser.add_argument('--store_all_imgs', type=bool, default=False,
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
                     help='')
 
-parser.add_argument('--eval_split', type=str, default='val',
+parser.add_argument('--eval_split', type=str, default='train',
                     help='')
 
 parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
@@ -209,10 +223,10 @@ def main(unused_argv):
   # # List ALL tensors example output: v0/Adam (DT_FLOAT) [3,3,1,80]
   # print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False, 
   #                                  all_tensor_names=True)
-
-  path = FLAGS.checkpoint_dir.split("model.ckpt")[0]
+  tf.gfile.MakeDirs(FLAGS.eval_logdir)
+  
   parameters_dict = vars(FLAGS)
-  with open(os.path.join(path, 'eval_logging.txt'), 'w') as f:
+  with open(os.path.join(FLAGS.eval_logdir, 'eval_logging.txt'), 'w') as f:
     f.write("Start Evaluation\n")
     f.write(60*"="+"\n")
     for key in parameters_dict:
@@ -233,13 +247,13 @@ def main(unused_argv):
                 dataset_name=FLAGS.dataset,
                 split_name=FLAGS.eval_split,
                 dataset_dir=FLAGS.dataset_dir,
-                affine_transform=FLAGS.affine_transform,
-                deformable_transform=FLAGS.deformable_transform,
+                # affine_transform=FLAGS.affine_transform,
+                # deformable_transform=FLAGS.deformable_transform,
                 batch_size=1,
                 HU_window=HU_WINDOW,
-                z_label_method=FLAGS.z_label_method,
+                mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
-                z_class=FLAGS.prior_num_slice,
+                mt_class=FLAGS.prior_num_slice,
                 crop_size=EVAL_CROP_SIZE,
                 min_resize_value=EVAL_CROP_SIZE[0],
                 max_resize_value=EVAL_CROP_SIZE[0],
@@ -251,13 +265,15 @@ def main(unused_argv):
                 num_readers=2,
                 is_training=False,
                 shuffle_data=False,
-                repeat_data=True,
+                repeat_data=False,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir)             
+                prior_dir=FLAGS.prior_dir,
+                seq_length=3,
+                seq_type="forward")            
   # TODO: make dirs?
   # TODO: Add model name in dir to distinguish
-#   tf.gfile.MakeDirs(FLAGS.eval_logdir)
+  
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
   with tf.Graph().as_default() as graph:
@@ -274,26 +290,12 @@ def main(unused_argv):
       output_stride=FLAGS.output_stride)
 
     # Set shape in order for tf.contrib.tfprof.model_analyzer to work properly.
-    sequence_length = 2
     samples[common.IMAGE].set_shape(
         [FLAGS.eval_batch_size,
-         sequence_length,
+         3,
          EVAL_CROP_SIZE[0],
          EVAL_CROP_SIZE[1],
          1])
-
-    image_placeholder = tf.placeholder(tf.float32, shape=[1,sequence_length,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
-    label_placeholder = tf.placeholder(tf.int32, shape=[None,sequence_length,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
-    num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
-    
-    placeholder_dict = {common.IMAGE: image_placeholder,
-                        common.LABEL: label_placeholder}
-
-
-
-    num_eval_iters = None
-    if FLAGS.max_number_of_evaluations > 0:
-      num_eval_iters = FLAGS.max_number_of_evaluations
 
     # Set up tf session and initialize variables.
     sess = tf.Session()
@@ -302,50 +304,32 @@ def main(unused_argv):
     sess.run(init)
     sess.run(tf.local_variables_initializer())
 
+    # image_placeholder = tf.placeholder(tf.float32, shape=[1,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
+    # label_placeholder = tf.placeholder(tf.int32, shape=[None,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
+    # num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
     
-    
-    cm_total = 0
-    _cm_g1_t, _cm_g2_t, _cm_g3_t, _cm_g4_t = 0, 0, 0, 0
-    g1_dsc_t = 0
-    total_eval_z = 0
-    foreground_pixel = 0
-    DSC_slice = []
-    total_resnet_activate = {}
-    total_z_label = []
-    total_z_pred = []
- 
-    if FLAGS.store_all_imgs:
-        display_imgs = np.arange(dataset.splits_to_sizes[FLAGS.eval_split])
-    else:
-        display_imgs = IMG_LIST
-
-    show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
-                                                        is_showfig=False,
-                                                        is_savefig=True,
-                                                        subplot_split=(1,3),
-                                                        type_list=3*['img'])
+    # placeholder_dict = {common.IMAGE: image_placeholder,
+    #                     common.LABEL: label_placeholder,
+    #                     common.NUM_SLICES: num_slices_placeholder}
 
     for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
         data = sess.run(samples)
-        _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-        print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
-    
-        if i in display_imgs:
-            parameters = [{"cmap": "gray"}]
-            parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
-            show_seg_results.set_title(["image", "label","prediction"])
-            show_seg_results.set_axis_off()
-            show_seg_results.display_figure(FLAGS.eval_split+'_pred_%04d' %i,
-                                            [data[common.IMAGE][0,0,...,0], data[common.LABEL][0,0,...,0], data[common.LABEL][0,1,...,0]],
-                                            parameters=parameters)
-            
+        print(i)
+        # if i == 0:
+        plt.imshow(data[common.IMAGE][0,0,...,0])
+        plt.show()
+        plt.imshow(data[common.IMAGE][0,1,...,0])
+        plt.show()
+        plt.imshow(data[common.IMAGE][0,2,...,0])
+        plt.show()
+        
+
   
 if __name__ == '__main__':
     # guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
     # for i in range(14):
     #   plt.imshow(guidance[...,i])
     #   plt.show()
-      
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
     

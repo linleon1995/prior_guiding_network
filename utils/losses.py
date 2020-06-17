@@ -560,7 +560,65 @@ def add_sigmoid_cross_entropy_loss_for_each_scale(scales_to_logits,
         loss = _div_maybe_zero(total_loss, num_present)
         
             
+
+def add_sigmoid_dice_loss_for_each_scale(scales_to_logits,
+                                         labels,
+                                         num_classes,
+                                         ignore_label,
+                                         alpha=0.5,
+                                         beta=0.5,
+                                         loss_weight=1.0,
+                                         scope=None):
+    """TODO"""
+    if labels is None:
+        raise ValueError('No label for softmax dice loss.')
+    
+    for scale, logits in scales_to_logits.items():
+        loss_scope = None
+        if scope:
+            loss_scope = '%s_%s' % (scope, scale)
+        
+        logits = tf.image.resize_bilinear(
+                logits,
+                preprocess_utils.resolve_shape(labels, 4)[1:3],
+                align_corners=True)
+        scaled_labels = labels
+  
+        # TODO: tf.rank
+        if scaled_labels.get_shape().as_list()[3] != num_classes:
+          scaled_labels = tf.one_hot(
+                scaled_labels[...,0], num_classes, on_value=1.0, off_value=0.0)
+
+        
+        weights = tf.constant(loss_weight, tf.float32)
+        # weights = utils.get_label_weight_mask(
+        #     scaled_labels, ignore_label, num_classes, label_weights=loss_weight)
+        
+        # Dimension of keep_mask is equal to the total number of pixels.
+        # keep_mask = tf.cast(
+        #     tf.not_equal(scaled_labels, ignore_label), dtype=tf.float32)
+
+        logits = tf.reshape(logits, shape=[-1, num_classes])
+    
+        train_labels = tf.reshape(scaled_labels, shape=[-1, num_classes])
+        
+        with tf.name_scope(loss_scope, 'softmax_all_pixel_loss',
+                        [logits, train_labels, weights]):
+            # Compute the loss for all pixels.
+            prediction = tf.nn.sigmoid(logits)
+            train_labels = tf.stop_gradient(
+                train_labels, name='train_labels_stop_gradient')
             
+            intersection = tf.reduce_sum(train_labels*prediction, 0)
+            union = tf.reduce_sum(train_labels, 0) + tf.reduce_sum(prediction, 0)
+
+            pixel_losses = (2*intersection+_EPSILON) / (union+_EPSILON)
+            weighted_pixel_losses = tf.multiply(pixel_losses, weights)
+            loss = 1 - tf.reduce_mean(weighted_pixel_losses)
+        
+            tf.losses.add_loss(loss)
+
+
 def add_softmax_dice_loss_for_each_scale(scales_to_logits,
                                          labels,
                                          num_classes,

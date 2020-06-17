@@ -2,13 +2,18 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
-
+from core import resnet_v1_beta
 slim = contrib_slim
+resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
 
 # Quantized version of sigmoid function.
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
-
+GUID_FUSE = "sum"
+SRAM2 = True
+GUID_FEATURE_ONLY = False
+acc_guidance = False
+remove_noise = False
 
 def slim_sram(in_node,
               guidance,
@@ -27,9 +32,12 @@ def slim_sram(in_node,
         else:
           raise ValueError("Unknown convolution type")
 
-        for i in range(num_conv):
+        for i in range(num_conv-1):
           net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
-        
+        net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+"out", activation_fn=None)
+        # for i in range(num_conv):
+        #   net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
+
         guidance_filters = guidance.get_shape().as_list()[3]
         if guidance_filters == 1:
             guidance_tile = tf.tile(guidance, [1,1,1,conv_node])
@@ -42,6 +50,7 @@ def slim_sram(in_node,
         #                                      "conv2": conv2, 
         #                                      "guidance_tile": guidance_tile, 
         #                                      "output": output})
+
         output = in_node + tf.multiply(net, guidance_tile)
         return output
       
@@ -50,6 +59,8 @@ class Refine(object):
   def __init__(self, low_level, fusions, fuse_flag, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
                guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
                num_class=14, weight_decay=0.0, scope=None, is_training=None):
+    if GUID_FEATURE_ONLY:
+      low_level.pop["low_level5"]
     self.low_level = low_level
     self.fusions = fusions
     self.fuse_flag = fuse_flag
@@ -108,9 +119,11 @@ class Refine(object):
             elif "guid_uni" in self.fusions:
               guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
               
-            
+          if acc_guidance:
+            guid_acc = guid  
           
           out_node = self.embed_node
+
           for i, (k, v) in enumerate(self.low_level.items()):
             module_order = self.num_stage-i
             fuse_method = self.fusions[i]
@@ -134,6 +147,9 @@ class Refine(object):
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
               guid = resize_bilinear(guid, [h, w])
               tf.add_to_collection("guid", guid)
+              if acc_guidance:
+                guid_acc = resize_bilinear(guid_acc, [h, w]) + guid
+                guid = guid_acc
               y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order), num_classes=self.num_class)
               
               
@@ -162,11 +178,22 @@ class Refine(object):
                 guid = tf.nn.sigmoid(stage_pred)
                 
               if fuse_method == "guid_uni":
-                # guid = tf.reduce_mean(guid, axis=3, keepdims=True)
-                
-                guid = tf.clip_by_value(guid, 1e-10, 1.0)
-                guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
-                
+                if remove_noise:
+                  guid = tf.pow(guid, 2*tf.ones_like(guid))
+                if GUID_FUSE == "sum":
+                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)
+                elif GUID_FUSE == "mean":
+                  guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+                elif GUID_FUSE == "entropy":
+                  guid = tf.clip_by_value(guid, 1e-10, 1.0)
+                  guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
+                elif GUID_FUSE == "sum_dilated":
+                  size = [8,6,4,2,1]
+                  kernel = tf.ones((size[i], size[i], num_class))
+                  guid = tf.nn.dilation2d(guid, filter=kernel, strides=(1,1,1,1), 
+                                            rates=(1,1,1,1), padding="SAME")
+                  guid = guid - tf.ones_like(guid)                          
+                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)                          
                 tf.add_to_collection("guid_avg", guid)
                 
               y_tm1 = y
@@ -227,7 +254,8 @@ class Refine(object):
       tf.add_to_collection("sram1", net)
       if x2 is not None:
         net = net + x2
-        net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
+        if SRAM2:
+          net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
 
       tf.add_to_collection("sram2", net)
       return net
@@ -284,18 +312,38 @@ def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=
               net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
     return net      
             
-def get_guidance(guidance, out_node, scope=None):
+def get_guidance(guidance, out_node, output_stride=None, scope=None):
     with tf.variable_scope(scope, 'guidance_embedding'):
-      num_stage = 3
-      root = 1
-      net = guidance
-      for s in range(1, num_stage+1):
-        channel = out_node * root**(s-1)
-        net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
-        net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
-        net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
-      net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
-      net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
+      net = slim.conv2d(guidance, out_node, 3, stride=2, scope='conv1_1')
+      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_2')
+      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_3')
+      blocks = [
+          resnet_v1_beta_block(
+              'block1', base_depth=out_node//2, num_units=2, stride=2),
+          resnet_v1_beta_block(
+              'block2', base_depth=out_node, num_units=2, stride=2),
+          # resnet_v1_beta_block(
+          #     'block3', base_depth=256, num_units=23, stride=2),
+          # resnet_utils.Block('block4', bottleneck, [
+          #     {'depth': 2048,
+          #     'depth_bottleneck': 512,
+          #     'stride': 1,
+          #     'unit_rate': rate} for rate in multi_grid]),
+      ]
+      net = slim.nets.resnet_utils.stack_blocks_dense(net,
+                                                      blocks,
+                                                      output_stride)
+      net = slim.conv2d(net, out_node, 1, stride=1, scope='out')
+      # num_stage = 3
+      # root = 1
+      # net = guidance
+      # for s in range(1, num_stage+1):
+      #   channel = out_node * root**(s-1)
+      #   net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+      #   net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+      #   net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+      # net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
+      # net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
     return net
               
 def slim_extractor(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):  

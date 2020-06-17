@@ -395,7 +395,74 @@ def get_random_scale(min_scale_factor, max_scale_factor, step_size):
   return shuffled_scale_factors[0]
 
 
-def randomly_scale_image_and_label(image, label=None, prior_imgs=None, prior_segs=None, scale=1.0):
+def scale_image_data(image, scale, scale_method=None):
+  image_shape = tf.shape(image)
+  if image.get_shape().ndims == 3:
+    height, width = image_shape[0], image_shape[1]
+  elif image.get_shape().ndims == 4:
+    height, width = image_shape[1], image_shape[2]
+  else:
+    raise ValueError("Only accept image sahpe [height,width,channel] or [batch,height,width,channel]")
+  
+  if scale_method is None:
+    scale_method = tf.image.ResizeMethod.BILINEAR
+    
+  new_dim = tf.cast(
+      tf.cast([height, width], tf.float32) * scale,
+      tf.int32)
+  return tf.image.resize_images(image,
+                                new_dim,
+                                method=scale_method,
+                                align_corners=True)
+  
+
+# def randomly_scale_image_and_label(image, label=None, prior_imgs=None, prior_segs=None, scale=1.0):
+#   """Randomly scales image and label.
+#   Args:
+#     image: Image with shape [height, width, 3].
+#     label: Label with shape [height, width, 1].
+#     scale: The value to scale image and label.
+#   Returns:
+#     Scaled image and label.
+#   """
+#   # No random scaling if scale == 1.
+#   if scale == 1.0:
+#     return image, label
+#   image_shape = tf.shape(image)
+#   new_dim = tf.cast(
+#       tf.cast([image_shape[0], image_shape[1]], tf.float32) * scale,
+#       tf.int32)
+
+#   # Need squeeze and expand_dims because image interpolation takes
+#   # 4D tensors as input.
+#   image = tf.squeeze(tf.image.resize_bilinear(
+#       tf.expand_dims(image, 0),
+#       new_dim,
+#       align_corners=True), [0])
+  
+#   if label is not None:
+#     label = tf.image.resize_images(
+#         label,
+#         new_dim,
+#         method=get_label_resize_method(label),
+#         align_corners=True)
+
+#   if prior_imgs is not None:
+#     prior_imgs = tf.image.resize_images(
+#         prior_imgs,
+#         new_dim,
+#         align_corners=True)
+    
+#   if prior_segs is not None:
+#     prior_segs = tf.image.resize_images(
+#         prior_segs,
+#         new_dim,
+#         align_corners=True)
+    
+#   return image, label, prior_imgs, prior_segs
+
+  
+def randomly_scale_image_and_label(image, label=None, scale=1.0):
   """Randomly scales image and label.
   Args:
     image: Image with shape [height, width, 3].
@@ -407,38 +474,12 @@ def randomly_scale_image_and_label(image, label=None, prior_imgs=None, prior_seg
   # No random scaling if scale == 1.
   if scale == 1.0:
     return image, label
-  image_shape = tf.shape(image)
-  new_dim = tf.cast(
-      tf.cast([image_shape[0], image_shape[1]], tf.float32) * scale,
-      tf.int32)
-
+  
   # Need squeeze and expand_dims because image interpolation takes
   # 4D tensors as input.
-  image = tf.squeeze(tf.image.resize_bilinear(
-      tf.expand_dims(image, 0),
-      new_dim,
-      align_corners=True), [0])
-  
-  if label is not None:
-    label = tf.image.resize_images(
-        label,
-        new_dim,
-        method=get_label_resize_method(label),
-        align_corners=True)
-
-  if prior_imgs is not None:
-    prior_imgs = tf.image.resize_images(
-        prior_imgs,
-        new_dim,
-        align_corners=True)
-    
-  if prior_segs is not None:
-    prior_segs = tf.image.resize_images(
-        prior_segs,
-        new_dim,
-        align_corners=True)
-    
-  return image, label, prior_imgs, prior_segs
+  image = scale_image_data(image, scale)
+  label = scale_image_data(label, scale, scale_method=get_label_resize_method(label))
+  return image, label
 
 
 def resolve_shape(tensor, rank=None, scope=None):

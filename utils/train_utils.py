@@ -15,7 +15,8 @@ import common
 _EPSILON = 1e-5
 losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
               "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
-              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,}
+              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,
+              "sigmoid_dice_loss": losses.add_sigmoid_dice_loss_for_each_scale}
 
 def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
     ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
@@ -242,6 +243,7 @@ def get_losses(output_dict,
       
     # Calculate stage prediction loss
     # TODO: the way to form guid_dict
+    # TODO: different parameters in different losses, how to deal with each losss in a generalized way
     if "stage_pred" in loss_dict:
         guid_dict = {}
         size = [4,4,4,3,2]
@@ -257,7 +259,7 @@ def get_losses(output_dict,
               labels=label,
               num_classes=num_classes,
               ignore_label=255,
-              dilated_kernel=None,
+              # dilated_kernel=None,
               loss_weight=loss_dict["stage_pred"]["weights"],
               scope=loss_dict["stage_pred"]["scope"])
             i+=1
