@@ -151,6 +151,9 @@ def pgb_network(images,
     guid_conv_type = kwargs.pop("guid_conv_type", None)
     fuse_flag = kwargs.pop("fuse_flag", None)
     predict_without_background = kwargs.pop("predict_without_background", False)
+    apply_sram2 = kwargs.pop("apply_sram2", False)
+
+    
     # Produce Prior
     prior_seg = get_prior(prior_segs, guidance_type, num_class)
                 
@@ -222,7 +225,8 @@ def pgb_network(images,
     refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type, 
                                 embed_node=out_node, predict_without_background=predict_without_background,
-                                weight_decay=weight_decay, is_training=is_training)  
+                                weight_decay=weight_decay, is_training=is_training,
+                                apply_sram2=apply_sram2)  
     logits, preds = refine_model.model()    
     # logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
     #                                   out_node=out_node, weight_decay=weight_decay, reuse=reuse, 

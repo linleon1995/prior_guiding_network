@@ -10,9 +10,8 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 # Quantized version of sigmoid function.
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
 GUID_FUSE = "sum"
-SRAM2 = True
+
 GUID_FEATURE_ONLY = False
-acc_guidance = False
 remove_noise = False
 
 def slim_sram(in_node,
@@ -58,7 +57,7 @@ def slim_sram(in_node,
 class Refine(object):
   def __init__(self, low_level, fusions, fuse_flag, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
                guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
-               num_class=14, weight_decay=0.0, scope=None, is_training=None):
+               num_class=14, weight_decay=0.0, scope=None, is_training=None, **kwargs):
     if GUID_FEATURE_ONLY:
       low_level.pop["low_level5"]
     self.low_level = low_level
@@ -79,6 +78,8 @@ class Refine(object):
     self.is_training = is_training
     self.fine_tune_batch_norm = True
   
+    self.apply_sram2 = kwargs.pop("apply_sram2", None)
+    self.apply_sram2 = kwargs.pop("apply_sram2", None)
   def embed(self, x, out_node, scope):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
     
@@ -118,10 +119,7 @@ class Refine(object):
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
               guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
-              
-          if acc_guidance:
-            guid_acc = guid  
-          
+            
           out_node = self.embed_node
 
           for i, (k, v) in enumerate(self.low_level.items()):
@@ -147,10 +145,8 @@ class Refine(object):
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
               guid = resize_bilinear(guid, [h, w])
               tf.add_to_collection("guid", guid)
-              if acc_guidance:
-                guid_acc = resize_bilinear(guid_acc, [h, w]) + guid
-                guid = guid_acc
-              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order), num_classes=self.num_class)
+              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
+                            num_classes=self.num_class, apply_sram2=self.apply_sram2)
               
               
               if self.fuse_flag:
@@ -228,23 +224,10 @@ class Refine(object):
   #    net = slim.conv2d(net, out_node, scope=scope+"_2")
       return net
 
-
-  # def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
-  #   guid_node = guid.get_shape().as_list()[3]
-  #   if guid_node != out_node and guid_node != 1:
-  #     raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
-  #   with tf.variable_scope(scope, 'guid'):
-  #     inputs = x1
-  #     if x2 is not None:
-  #       inputs += x2
-  #     net = slim_sram(inputs, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
-  #     # tf.add_to_collection("sram1", x1)
-  #     tf.add_to_collection("sram1", net)
-      
-  #     return net
     
     
   def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    apply_sram2 = kwargs.pop("sram2", False)
     guid_node = guid.get_shape().as_list()[3]
     if guid_node != out_node and guid_node != 1:
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
@@ -254,7 +237,7 @@ class Refine(object):
       tf.add_to_collection("sram1", net)
       if x2 is not None:
         net = net + x2
-        if SRAM2:
+        if apply_sram2:
           net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
 
       tf.add_to_collection("sram2", net)

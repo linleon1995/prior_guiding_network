@@ -32,6 +32,7 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
 # DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
+
 # LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
 # DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
 
@@ -39,22 +40,10 @@ HU_WINDOW = [-125, 275]
 #TRAIN_CROP_SIZE = [257, 257]
 #TRAIN_CROP_SIZE = [512, 512]
 
-FUSIONS = 5*["concat"]
-# FUSIONS = ["guid", "sum", "sum", "sum", "sum"]
-FUSIONS = 5*["slim_guid"]
-FUSIONS = ["slim_guid_plain", "sum", "sum", "sum", "sum"]
-FUSIONS = ["slim_guid", "sum", "sum", "sum", "sum"]
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
 
-SEG_LOSS = "softmax_dice_loss"
-GUID_LOSS = "softmax_dice_loss"
-GUID_LOSS = "sigmoid_cross_entropy"
-STAGE_PRED_LOSS = "softmax_dice_loss"
-STAGE_PRED_LOSS = "sigmoid_cross_entropy"
-STAGE_PRED_LOSS = "sigmoid_dice_loss"
-# STAGE_PRED_LOSS = "softmax_cross_entropy"
-SEG_WEIGHT_FLAG = False
+SEG_WEIGHT = 1.0
 
 # TODO: tf argparse
 # TODO: dropout
@@ -79,17 +68,16 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--apply_sram2', type=bool, default=True,
+                    help='')
 
 parser.add_argument('--fuse_flag', type=bool, default=True,
                     help='')
 
-parser.add_argument('--predict_without_background', type=bool, default=False,
+parser.add_argument('--predict_without_background', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="image_only",
-                    help='')
-
-parser.add_argument('--guid_method', type=str, default=None,
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -102,9 +90,6 @@ parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--guidance_acc', type=str, default=None,
                     help='')
 
 parser.add_argument('--weight_decay', type=float, default=1e-3,
@@ -129,7 +114,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=200000,
+parser.add_argument('--training_number_of_steps', type=int, default=170000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -150,10 +135,10 @@ parser.add_argument('--save_summaries_secs', type=int, default=None,
 parser.add_argument('--save_summaries_images', type=bool, default=True,
                     help='')
 
-parser.add_argument('--save_checkpoint_steps', type=int, default=5000,
+parser.add_argument('--save_checkpoint_steps', type=int, default=2000,
                     help='')
 
-parser.add_argument('--save_interval_secs', type=int, default=1800,
+parser.add_argument('--validation_steps', type=int, default=2000,
                     help='')
 
 parser.add_argument('--num_ps_tasks', type=int, default=0,
@@ -210,6 +195,15 @@ parser.add_argument('--guidance_loss_decay', type=float, default=1.0,
 parser.add_argument('--regularization_weight', type=float, default=None,
                     help='')
 
+parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
+                    help='')
+
+parser.add_argument('--guid_loss_name', type=str, default="sigmoid_cross_entropy",
+                    help='')
+
+parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_entropy",
+                    help='')
+
 
 # Learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
@@ -252,10 +246,10 @@ parser.add_argument('--num_clones', type=int, default=1,
 parser.add_argument('--crop_size', type=int, default=256,
                     help='')
 
-parser.add_argument('--min_scale_factor', type=float, default=0.375,
+parser.add_argument('--min_scale_factor', type=float, default=0.625,
                     help='')
 
-parser.add_argument('--max_scale_factor', type=float, default=0.625,
+parser.add_argument('--max_scale_factor', type=float, default=1.25,
                     help='')
 
 parser.add_argument('--scale_factor_step_size', type=float, default=0.125,
@@ -348,11 +342,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   # samples[common.LABEL] = spatial_transfom_exp(samples[common.LABEL], angle,
   #                                             [translations,0], "NEAREST")
   
-  
-  if FLAGS.guid_method is not None:
-    if FLAGS.guidance_loss_decay is None:
-      raise ValueError("guidance loss")
-    FUSIONS[0] = FLAGS.guid_method
 
   num_class = outputs_to_num_classes['semantic']  
   # if FLAGS.predict_without_background:
@@ -383,19 +372,19 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 is_training=True,
                 weight_decay=FLAGS.weight_decay,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
                 fusions=FUSIONS,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
                 z_model=FLAGS.z_model,
                 z_class=FLAGS.z_class,
-                guidance_loss=GUID_LOSS,
-                stage_pred_loss=STAGE_PRED_LOSS,
+                guidance_loss=FLAGS.guid_loss_name,
+                stage_pred_loss=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
                 fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
+                apply_sram2=FLAGS.apply_sram2,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -462,22 +451,22 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                                 model_options, ignore_label)
 
     loss_dict = {}
-    seg_weight = 1.0
+    seg_weight = SEG_WEIGHT
     guidance_loss_weight = FLAGS.guidance_loss_decay
     stage_pred_loss_weight = FLAGS.stage_pred_loss_decay
     # stage_pred_loss_weight = [0.04] + 13*[1.0]
     
     # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
       
-    loss_dict[common.OUTPUT_TYPE] = {"loss": SEG_LOSS, "decay": None, "weights": seg_weight, "scope": "segmenation"}
+    loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "decay": None, "weights": seg_weight, "scope": "segmenation"}
     if FLAGS.guidance_loss_decay is not None:
-      # guidance_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], GUID_LOSS, 
+      # guidance_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.guid_loss_name, 
       #                                                    decay=FLAGS.guidance_loss_decay)
-      loss_dict[common.GUIDANCE] = {"loss": GUID_LOSS, "decay": None, "weights": guidance_loss_weight, "scope": "guidance"}
+      loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "decay": None, "weights": guidance_loss_weight, "scope": "guidance"}
     if FLAGS.stage_pred_loss_decay is not None:
-      # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], STAGE_PRED_LOSS, 
+      # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.stage_pred_loss_name, 
       #                                                      decay=FLAGS.stage_pred_loss_decay)
-      loss_dict["stage_pred"] = {"loss": STAGE_PRED_LOSS, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
+      loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
 
     train_utils.get_losses(output_dict, 
                            layers_dict, 
@@ -618,7 +607,109 @@ def _average_gradients(tower_grads):
   return average_grads
 
 
-def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, r=None):
+# def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, handle, reuse=None):
+#   def train_loss(total_loss, total_seg_loss, tower_grads, global_step, learning_rate, optimizer):
+#     """Trains the deeplab model.
+#     Args:
+#       iterator: An iterator of type tf.data.Iterator for images and labels.
+#       num_of_classes: Number of classes for the dataset.
+#       ignore_label: Ignore label for the dataset.
+#     Returns:
+#       train_tensor: A tensor to update the model variables.
+#       summary_op: An operation to log the summaries.
+#     """
+    
+#     # optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
+
+#       # TODO: understand and modify
+#       # # Modify the gradients for biases and last layer variables.
+#       # last_layers = model.get_extra_layer_scopes(
+#       #     FLAGS.last_layers_contain_logits_only)
+#       # grad_mult = train_utils.get_model_gradient_multipliers(
+#       #     last_layers, FLAGS.last_layer_gradient_multiplier)
+#       # if grad_mult:
+#       #   grads_and_vars = tf.contrib.training.multiply_gradients(
+#       #       grads_and_vars, grad_mult)
+
+#     with tf.device('/cpu:0'):
+#         grads_and_vars = _average_gradients(tower_grads)  
+        
+#         # Create gradient update op.
+#         grad_updates = optimizer.apply_gradients(
+#             grads_and_vars, global_step=global_step)
+
+#         # Gather update_ops. These contain, for example,
+#         # the updates for the batch_norm variables created by model_fn.
+#         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+#         update_ops.append(grad_updates)
+#         update_op = tf.group(*update_ops)
+
+#         # total_loss = tf.losses.get_total_loss(add_regularization_losses=True)
+#         # total_loss = loss + tf.losses.get_regularization_loss
+#         # Print total loss to the terminal.
+#         # This implementation is mirrored from tf.slim.summaries.
+#         should_log = tf.equal(math_ops.mod(global_step, FLAGS.log_steps), 0)
+#         total_loss = tf.cond(
+#             should_log,
+#             lambda: tf.Print(total_loss, [total_loss, total_seg_loss, global_step], 'Total loss, Segmentation loss and Global step:'),
+#             lambda: total_loss)
+        
+#         with tf.control_dependencies([update_op]):
+#           train_tensor = tf.identity(total_loss, name='train_op')
+#     return train_tensor
+      
+#   def valid_loss(train_tensor):
+#     return train_tensor
+  
+#   summaries = []
+#   global_step = tf.train.get_or_create_global_step()
+#   learning_rate = train_utils.get_model_learning_rate(
+#       FLAGS.learning_policy, FLAGS.base_learning_rate,
+#       FLAGS.learning_rate_decay_step, FLAGS.learning_rate_decay_factor,
+#       FLAGS.training_number_of_steps, FLAGS.learning_power,
+#       FLAGS.slow_start_step, FLAGS.slow_start_learning_rate)
+#   optimizer = tf.train.AdamOptimizer(learning_rate)
+  
+#   total_loss, total_seg_loss = 0, 0
+#   tower_grads = []
+#   for i in range(FLAGS.num_clones):
+#     with tf.device('/gpu:%d' % i):
+#       with tf.name_scope('clone_%d' % i) as scope:
+#         loss, seg_loss = _tower_loss(
+#             iterator=iterator,
+#             num_of_classes=num_of_classes,
+#             model_options=model_options,
+#             ignore_label=ignore_label,
+#             scope=scope,
+#             reuse_variable=(i != 0)
+#             # reuse_variable=reuse
+#             )
+#         total_loss += loss
+#         total_seg_loss += seg_loss
+
+#         grads = optimizer.compute_gradients(loss)
+#         tower_grads.append(grads)
+        
+#   tower_summaries = tf.summary.merge_all()
+#   if tower_summaries is not None:
+#       summaries.append(tower_summaries)
+  
+  
+  
+#   summaries.append(tf.summary.scalar('learning_rate', learning_rate))
+#   summary_op = tf.summary.merge(summaries)
+#   # handle = tf.Print(handle [handle], 'gg'),
+#   train_tensor = tf.cond(tf.equal(handle.name, "train:0"), 
+                          
+#                          lambda: train_loss(total_loss, total_seg_loss, tower_grads, global_step, learning_rate, optimizer), 
+#                          lambda: valid_loss(total_loss),
+#                         #  lambda: valid_loss(total_loss)
+#                          ) 
+#   train_tensor = tf.identity(train_tensor, name='train_op')
+#   return train_tensor, summary_op
+
+
+def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, reuse=None):
   """Trains the deeplab model.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
@@ -630,7 +721,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
   """
   global_step = tf.train.get_or_create_global_step()
   summaries = []
-
+  
   learning_rate = train_utils.get_model_learning_rate(
       FLAGS.learning_policy, FLAGS.base_learning_rate,
       FLAGS.learning_rate_decay_step, FLAGS.learning_rate_decay_factor,
@@ -641,7 +732,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
   # optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
 
   tower_grads = []
-  total_loss = total_seg_loss = 0
+  total_loss, total_seg_loss = 0, 0
   tower_summaries = None
   for i in range(FLAGS.num_clones):
     with tf.device('/gpu:%d' % i):
@@ -653,10 +744,11 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
             ignore_label=ignore_label,
             scope=scope,
             reuse_variable=(i != 0)
-            # reuse_variable=r
+            # reuse_variable=reuse
             )
         total_loss += loss
         total_seg_loss += seg_loss
+
         grads = optimizer.compute_gradients(loss)
         tower_grads.append(grads)
 
@@ -683,6 +775,7 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
     #   grads_and_vars = tf.contrib.training.multiply_gradients(
     #       grads_and_vars, grad_mult)
 
+
     # Create gradient update op.
     grad_updates = optimizer.apply_gradients(
         grads_and_vars, global_step=global_step)
@@ -693,6 +786,9 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
     update_ops.append(grad_updates)
     update_op = tf.group(*update_ops)
 
+
+    # update_op = tf.cond(tf.equal(handle.name, "train:0"), get_update_op, no_update_op)
+    
     # total_loss = tf.losses.get_total_loss(add_regularization_losses=True)
     # total_loss = loss + tf.losses.get_regularization_loss
     # Print total loss to the terminal.
@@ -710,6 +806,59 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
     summary_op = tf.summary.merge(summaries)
 
   return train_tensor, summary_op
+
+
+def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, steps, reuse=None):
+  """Trains the deeplab model.
+  Args:
+    iterator: An iterator of type tf.data.Iterator for images and labels.
+    num_of_classes: Number of classes for the dataset.
+    ignore_label: Ignore label for the dataset.
+  Returns:
+    train_tensor: A tensor to update the model variables.
+    summary_op: An operation to log the summaries.
+  """
+  # global_step = tf.train.get_global_step()
+  # summaries = []
+  
+  total_loss, total_seg_loss = 0, 0
+  tower_summaries = None
+  for i in range(FLAGS.num_clones):
+    with tf.device('/gpu:%d' % i):
+      with tf.name_scope('clone_%d' % i) as scope:
+        loss, seg_loss = _tower_loss(
+            iterator=iterator,
+            num_of_classes=num_of_classes,
+            model_options=model_options,
+            ignore_label=ignore_label,
+            scope=scope,
+            reuse_variable=True
+            # reuse_variable=reuse
+            )
+        total_loss += loss
+        total_seg_loss += seg_loss
+
+  # tower_summaries = tf.summary.merge_all()
+          # tower_summaries = tf.summary.merge_all(scope=scope)
+
+  with tf.device('/cpu:0'):
+    # if tower_summaries is not None:
+    #   summaries.append(tower_summaries)
+
+    # Print total loss to the terminal.
+    # This implementation is mirrored from tf.slim.summaries.
+    should_log = tf.equal(math_ops.mod(steps, 100), 0)
+    total_loss = tf.cond(
+        should_log,
+        lambda: tf.Print(total_loss, [total_loss, total_seg_loss, steps], '----Validation loss, Segmentation loss and Validation step:'),
+        lambda: total_loss)
+
+    # summaries.append(tf.summary.scalar('total_loss', total_loss))
+
+    val_tensor = tf.identity(total_seg_loss, name='val_op')
+    # summary_op = tf.summary.merge(summaries)
+    summary_op = 0
+  return val_tensor, summary_op
 
 
 def main(unused_argv):
@@ -736,7 +885,7 @@ def main(unused_argv):
                 'Training batch size not divisble by number of clones (GPUs).')
             clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-            dataset = data_generator.Dataset(
+            train_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name=FLAGS.train_split,
                 dataset_dir=FLAGS.dataset_dir,
@@ -766,28 +915,28 @@ def main(unused_argv):
                 seq_type="forward")
 
 
-            dataset2 = data_generator.Dataset(
+            val_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name="val",
                 dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
-                batch_size=clone_batch_size,
+                batch_size=1,
                 HU_window=HU_WINDOW,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
                 mt_label_type="class_label",
-                crop_size=[FLAGS.crop_size, FLAGS.crop_size],
+                crop_size=[512, 512],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
                 resize_factor=FLAGS.resize_factor,
-                min_scale_factor=FLAGS.min_scale_factor,
-                max_scale_factor=FLAGS.max_scale_factor,
-                scale_factor_step_size=FLAGS.scale_factor_step_size,
+                # min_scale_factor=FLAGS.min_scale_factor,
+                # max_scale_factor=FLAGS.max_scale_factor,
+                # scale_factor_step_size=FLAGS.scale_factor_step_size,
                 # model_variant=FLAGS.model_variant,
                 num_readers=2,
-                is_training=True,
-                shuffle_data=True,
+                is_training=False,
+                shuffle_data=False,
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
@@ -796,24 +945,31 @@ def main(unused_argv):
                 seq_type="forward")
             
             model_options = common.ModelOptions(
-              outputs_to_num_classes=dataset.num_of_classes,
+              outputs_to_num_classes=train_generator.num_of_classes,
               crop_size=[FLAGS.crop_size, FLAGS.crop_size],
               output_stride=FLAGS.output_stride)
             check_model_conflict(model_options)
             
-            d1 = dataset.get_one_shot_iterator()
-            d2 = dataset2.get_one_shot_iterator()
-            iter1 = d1.make_one_shot_iterator()
-            iter2 = d2.make_one_shot_iterator()
+            dataset1 = train_generator.get_one_shot_iterator()
+            dataset2 = val_generator.get_one_shot_iterator()
+            iter1 = dataset1.make_one_shot_iterator()
+            iter2 = dataset2.make_one_shot_iterator()
             
-            handle = tf.compat.v1.placeholder(tf.string, shape=[])
-            iterator = tf.data.Iterator.from_string_handle(
-              handle, iter1.output_types, iter1.output_shapes)
-            samples = iterator.get_next()
+            train_samples = iter1.get_next()
+            val_samples = iter2.get_next()
+            steps = tf.compat.v1.placeholder(tf.int32, shape=[])
+            # handle = tf.compat.v1.placeholder(tf.string, shape=[])
+            # iterator = tf.data.Iterator.from_string_handle(
+            #   handle, iter1.output_types, iter1.output_shapes)
+            # samples = iterator.get_next()
             
             train_tensor, summary_op = _train_deeplab_model(
-                samples, dataset.num_of_classes, model_options,
-                dataset.ignore_label)
+                train_samples, train_generator.num_of_classes, model_options,
+                train_generator.ignore_label)
+
+            val_tensor, _ = _val_deeplab_model(
+                val_samples, val_generator.num_of_classes, model_options,
+                val_generator.ignore_label, steps)
 
             # Soft placement allows placing on CPU ops without GPU implementation.
             session_config = tf.ConfigProto(
@@ -841,9 +997,9 @@ def main(unused_argv):
             # #                                          save_steps=FLAGS.save_checkpoint_steps,
             # #                                          saver=tf.train.Saver(var_list=tf.trainable_variables()))
             
-            train_handle = iter1.string_handle("train")
-            test_handle = iter2.string_handle("val")
-            ds_handle_hook = DSHandleHook(train_handle, test_handle)
+            # train_handle = iter1.string_handle("train")
+            # test_handle = iter2.string_handle("val")
+            # ds_handle_hook = DSHandleHook(train_handle, test_handle)
 
             # # Define summary writer for saving "training" logs
             # writer = tf.summary.FileWriter(FLAGS.train_logdir+"train_envs/",
@@ -858,22 +1014,44 @@ def main(unused_argv):
                 checkpoint_dir=FLAGS.train_logdir,
                 log_step_count_steps=FLAGS.log_steps,
                 save_summaries_steps=20,
-                # save_checkpoint_secs=FLAGS.save_interval_secs,
                 save_checkpoint_steps=FLAGS.save_checkpoint_steps,
-                hooks=[stop_hook, ds_handle_hook]) as sess:
+                hooks=[stop_hook]) as sess:
                 
-                step=0
+                # step=0
+                total_val_loss, total_val_steps = [], []
                 while not sess.should_stop():
-                  
-                      sess.run([train_tensor], feed_dict={handle: ds_handle_hook.train_handle})
+                    _, global_step = sess.run([train_tensor, tf.train.get_global_step()])
+                    if global_step%FLAGS.validation_steps == 0:
+                      val_loss = 0
+                      for j in range(val_generator.splits_to_sizes["val"]):
+                        val_loss += sess.run(val_tensor, feed_dict={steps: j})
 
-                      # loss, t_summaries = sess.run([train_tensor, summary_op], feed_dict={handle: ds_handle_hook.train_handle})
+                      total_val_loss.append(val_loss/val_generator.splits_to_sizes["val"])
+                      total_val_steps.append(global_step)
+                      plt.legend(["validation loss"])
+                      plt.xlabel("global step")
+                      plt.ylabel("loss")
+                      plt.plot(total_val_steps, total_val_loss, "b")
+                      plt.savefig(FLAGS.train_logdir+"/losses.png")
+
+                      # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})
+                      # total_steps.append(steps)
+
+                      # loss, t_summaries, steps = sess.run([train_tensor, summary_op, tf.train.get_or_create_global_step()], 
+                      #                              feed_dict={handle: ds_handle_hook.train_handle})
+                      # print(30*"-", steps)
                       
-                      # if step%2  == 0:
-                      #   loss, v_summaries = sess.run([train_tensor, summary_op], feed_dict={handle: ds_handle_hook.train_handle})
+                      # if steps%2  == 0:
+                      #   train_loss.append(loss)
+                      #   loss, v_summaries = sess.run([train_tensor, summary_op], 
+                      #                                feed_dict={handle: ds_handle_hook.valid_handle})
+                      #   valid_loss.append(loss)
                         
-                      # step+=1
-
+                      # if steps%200 == 0:
+                      #   plt.plot(train_loss)
+                      #   plt.hold(True)
+                      #   plt.plot(valid_loss)
+                      #   plt.savefig(FLAGS.train_logdir+"/losses.png")
             with open(os.path.join(path, 'logging.txt'), 'a') as f:
               f.write("\nEnd time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
               f.write("\n")
