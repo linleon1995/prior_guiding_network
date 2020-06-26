@@ -14,7 +14,7 @@ import eval
 import experiments
 from model import voxelmorph
 from datasets import data_generator
-from utils import train_utils
+from utils import train_utils, eval_utils
 from core import features_extractor
 import input_preprocess
 from tensorflow.python.ops import math_ops
@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -42,9 +42,10 @@ HU_WINDOW = [-125, 275]
 
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
-
+TRAIN_SPLIT = ["train"]
 SEG_WEIGHT = 1.0
-
+PRE_CROP_SIZE = {"train-val": [394, 440],
+                 "train": [458, 440]}
 # TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
@@ -67,6 +68,7 @@ def create_training_path(train_logdir):
     return path
 
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--apply_sram2', type=bool, default=True,
                     help='')
@@ -74,7 +76,7 @@ parser.add_argument('--apply_sram2', type=bool, default=True,
 parser.add_argument('--fuse_flag', type=bool, default=True,
                     help='')
 
-parser.add_argument('--predict_without_background', type=bool, default=True,
+parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
@@ -114,7 +116,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=170000,
+parser.add_argument('--training_number_of_steps', type=int, default=200000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -135,10 +137,10 @@ parser.add_argument('--save_summaries_secs', type=int, default=None,
 parser.add_argument('--save_summaries_images', type=bool, default=True,
                     help='')
 
-parser.add_argument('--save_checkpoint_steps', type=int, default=2000,
+parser.add_argument('--save_checkpoint_steps', type=int, default=1000,
                     help='')
 
-parser.add_argument('--validation_steps', type=int, default=2000,
+parser.add_argument('--validation_steps', type=int, default=1000,
                     help='')
 
 parser.add_argument('--num_ps_tasks', type=int, default=0,
@@ -186,10 +188,10 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss_decay', type=float, default=1.0,
+parser.add_argument('--stage_pred_loss_decay', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guidance_loss_decay', type=float, default=1.0,
+parser.add_argument('--guidance_loss_decay', type=bool, default=True,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -264,6 +266,8 @@ parser.add_argument('--max_resize_value', type=int, default=None,
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
+parser.add_argument('--pre_crop_flag', type=bool, default=True,
+                    help='')
 
 def check_model_conflict(model_options):
   pass
@@ -344,16 +348,13 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   
 
   num_class = outputs_to_num_classes['semantic']  
-  # if FLAGS.predict_without_background:
-  #   num_class -= 1
-    
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
-                affine_transform=FLAGS.affine_transform,
+                # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 # labels=samples[common.LABEL],
-                samples=samples["organ_label"],
+                # samples=samples["organ_label"],
                 # prior_imgs=samples[common.PRIOR_IMGS],
                 prior_segs=samples[common.PRIOR_SEGS],
                 num_class=num_class,
@@ -452,10 +453,25 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
 
     loss_dict = {}
     seg_weight = SEG_WEIGHT
-    guidance_loss_weight = FLAGS.guidance_loss_decay
-    stage_pred_loss_weight = FLAGS.stage_pred_loss_decay
+    # guidance_loss_weight = FLAGS.guidance_loss_decay
+    # stage_pred_loss_weight = FLAGS.stage_pred_loss_decay
     # stage_pred_loss_weight = [0.04] + 13*[1.0]
-    
+    # TODO: stage_pred_loss_decay should be weight or flag
+    # TODO: predict_w.o_bg case
+    if FLAGS.stage_pred_loss_decay:
+      if FLAGS.stage_pred_loss_name == "softmax_generaled_dice_loss":
+        num_label_pixels = tf.reduce_sum(tf.one_hot(
+          samples[common.LABEL][...,0], num_of_classes, on_value=1.0, off_value=0.0), axis=[1,2])
+        stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (tf.pow(num_label_pixels, 2) + 1e-10)
+      elif FLAGS.stage_pred_loss_name == "sigmoid_cross_entropy":
+        num_label_pixels = tf.reduce_sum(tf.nn.sigmoid(output_dict[common.OUTPUT_TYPE]))
+        stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (num_label_pixels + 1e-10)
+    else:
+      stage_pred_loss_weight = 1.0  
+    if FLAGS.guidance_loss_decay:
+      guidance_loss_weight = stage_pred_loss_weight
+    else:
+      guidance_loss_weight = 1.0
     # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
       
     loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "decay": None, "weights": seg_weight, "scope": "segmenation"}
@@ -568,7 +584,7 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
     tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
     tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
     
   if z_label is not None and z_pred is not None:
     clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
@@ -818,47 +834,82 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
     train_tensor: A tensor to update the model variables.
     summary_op: An operation to log the summaries.
   """
-  # global_step = tf.train.get_global_step()
-  # summaries = []
   
-  total_loss, total_seg_loss = 0, 0
-  tower_summaries = None
-  for i in range(FLAGS.num_clones):
-    with tf.device('/gpu:%d' % i):
-      with tf.name_scope('clone_%d' % i) as scope:
-        loss, seg_loss = _tower_loss(
-            iterator=iterator,
-            num_of_classes=num_of_classes,
-            model_options=model_options,
-            ignore_label=ignore_label,
-            scope=scope,
-            reuse_variable=True
-            # reuse_variable=reuse
-            )
-        total_loss += loss
-        total_seg_loss += seg_loss
+  with tf.variable_scope(
+      tf.get_variable_scope(), reuse=True):
+      samples = iterator
+      output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes},
+                                              model_options, ignore_label)
 
-  # tower_summaries = tf.summary.merge_all()
-          # tower_summaries = tf.summary.merge_all(scope=scope)
+  
+  logits = output_dict[common.OUTPUT_TYPE]
+  preds = tf.nn.softmax(logits)
+  predictions = tf.identity(preds, name=common.OUTPUT_TYPE)
+  predictions = tf.argmax(predictions, axis=3)
+  predictions = tf.cast(predictions, tf.int32)
+  pred_flat = tf.reshape(predictions, shape=[-1,])
 
-  with tf.device('/cpu:0'):
-    # if tower_summaries is not None:
-    #   summaries.append(tower_summaries)
+  labels = tf.squeeze(samples[common.LABEL], axis=3)
+  labels_flat = tf.reshape(labels, shape=[-1,])
+  
+  # Define Confusion Maxtrix
+  cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=num_of_classes)
+  
+  summary_op = 0
+  return cm, summary_op
 
-    # Print total loss to the terminal.
-    # This implementation is mirrored from tf.slim.summaries.
-    should_log = tf.equal(math_ops.mod(steps, 100), 0)
-    total_loss = tf.cond(
-        should_log,
-        lambda: tf.Print(total_loss, [total_loss, total_seg_loss, steps], '----Validation loss, Segmentation loss and Validation step:'),
-        lambda: total_loss)
 
-    # summaries.append(tf.summary.scalar('total_loss', total_loss))
+# def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, steps, reuse=None):
+#   """Trains the deeplab model.
+#   Args:
+#     iterator: An iterator of type tf.data.Iterator for images and labels.
+#     num_of_classes: Number of classes for the dataset.
+#     ignore_label: Ignore label for the dataset.
+#   Returns:
+#     train_tensor: A tensor to update the model variables.
+#     summary_op: An operation to log the summaries.
+#   """
+#   # global_step = tf.train.get_global_step()
+#   # summaries = []
+  
+#   total_loss, total_seg_loss = 0, 0
+#   tower_summaries = None
+#   for i in range(FLAGS.num_clones):
+#     with tf.device('/gpu:%d' % i):
+#       with tf.name_scope('clone_%d' % i) as scope:
+#         loss, seg_loss = _tower_loss(
+#             iterator=iterator,
+#             num_of_classes=num_of_classes,
+#             model_options=model_options,
+#             ignore_label=ignore_label,
+#             scope=scope,
+#             reuse_variable=True
+#             # reuse_variable=reuse
+#             )
+#         total_loss += loss
+#         total_seg_loss += seg_loss
 
-    val_tensor = tf.identity(total_seg_loss, name='val_op')
-    # summary_op = tf.summary.merge(summaries)
-    summary_op = 0
-  return val_tensor, summary_op
+#   # tower_summaries = tf.summary.merge_all()
+#           # tower_summaries = tf.summary.merge_all(scope=scope)
+
+#   with tf.device('/cpu:0'):
+#     # if tower_summaries is not None:
+#     #   summaries.append(tower_summaries)
+
+#     # Print total loss to the terminal.
+#     # This implementation is mirrored from tf.slim.summaries.
+#     should_log = tf.equal(math_ops.mod(steps, 100), 0)
+#     total_loss = tf.cond(
+#         should_log,
+#         lambda: tf.Print(total_loss, [total_loss, total_seg_loss, steps], '----Validation loss, Segmentation loss and Validation step:'),
+#         lambda: total_loss)
+
+#     # summaries.append(tf.summary.scalar('total_loss', total_loss))
+
+#     val_tensor = tf.identity(total_seg_loss, name='val_op')
+#     # summary_op = tf.summary.merge(summaries)
+#     summary_op = 0
+#   return val_tensor, summary_op
 
 
 def main(unused_argv):
@@ -867,7 +918,8 @@ def main(unused_argv):
     tf.gfile.MakeDirs(FLAGS.train_logdir)
     # tf.gfile.MakeDirs(FLAGS.train_logdir+"/train_envs/")
     # tf.gfile.MakeDirs(FLAGS.train_logdir+"/val_envs/")
-    tf.logging.info('Training on %s set', FLAGS.train_split)
+    for split in TRAIN_SPLIT:
+      tf.logging.info('Training on %s set', split)
 
     path = FLAGS.train_logdir
     parameters_dict = vars(FLAGS)
@@ -885,13 +937,19 @@ def main(unused_argv):
                 'Training batch size not divisble by number of clones (GPUs).')
             clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
+            if FLAGS.pre_crop_flag:
+              pre_crop_size = PRE_CROP_SIZE["-".join(TRAIN_SPLIT)]
+            else:
+              pre_crop_size = None
+              
             train_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
-                split_name=FLAGS.train_split,
+                split_name=TRAIN_SPLIT,
                 dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
+                pre_crop_size=pre_crop_size,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
@@ -911,13 +969,13 @@ def main(unused_argv):
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 prior_dir=FLAGS.prior_dir,
-                seq_length=3,
+                seq_length=1,
                 seq_type="forward")
 
-
+            # TODO: no validation option
             val_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
-                split_name="val",
+                split_name=["val"],
                 dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=1,
@@ -935,13 +993,13 @@ def main(unused_argv):
                 # scale_factor_step_size=FLAGS.scale_factor_step_size,
                 # model_variant=FLAGS.model_variant,
                 num_readers=2,
-                is_training=False,
+                is_training=True,
                 shuffle_data=False,
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 prior_dir=FLAGS.prior_dir,
-                seq_length=3,
+                seq_length=1,
                 seq_type="forward")
             
             model_options = common.ModelOptions(
@@ -1005,7 +1063,7 @@ def main(unused_argv):
             # writer = tf.summary.FileWriter(FLAGS.train_logdir+"train_envs/",
             #                                 graph=tf.get_default_graph())
             # writer.add_summary(t_summaries, step)
-            
+            saver = tf.train.Saver()
             with tf.train.MonitoredTrainingSession(
                 master=FLAGS.master,
                 is_chief=(FLAGS.task == 0),
@@ -1019,19 +1077,24 @@ def main(unused_argv):
                 
                 # step=0
                 total_val_loss, total_val_steps = [], []
+                best_model_performance = 0.0
                 while not sess.should_stop():
                     _, global_step = sess.run([train_tensor, tf.train.get_global_step()])
                     if global_step%FLAGS.validation_steps == 0:
-                      val_loss = 0
+                      cm_total = 0
                       for j in range(val_generator.splits_to_sizes["val"]):
-                        val_loss += sess.run(val_tensor, feed_dict={steps: j})
+                        cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
-                      total_val_loss.append(val_loss/val_generator.splits_to_sizes["val"])
+                      mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)
+                      
+
+                      total_val_loss.append(mean_dice_score)
                       total_val_steps.append(global_step)
                       plt.legend(["validation loss"])
                       plt.xlabel("global step")
                       plt.ylabel("loss")
-                      plt.plot(total_val_steps, total_val_loss, "b")
+                      plt.plot(total_val_steps, total_val_loss, "bo-")
+                      plt.grid(True)
                       plt.savefig(FLAGS.train_logdir+"/losses.png")
 
                       # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})

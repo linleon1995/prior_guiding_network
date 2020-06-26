@@ -13,7 +13,7 @@ import os
 import tensorflow as tf
 import common
 import input_preprocess
-from datasets import build_prior
+from datasets import build_prior, file_utils
 from utils import train_utils
 
 DatasetDescriptor = collections.namedtuple(
@@ -28,11 +28,12 @@ DatasetDescriptor = collections.namedtuple(
         'ignore_label',  # Ignore label value.
     ])
 
-
+# TODO:
 _MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
     splits_to_sizes={
         'train': 3111,
         'val': 668,
+        'test': 2387
     },
     num_classes=14,
     ignore_label=255,
@@ -67,6 +68,7 @@ class Dataset(object):
                  batch_size,
                  crop_size,
                  HU_window,
+                 pre_crop_size=None,
                  guidance_type=None,
                  min_resize_value=None,
                  max_resize_value=None,
@@ -96,8 +98,9 @@ class Dataset(object):
         
         self.splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
 
-        if split_name not in self.splits_to_sizes:
-          raise ValueError('data split name %s not recognized' % split_name)
+        for split in split_name:
+            if split not in self.splits_to_sizes:
+                raise ValueError('data split name %s not recognized' % split)
       
         if model_variant is None:
             tf.logging.warning('Please specify a model_variant.')
@@ -109,6 +112,7 @@ class Dataset(object):
         self.dataset_dir = dataset_dir
         self.batch_size = batch_size
         self.crop_size = crop_size
+        self.pre_crop_size = pre_crop_size
         self.min_resize_value = min_resize_value
         self.max_resize_value = max_resize_value
         self.resize_factor = resize_factor
@@ -151,25 +155,29 @@ class Dataset(object):
             tf.FixedLenFeature((), tf.int64, default_value=0),
         'image/num_slices':
             tf.FixedLenFeature((), tf.int64, default_value=0),
-        'image/segmentation/class/encoded':
-            tf.FixedLenFeature((), tf.string, default_value=''),
-        'image/segmentation/class/format':
-            tf.FixedLenFeature((), tf.string, default_value=''),
-        'image/segmentation/class/organ_label':
-            tf.FixedLenFeature((), tf.string, default_value=''),
+        # 'image/segmentation/class/format':
+        #     tf.FixedLenFeature((), tf.string, default_value=''),
         }
         
+        if "train" in self.split_name or "val" in self.split_name:
+            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
+  
+  
         parsed_features = tf.parse_single_example(example_proto, features)
         
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         image = tf.reshape(image, [512,512,1])
         
-        label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-        label = tf.reshape(label, [512,512,1])
-        # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
+        if "train" in self.split_name or "val" in self.split_name:
+            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            label = tf.reshape(label, [512,512,1])
+            # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
 
-        organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
-        
+            organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
+        elif "test" in self.split_name:
+            label = None
+            
         # import prior
         # TODO: paramarize subject selection
         # TODO: 'priors' --> common.PRIORS
@@ -180,8 +188,8 @@ class Dataset(object):
             common.WIDTH: parsed_features['image/width'],
             common.DEPTH: parsed_features['image/depth'],
             common.NUM_SLICES: parsed_features['image/num_slices'],
-            "organ_label": organ_label,
-            "split": self.split_name
+            # "organ_label": organ_label,
+            # "split": self.split_name
         }
         
 
@@ -196,7 +204,7 @@ class Dataset(object):
     
           label.set_shape([None, None, 1])
     
-          sample[common.LABELS_CLASS] = label
+          sample[common.LABEL] = label
       
         return sample
     
@@ -273,11 +281,6 @@ class Dataset(object):
             common.DEPTH: depth,
         }
 
-        # get prior
-        if None not in (self.prior_dir, self.prior_num_slice, self.prior_num_subject):
-            prior_segs = self.load_prior_from_dir()
-            sample[common.PRIOR_SEGS] = prior_segs
-        
         # get multi-task label
         if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
             if self.mt_label_method == "reg" and self.mt_label_type == "class_label":
@@ -289,149 +292,109 @@ class Dataset(object):
                 mt_label = context["image/class_label"]
 
             sample[common.Z_LABEL] = mt_label
-            
-            
-        # # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
-
-        # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         
-        
-        # # import prior
-        # # TODO: paramarize subject selection
-        # # TODO: 'priors' --> common.PRIORS
-        
-        # sample = {
-        #     common.IMAGE: image,
-        #     common.HEIGHT: parsed_features['image/height'],
-        #     common.WIDTH: parsed_features['image/width'],
-        #     common.DEPTH: parsed_features['image/depth'],
-        #     common.NUM_SLICES: parsed_features['image/num_slices'],
-        #     "organ_label": organ_label,
-        #     "split": self.split_name
-        # }
-        
-        # TODO: check label shape
-        # if label is not None:
-        #   if label.get_shape().ndims == 2:
-        #     label = tf.expand_dims(label, 2)
-        #   elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
-        #     pass
-        #   else:
-        #     raise ValueError('Input label shape must be [height, width], or '
-        #                      '[height, width, 1].')
-    
-        #   label.set_shape([None, None, 1])
-    
-        #   sample[common.LABELS_CLASS] = label
-
-        # # sel_indices = tf.constant([70, 71], dtype=tf.int32)
-        # # image = tf.gather(image, indices=sel_indices, axis=0)
-        # # label = tf.gather(label, indices=sel_indices, axis=0)
-
-        # sample = {common.IMAGE: image,
-        #           common.LABEL: label,
-        #           "depth": feature_list["image/depth"]}
-        return sample
-    
-    
-    def _preprocessing(self, sample):
-        image = sample[common.IMAGE]
-        label = sample[common.LABELS_CLASS]
-        depth = sample[common.DEPTH]
-        num_slices = sample[common.NUM_SLICES]
-        
-        
-        
-        # z_label = self.get_z_label(organ_label, depth, num_slices, z_class)
-        # TODO: clear sample problem
-        path = self.dataset_dir.split('tfrecord')[0]
-        
-        # Load numpy array as prior
-        if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-            print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (self.prior_num_slice, self.prior_num_subject))
-            prior_name = build_prior.get_prior_name(["train", "slice%03d" %self.prior_num_slice, 
-                                                    "subject%03d" %self.prior_num_subject])
-            prior_name = prior_name + ".npy"
-            prior_segs = np.load(os.path.join(self.prior_dir, prior_name))
-            prior_segs = np.float32(prior_segs)
-            if self.guidance_type == "training_data_fusion_h": 
-               prior_segs = np.float32(prior_segs>0)
-            
-            prior_segs = tf.convert_to_tensor(prior_segs)
-
-            prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=3)
-            prior_segs = tf.concat(prior_segs, axis=2)
-            prior_segs = tf.squeeze(prior_segs, axis=3)
-        else:
-            prior_segs = None
-        
-        # TODO: input prior shape should be [NHWC] but [HWKC]
-        # TODO: prior_segs and prior_seg_3d
-        # Preprocessing for images, label and z_label
-        original_image, image, label, original_label, z_label, pp, prior_segs = input_preprocess.preprocess_image_and_label(
-            image=image,
-            label=label,
-            depth=depth,
-            prior_imgs=None,
-            prior_segs=prior_segs,
-            num_slices=num_slices,
-            crop_height=self.crop_size[0],
-            crop_width=self.crop_size[1],
-            z_label_method=self.mt_label_method,
-            z_class=self.mt_class,
-            HU_window=self.HU_window,
-            min_resize_value=self.min_resize_value,
-            max_resize_value=self.max_resize_value,
-            resize_factor=self.resize_factor,
-            min_scale_factor=self.min_scale_factor,
-            max_scale_factor=self.max_scale_factor,
-            scale_factor_step_size=self.scale_factor_step_size,
-            ignore_label=self.ignore_label,
-            is_training=self.is_training,
-            model_variant=self.model_variant,
-            prior_num_slice=self.prior_num_slice)
-
-        # if self.guidance_type == "zeros":
-        #     prior_shape = label.get_shape().as_list()[1:3]
-        #     prior_shape.append(self.num_of_classes)
-        #     prior_segs = tf.zeros(prior_shape)
-            
-        sample[common.IMAGE] = image
-        if not self.is_training:
-          # Original image is only used during visualization.
-          sample[common.ORIGINAL_IMAGE] = original_image
-    
-        if label is not None:
-          sample[common.LABEL] = label
-          
-        if z_label is not None:
-          sample[common.Z_LABEL] = z_label
-
-        # if prior_imgs is not None:
-        #     sample[common.PRIOR_IMGS] = prior_imgs
-            
-        if self.guidance_type == "gt":
-            sample[common.PRIOR_SEGS] = label
-        elif self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-            prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
-            prior_segs = tf.stack(prior_segs, axis=3)
-            sample[common.PRIOR_SEGS] = prior_segs
-        elif self.guidance_type == "ones":
-            sample[common.PRIOR_SEGS] = tf.ones_like(label)
-        else:
-            sample[common.PRIOR_SEGS] = None 
-
-        # Remove common.LABEL_CLASS key in the sample since it is only used to
-        # derive label and not used in training and evaluation.
-        sample.pop(common.LABELS_CLASS, None)
-          
-        # Remove common.DEPTH key and NUM_SLICES key in the sample since they are only used to
-        # derive z_label and not used in training and evaluation.
-        # sample.pop(common.DEPTH, None)
-#        sample.pop(common.NUM_SLICES, None)  
-        self.prior_summary = pp
             
         return sample
+    
+    
+#     def _preprocessing(self, sample):
+#         image = sample[common.IMAGE]
+#         label = sample[common.LABEL]
+#         depth = sample[common.DEPTH]
+#         num_slices = sample[common.NUM_SLICES]
+        
+        
+        
+#         # z_label = self.get_z_label(organ_label, depth, num_slices, z_class)
+#         # TODO: clear sample problem
+#         path = self.dataset_dir.split('tfrecord')[0]
+        
+#         # Load numpy array as prior
+#         if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+#             print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (self.prior_num_slice, self.prior_num_subject))
+#             prior_name = build_prior.get_prior_name(["train", "slice%03d" %self.prior_num_slice, 
+#                                                     "subject%03d" %self.prior_num_subject])
+#             prior_name = prior_name + ".npy"
+#             prior_segs = np.load(os.path.join(self.prior_dir, prior_name))
+#             prior_segs = np.float32(prior_segs)
+#             if self.guidance_type == "training_data_fusion_h": 
+#                prior_segs = np.float32(prior_segs>0)
+            
+#             prior_segs = tf.convert_to_tensor(prior_segs)
+
+#             prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=3)
+#             prior_segs = tf.concat(prior_segs, axis=2)
+#             prior_segs = tf.squeeze(prior_segs, axis=3)
+#         else:
+#             prior_segs = None
+        
+#         # TODO: input prior shape should be [NHWC] but [HWKC]
+#         # TODO: prior_segs and prior_seg_3d
+#         # Preprocessing for images, label and z_label
+#         original_image, image, label, original_label, z_label, pp, prior_segs = input_preprocess.preprocess_image_and_label(
+#             image=image,
+#             label=label,
+#             depth=depth,
+#             prior_imgs=None,
+#             prior_segs=prior_segs,
+#             num_slices=num_slices,
+#             crop_height=self.crop_size[0],
+#             crop_width=self.crop_size[1],
+#             z_label_method=self.mt_label_method,
+#             z_class=self.mt_class,
+#             HU_window=self.HU_window,
+#             min_resize_value=self.min_resize_value,
+#             max_resize_value=self.max_resize_value,
+#             resize_factor=self.resize_factor,
+#             min_scale_factor=self.min_scale_factor,
+#             max_scale_factor=self.max_scale_factor,
+#             scale_factor_step_size=self.scale_factor_step_size,
+#             ignore_label=self.ignore_label,
+#             is_training=self.is_training,
+#             model_variant=self.model_variant,
+#             prior_num_slice=self.prior_num_slice)
+
+#         # if self.guidance_type == "zeros":
+#         #     prior_shape = label.get_shape().as_list()[1:3]
+#         #     prior_shape.append(self.num_of_classes)
+#         #     prior_segs = tf.zeros(prior_shape)
+            
+#         sample[common.IMAGE] = image
+#         if not self.is_training:
+#           # Original image is only used during visualization.
+#           sample[common.ORIGINAL_IMAGE] = original_image
+    
+#         if label is not None:
+#           sample[common.LABEL] = label
+          
+#         if z_label is not None:
+#           sample[common.Z_LABEL] = z_label
+
+#         # if prior_imgs is not None:
+#         #     sample[common.PRIOR_IMGS] = prior_imgs
+            
+#         if self.guidance_type == "gt":
+#             sample[common.PRIOR_SEGS] = label
+#         elif self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+#             prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
+#             prior_segs = tf.stack(prior_segs, axis=3)
+#             sample[common.PRIOR_SEGS] = prior_segs
+#         elif self.guidance_type == "ones":
+#             sample[common.PRIOR_SEGS] = tf.ones_like(label)
+#         else:
+#             sample[common.PRIOR_SEGS] = None 
+
+#         # Remove common.LABEL_CLASS key in the sample since it is only used to
+#         # derive label and not used in training and evaluation.
+#         # sample.pop(common.LABELS_CLASS, None)
+          
+#         # Remove common.DEPTH key and NUM_SLICES key in the sample since they are only used to
+#         # derive z_label and not used in training and evaluation.
+#         # sample.pop(common.DEPTH, None)
+# #        sample.pop(common.NUM_SLICES, None)  
+#         self.prior_summary = pp
+            
+#         return sample
     
     def load_prior_from_dir(self):
         # Load numpy array as prior
@@ -461,14 +424,36 @@ class Dataset(object):
         label: [num_frame, height, width, 1]
         prior_segs: [num_frame, height, width, class]
         """
-        height, width = sample[common.IMAGE].get_shape().as_list()[1:3]
+        if sample[common.IMAGE].get_shape().ndims == 4:
+            height, width = sample[common.IMAGE].get_shape().as_list()[1:3]
+        elif sample[common.IMAGE].get_shape().ndims == 3:
+            height, width = sample[common.IMAGE].get_shape().as_list()[0:2]
         image = tf.reshape(sample[common.IMAGE], [height, width, -1])
-        label = tf.reshape(sample[common.LABEL], [height, width, -1])
-        prior_segs = sample[common.PRIOR_SEGS]
+        if "train" in self.split_name or "val" in self.split_name:
+            label = tf.reshape(sample[common.LABEL], [height, width, -1])
+        elif "test" in self.split_name:
+            label = None
+            
+        # prior_segs = sample[common.PRIOR_SEGS]
         depth = sample[common.DEPTH]
         num_slices = sample[common.NUM_SLICES]
         
-        
+
+        # get prior
+        if None not in (self.prior_dir, self.prior_num_slice, self.prior_num_subject):
+            prior_segs = self.load_prior_from_dir()
+            
+            # if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+            #     prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
+            #     prior_segs = tf.stack(prior_segs, axis=3)
+
+            # sample[common.PRIOR_SEGS] = prior_segs 
+
+        if self.pre_crop_size is not None:
+            pre_crop_height, pre_crop_width = self.pre_crop_size
+        else:
+            pre_crop_height, pre_crop_width = None, None
+
         # TODO: input prior shape should be [NHWC] but [HWKC]
         # TODO: prior_segs and prior_seg_3d
         # Preprocessing for images, label and z_label
@@ -481,6 +466,8 @@ class Dataset(object):
             channel=1,
             seq_length=self.seq_length,
             label_for_each_frame=self.label_for_each_frame,
+            pre_crop_height=pre_crop_height,
+            pre_crop_width=pre_crop_width,
             num_class=self.num_of_classes,
             HU_window=self.HU_window,
             min_resize_value=self.min_resize_value,
@@ -495,7 +482,7 @@ class Dataset(object):
 
         if self.seq_length != 1:
             image = tf.reshape(image, [self.seq_length, self.crop_size[0], self.crop_size[1], -1])
-            if self.label_for_each_frame:
+            if self.label_for_each_frame and  label is not None:
                 label = tf.reshape(label, [self.seq_length, self.crop_size[0], self.crop_size[1], -1])
       
         sample[common.IMAGE] = image
@@ -507,11 +494,9 @@ class Dataset(object):
             sample[common.LABEL] = label
 
         if prior_segs is not None:
-            if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-                prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
-                prior_segs = tf.stack(prior_segs, axis=3)
-                sample[common.PRIOR_SEGS] = prior_segs 
-
+            sample[common.PRIOR_SEGS] = tf.reshape(prior_segs, 
+                                                   [self.crop_size[0], self.crop_size[1], self.num_of_classes, self.seq_length])
+            
         return sample
     
     def get_one_shot_iterator(self):
@@ -519,13 +504,19 @@ class Dataset(object):
         Returns:
           An iterator of type tf.data.Iterator.
         """
-    
-        files = self._get_all_files(self.split_name)
-         
+        # TODO: string case
+        # if isinstance(self.split_name, str):
+        #     files = file_utils.get_file_list(self.dataset_dir, fileExt=["tfrecord"])
+        # elif isinstance(self.split_name, list):
+        # files = []
+        # for split in self.split_name:
+        files = file_utils.get_file_list(self.dataset_dir, fileStr=self.split_name, fileExt=["tfrecord"])
+        self.files = files
+        # files = self._get_all_files(self.split_name) 
         dataset = (
              tf.data.TFRecordDataset(files)
              .map(self._parse_function, num_parallel_calls=self.num_readers)
-             .map(self._preprocessing, num_parallel_calls=self.num_readers)
+             .map(self._preprocessing_seq, num_parallel_calls=self.num_readers)
              )
         # dataset = (
         #      tf.data.TFRecordDataset(files)
@@ -544,13 +535,13 @@ class Dataset(object):
         dataset = dataset.batch(self.batch_size).prefetch(self.batch_size)
         return dataset
     
-    def _get_all_files(self, split_name):
-        """Gets all the files to read data from.
-        Returns:
-          A list of input files.
-        """
-        file_pattern = _FILE_PATTERN
-        file_pattern = os.path.join(self.dataset_dir,
-                                    file_pattern % split_name)
-        return tf.gfile.Glob(file_pattern)       
+    # def _get_all_files(self, split_name):
+    #     """Gets all the files to read data from.
+    #     Returns:
+    #       A list of input files.
+    #     """
+    #     file_pattern = _FILE_PATTERN
+    #     file_pattern = os.path.join(self.dataset_dir,
+    #                                 file_pattern % split_name)
+    #     return tf.gfile.Glob(file_pattern)       
      

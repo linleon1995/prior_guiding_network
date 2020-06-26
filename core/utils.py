@@ -59,7 +59,8 @@ class Refine(object):
                guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
                num_class=14, weight_decay=0.0, scope=None, is_training=None, **kwargs):
     if GUID_FEATURE_ONLY:
-      low_level.pop["low_level5"]
+      low_level.pop("low_level5")
+      fusions = fusions[1:]
     self.low_level = low_level
     self.fusions = fusions
     self.fuse_flag = fuse_flag
@@ -78,8 +79,7 @@ class Refine(object):
     self.is_training = is_training
     self.fine_tune_batch_norm = True
   
-    self.apply_sram2 = kwargs.pop("apply_sram2", None)
-    self.apply_sram2 = kwargs.pop("apply_sram2", None)
+    self.apply_sram2 = kwargs.pop("apply_sram2", False)
   def embed(self, x, out_node, scope):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
     
@@ -118,8 +118,11 @@ class Refine(object):
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
-              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
-            
+              if GUID_FUSE == "sum":
+                guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
+                # guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
+              elif GUID_FUSE == "conv":
+                guid = slim.conv2d(self.prior_pred, 1, kernel_size=[3,3], activation_fn=None)
           out_node = self.embed_node
 
           for i, (k, v) in enumerate(self.low_level.items()):
@@ -183,6 +186,11 @@ class Refine(object):
                 elif GUID_FUSE == "entropy":
                   guid = tf.clip_by_value(guid, 1e-10, 1.0)
                   guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
+                elif GUID_FUSE == "conv":
+                  if i < len(self.low_level)-1:
+                    guid = slim.conv2d(guid, 1, kernel_size=[3,3], activation_fn=None)
+                  else:
+                    guid = tf.reduce_sum(guid, axis=3, keepdims=True)  
                 elif GUID_FUSE == "sum_dilated":
                   size = [8,6,4,2,1]
                   kernel = tf.ones((size[i], size[i], num_class))
@@ -227,7 +235,7 @@ class Refine(object):
     
     
   def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
-    apply_sram2 = kwargs.pop("sram2", False)
+    apply_sram2 = kwargs.pop("apply_sram2", False)
     guid_node = guid.get_shape().as_list()[3]
     if guid_node != out_node and guid_node != 1:
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)

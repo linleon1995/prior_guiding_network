@@ -109,9 +109,9 @@ class WarpingLayer(object):
         
 def pgb_network(images, 
                 model_options,
-                affine_transform,
+                # affine_transform,
                 # deformable_transform,
-                samples=None,
+                # samples=None,
                 # prior_imgs=None,
                 prior_segs=None,
                 num_class=None,

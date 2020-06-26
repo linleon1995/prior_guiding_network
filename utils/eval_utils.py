@@ -15,6 +15,15 @@ class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidn
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
+def print_checkpoint_tensor_name(checkpoint_dir):
+    # TODO: all_tensors,  all_tensor_names for parameters
+    """Print all tensor name from graph"""
+    from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+    # List ALL tensors example output
+    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False, 
+                                    all_tensor_names=True)
+    
+  
 def eval_flol_model(dsc_in_diff_th, threshold):
     """
     """
@@ -306,3 +315,38 @@ def plot_confusion_matrix(cm, classes,
         plt.savefig(os.path.join(save_path, "CM.png"))
     else:
         plt.show()
+        
+def inference_segmentation(logits):
+    prediction = tf.nn.softmax(logits, axis=3)
+    # prediction = tf.identity(prediction, name=common.OUTPUT_TYPE)
+    prediction = tf.argmax(prediction, axis=3)
+    prediction = tf.cast(prediction, tf.int32)
+    return prediction
+
+def get_label_range(label, height, width):
+    """
+    HW1, HW
+    """
+    if len(np.shape(label)) == 3:
+        label = label[...,0]
+    elif len(np.shape(label)) == 2:
+        pass
+    else:
+        raise ValueError("Unknown label shape")
+    
+    if np.sum(label) == 0:
+        return 4*[0]
+    else:
+        fg = np.where(label!=0)
+        h_min = np.min(fg[0])
+        h_max = np.max(fg[0])
+        w_min = np.min(fg[1])
+        w_max = np.max(fg[1])
+        
+        # h_min = np.min(np.min(fg, axis=0))
+        # w_min = np.min(np.min(fg, axis=1))
+        # h_max = np.max(np.max(fg, axis=0))
+        # w_max = np.max(np.max(fg, axis=1))
+        return [h_min,w_min,h_max,w_max]
+        
+    

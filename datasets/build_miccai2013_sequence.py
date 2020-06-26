@@ -135,9 +135,12 @@ def _convert_dataset(dataset_split):
             # sys.stdout.flush()
             # Read the image.
             image_data = image_reader.decode_image(image_files[shard_id])
+            image_data = image_data[:,::-1]
             height, width, num_slices = image_reader.read_image_dims(image_data)
+            
             # Read the semantic segmentation annotation.
             seg_data = label_reader.decode_image(label_files[shard_id])
+            seg_data = seg_data[:,::-1]
             seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
             if height != seg_height or width != seg_width:
                 raise RuntimeError('Shape mismatched between image and label.')

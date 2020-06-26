@@ -32,32 +32,24 @@ import build_medical_data, file_utils
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
+parser.add_argument('--miccai-2013', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
                     help='MICCAI 2013 dataset root folder.')
 
 parser.add_argument('--output-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
                     help='Path to save converted SSTable of TensorFlow examples.')                    
 
-parser.add_argument('--dataset-split', type=str, default=None,
-                    help='') 
-
-parser.add_argument('--num-shard', type=int, default=None,
+parser.add_argument('--prior_id', type=int, default=0,
                     help='')  
 
 parser.add_argument('--num_samples', type=int, default=None,
                     help='')  
-
-# TODO: manage multiple integers
-parser.add_argument('--split-indices', type=int, default=None,
-                    help='') 
-
-
-               
+                    
+_NUM_SHARDS = 25
 _NUM_SLICES = 3779
 _NUM_VOXELS = 30
 _DATA_TYPE = "2D"
-# PRIOR_IMGS = 'prior_imgs'
-# PRIOR_SEGS = 'prior_segs'
+PRIOR_IMGS = 'prior_imgs'
+PRIOR_SEGS = 'prior_segs'
 
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
@@ -78,13 +70,13 @@ _DATA_FORMAT_MAP = {
 }
 
 # TODO: describe
-# _DATA_SPLIT = 25/30
+_DATA_SPLIT = 25/30
 
 # Image file pattern.
 _IMAGE_FILENAME_RE = re.compile('(.+)' + _POSTFIX_MAP['image'])
 
 
-def _get_files(data, dataset_split, split_indices=None):
+def _get_files(data, dataset_split):
   """Gets files for the specified data type and dataset split.
   Args:
     data: String, desired data ('image' or 'label').
@@ -96,23 +88,29 @@ def _get_files(data, dataset_split, split_indices=None):
   # TODO: description
   # TODO: dataset converting and prior converting should be separate, otherwise prior converting will be executed twice
  
-  filenames = file_utils.get_file_list(FLAGS.data_dir+_FOLDERS_MAP[data]+"/", fileStr=[dataset_split], fileExt=["nii.gz"], 
+  if data == 'label' and dataset_split == 'test':
+    return None
+  
+  filenames = file_utils.get_file_list(FLAGS.miccai_2013+_FOLDERS_MAP[data]+"/", fileExt=["nii.gz"], 
                                        sort_files=True)
+  if dataset_split[1] > len(filenames):
+    raise ValueError("Unknown split name")
+  filenames = filenames[dataset_split[0]:dataset_split[1]]
   
-  if split_indices is not None:
-    # TODO: do it correctly
-    if split_indices[1] > len(filenames):
-      raise ValueError("Out of Range")
-    
-    filenames = filenames[split_indices[0]:split_indices[1]]
-    
-  # if data == 'label' and dataset_split == 'test':
-  #   return None
-  
+  # if dataset_split in ('train', 'val'):
+  #   split_idx = int(len(filenames)*_DATA_SPLIT)
+  #   if dataset_split == 'train':
+  #       filenames = filenames[:split_idx]
+  #   elif dataset_split == 'val':
+  #       filenames = filenames[split_idx:]
+  # elif dataset_split == 'test':
+  #   pass
+  # else:
+  #   raise ValueError("Unknown split name")
   return filenames
 
 
-def _convert_dataset(dataset_split, split_indices=None):
+def _convert_dataset(dataset_split, split_indices):
   """Converts the specified dataset split to TFRecord format.
   Args:
     dataset_split: The dataset split (e.g., train, val).
@@ -120,43 +118,33 @@ def _convert_dataset(dataset_split, split_indices=None):
     RuntimeError: If loaded image and label have different shape, or if the
       image file with specified postfix could not be found.
   """
-  image_files = _get_files('image', _POSTFIX_MAP["image"], split_indices)
-  if dataset_split in ("train", "val"):
-    label_files = _get_files('label', _POSTFIX_MAP["label"], split_indices)
+  image_files = _get_files('image', split_indices)
+  label_files = _get_files('label', split_indices)
 
   num_images = len(image_files)
-  if FLAGS.num_shard is not None:
-    num_shard = FLAGS.num_shard
-  else:
-    num_shard = num_images
+  num_shard = num_images
 
   image_reader = build_medical_data.ImageReader('nii.gz', channels=1)
-  if dataset_split in ("train", "val"):
-    label_reader = build_medical_data.ImageReader('nii.gz', channels=1)
+  label_reader = build_medical_data.ImageReader('nii.gz', channels=1)
 
   for shard_id in range(num_shard):
     shard_filename = '%s-%05d-of-%05d.tfrecord' % (
-        dataset_split, shard_id, num_images)
+        dataset_split, shard_id, _NUM_SHARDS)
     output_filename = os.path.join(FLAGS.output_dir, shard_filename)
     with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-      
+      sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
+            shard_id+1, num_images, shard_id+1))
+      # sys.stdout.flush()
       # Read the image.
       image_data = image_reader.decode_image(image_files[shard_id])
       image_data = image_data[:,::-1]
       height, width, num_slices = image_reader.read_image_dims(image_data)
-      
-      sys.stdout.write('\n>> Converting image %d/%d shard %d in shape [%d,%d] num_frame %d' % (
-            shard_id+1, num_images, shard_id+1, height, width, num_slices))
-      if shard_id==21:
-        a=3
-      # sys.stdout.flush()
-      if dataset_split in ("train", "val"):
-        # Read the semantic segmentation annotation.
-        seg_data = label_reader.decode_image(label_files[shard_id])
-        seg_data = seg_data[:,::-1]
-        seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
-        if height != seg_height or width != seg_width:
-          raise RuntimeError('Shape mismatched between image and label.')
+      # Read the semantic segmentation annotation.
+      seg_data = label_reader.decode_image(label_files[shard_id])
+      seg_data = seg_data[:,::-1]
+      seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
+      if height != seg_height or width != seg_width:
+        raise RuntimeError('Shape mismatched between image and label.')
       # Convert to tf example.
       # TODO: re_match?
       re_match = _IMAGE_FILENAME_RE.search(image_files[shard_id])
@@ -166,21 +154,16 @@ def _convert_dataset(dataset_split, split_indices=None):
 
       # TODO: 14, organ label
       if _DATA_TYPE == "2D":
-        if dataset_split in ("train", "val"):
-          seg_onehot = np.eye(14)[seg_data]
-          organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
-          organ_labels = np.int32(organ_labels>0)
+        seg_onehot = np.eye(14)[seg_data]
+        organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
+        organ_labels = np.int32(organ_labels>0)
         for i in range(num_slices):
           image_slice = image_data[i].tostring()
-          if dataset_split in ("train", "val"):
-            seg_slice = seg_data[i].tostring()
-            organ_label = organ_labels[i].tostring()
-            example = build_medical_data.image_seg_to_tfexample(image_slice, filename, height, width, depth=i, 
-                                                                num_slices=num_slices, seg_data=seg_slice, organ_label=organ_label)
-          elif dataset_split == "test":
-            example = build_medical_data.image_seg_to_tfexample(image_slice, filename, height, width, depth=i, 
-                                                                num_slices=num_slices)
-            
+          seg_slice = seg_data[i].tostring()
+          organ_label = organ_labels[i].tostring()
+          example = build_medical_data.image_seg_to_tfexample(image_slice, seg_slice, 
+                                                              filename, height, width, depth=i, 
+                                                              num_slices=num_slices, organ_label=organ_label)
           tfrecord_writer.write(example.SerializeToString())
       elif _DATA_TYPE == "3D":
         pass
@@ -245,14 +228,12 @@ def _convert_dataset(dataset_split, split_indices=None):
 def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
-  
-  dataset_split = {"train": [0,25],
-                   "val": [25,30]}
+  dataset_split = {"train": [0,15],
+                   "val": [15,20]}
   for split in dataset_split.items():
     _convert_dataset(*split)
 
-  # _convert_dataset(FLAGS.dataset_split, FLAGS.split_indices)
-  
+
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   main(unparsed)

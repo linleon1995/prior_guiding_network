@@ -12,6 +12,7 @@ import tensorflow as tf
 import nibabel as nib
 import numpy as np
 import argparse
+import SimpleITK as sitk
 
 # TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
 # FLAGS = tf.app.flags.FLAGS
@@ -54,13 +55,25 @@ class ImageReader(object):
   def decode_image(self, image_path):
       """
       """
-      # TODO: don't need swapaxes + flip, maybe just transpose and flip?
-      if self._image_format == 'nii.gz':
-          imgs = nib.load(image_path).get_data()
-          _decode = np.flip(np.swapaxes(imgs, 0, -1), 1)
-          self._decode = np.int32(_decode)
-      elif self._image_format == 'dcm':
-          pass
+      # Read the medical image (.nii.gz .dcm) containing the volume with SimpleITK
+      image = sitk.ReadImage(image_path)
+      
+      # Access the numpy array:
+      image_arr = sitk.GetArrayFromImage(image)
+      
+      self._decode = np.int32(image_arr)
+      
+      # if self._image_format in ('.nii.gz', 'nii.gz', '.nii', 'nii'):
+          
+      #     
+          
+      # elif self._image_format in ('dcm', '.dcm'):
+      #     import matplotlib.pyplot as plt
+      #     pass
+      #     image_arr = sitk.GetArrayFromImage(image)
+      #     self._decode = np.int32(image_arr)
+      #     plt.imshow(self._decode[0])
+      #     plt.show()
       return self._decode
 
 
@@ -102,7 +115,7 @@ def _bytes_list_feature(values):
       bytes_list=tf.train.BytesList(value=[norm2bytes(values)]))
 
 
-def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth, num_slices, organ_label):
+def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slices, seg_data=None, organ_label=None):
   """Converts one image/segmentation pair to tf example.
   Args:
     image_data: string of image data.
@@ -113,22 +126,23 @@ def image_seg_to_tfexample(image_data, seg_data, filename, height, width, depth,
   Returns:
     tf example of one image/segmentation pair.
   """
-  return tf.train.Example(features=tf.train.Features(feature={
+  feature={
       'image/encoded': _bytes_list_feature(image_data),
       'image/filename': _bytes_list_feature(filename),
-      'image/format': _bytes_list_feature(
-          _IMAGE_FORMAT_MAP[FLAGS.image_format]),
+      'image/format': _bytes_list_feature(_IMAGE_FORMAT_MAP[FLAGS.image_format]),
       'image/height': _int64_list_feature(height),
       'image/width': _int64_list_feature(width),
       'image/depth': _int64_list_feature(depth),
       'image/num_slices': _int64_list_feature(num_slices),
-      'image/segmentation/class/encoded': (
-          _bytes_list_feature(seg_data)),
-      'image/segmentation/class/format': _bytes_list_feature(
-          FLAGS.label_format),
-      'image/segmentation/class/organ_label': _bytes_list_feature(
-          organ_label),
-  }))
+      # 'image/segmentation/class/format': _bytes_list_feature(FLAGS.label_format),
+  }
+  if seg_data is not None:
+    feature['image/segmentation/class/encoded'] = _bytes_list_feature(seg_data)
+    
+  if organ_label is not None:
+    feature['image/segmentation/class/organ_label'] = _bytes_list_feature(organ_label)
+  
+  return tf.train.Example(features=tf.train.Features(feature=feature))
   
 # def priors_to_tfexample(priors, parse_name, num_slices, prior_id):
 #   """Converts one image/segmentation pair to tf example.

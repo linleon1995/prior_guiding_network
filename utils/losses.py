@@ -619,6 +619,61 @@ def add_sigmoid_dice_loss_for_each_scale(scales_to_logits,
             tf.losses.add_loss(loss)
 
 
+def add_softmax_generaled_dice_loss_for_each_scale(scales_to_logits,
+                                         labels,
+                                         num_classes,
+                                         ignore_label,
+                                         alpha=0.5,
+                                         beta=0.5,
+                                         loss_weight=1.0,
+                                         scope=None):
+    """TODO"""
+    if labels is None:
+        raise ValueError('No label for softmax dice loss.')
+    
+    for scale, logits in scales_to_logits.items():
+        loss_scope = None
+        if scope:
+            loss_scope = '%s_%s' % (scope, scale)
+        
+        logits = tf.image.resize_bilinear(
+                logits,
+                preprocess_utils.resolve_shape(labels, 4)[1:3],
+                align_corners=True)
+        scaled_labels = labels
+
+        scaled_labels = tf.reshape(scaled_labels, shape=[16,-1])
+        # weights = tf.constant(loss_weight, tf.float32)
+        weights = loss_weight
+        # weights = utils.get_label_weight_mask(
+        #     scaled_labels, ignore_label, num_classes, label_weights=loss_weight)
+        
+        # Dimension of keep_mask is equal to the total number of pixels.
+        # keep_mask = tf.cast(
+        #     tf.not_equal(scaled_labels, ignore_label), dtype=tf.float32)
+
+        logits = tf.reshape(logits, shape=[16, -1, num_classes])
+    
+        train_labels = tf.one_hot(
+            scaled_labels, num_classes, on_value=1.0, off_value=0.0)
+        
+        with tf.name_scope(loss_scope, 'softmax_all_pixel_loss',
+                        [logits, train_labels, weights]):
+            # Compute the loss for all pixels.
+            prediction = tf.nn.softmax(logits, 2)
+            train_labels = tf.stop_gradient(
+                train_labels, name='train_labels_stop_gradient')
+            
+            intersection = tf.reduce_sum(train_labels*prediction, axis=1)
+            union = tf.reduce_sum(train_labels, axis=1) + tf.reduce_sum(prediction, axis=1)
+
+            weighted_intersection = tf.reduce_sum(tf.multiply(intersection, weights), axis=1)
+            weighted_union = tf.reduce_sum(tf.multiply(union, weights), axis=1)
+            loss = 1 - 2*tf.reduce_mean((weighted_intersection+_EPSILON)/(weighted_union+_EPSILON), axis=0)
+        
+            tf.losses.add_loss(loss)
+            
+            
 def add_softmax_dice_loss_for_each_scale(scales_to_logits,
                                          labels,
                                          num_classes,
