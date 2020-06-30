@@ -795,14 +795,15 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
       # interpolation.
       # TODO(huizhongc): Change to bilinear interpolation by processing padded
       # and non-padded label separately.
-      if gt_is_matting_map:
-        tf.logging.warning(
-            'Label downsampling with nearest neighbor may introduce artifacts.')
+      scaled_labels = labels
+      # if gt_is_matting_map:
+      #   tf.logging.warning(
+      #       'Label downsampling with nearest neighbor may introduce artifacts.')
 
-      scaled_labels = tf.image.resize_nearest_neighbor(
-          labels,
-          preprocess_utils.resolve_shape(logits, 4)[1:3],
-          align_corners=True)
+      # scaled_labels = tf.image.resize_nearest_neighbor(
+      #     labels,
+      #     preprocess_utils.resolve_shape(logits, 4)[1:3],
+      #     align_corners=True)
 
     scaled_labels = tf.reshape(scaled_labels, shape=[-1])
     weights = utils.get_label_weight_mask(

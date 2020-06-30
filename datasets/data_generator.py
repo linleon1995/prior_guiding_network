@@ -51,7 +51,10 @@ _FILE_PATTERN = '%s-*'
 def get_z_label(z_label_method, num_slices, depth, z_class=None):
     if z_label_method == "cls":
         if z_class is not None:
-            pass
+            z_class = tf.cast(z_class, tf.float32)
+            depth = tf.cast(depth, tf.float32)
+            num_slices = tf.cast(num_slices, tf.float32)
+            return tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int32) 
         else:
             raise ValueError("Unknown z class")
     elif z_label_method == "reg":
@@ -496,7 +499,19 @@ class Dataset(object):
         if prior_segs is not None:
             sample[common.PRIOR_SEGS] = tf.reshape(prior_segs, 
                                                    [self.crop_size[0], self.crop_size[1], self.num_of_classes, self.seq_length])
+        
+        # get multi-task label
+        if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
+            if self.mt_label_method == "reg" and self.mt_label_type == "class_label":
+                raise ValueError("Class label only accept classification method")
             
+            if self.mt_label_type == "z_label":
+                mt_label = get_z_label(self.mt_label_method, num_slices, depth, z_class=self.mt_class)
+            # elif self.mt_label_type == "class_label":
+            #     mt_label = context["image/class_label"]
+
+            sample[common.Z_LABEL] = mt_label
+                
         return sample
     
     def get_one_shot_iterator(self):
@@ -510,7 +525,7 @@ class Dataset(object):
         # elif isinstance(self.split_name, list):
         # files = []
         # for split in self.split_name:
-        files = file_utils.get_file_list(self.dataset_dir, fileStr=self.split_name, fileExt=["tfrecord"])
+        files = file_utils.get_file_list(self.dataset_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True)
         self.files = files
         # files = self._get_all_files(self.split_name) 
         dataset = (

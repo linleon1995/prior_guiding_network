@@ -43,50 +43,50 @@ def HU_to_pixelvalue(image, HU_window):
   processed_image = tf.multiply(image, 255)
   return processed_image
 
-def get_z_label(method, num_slices, depth, z_class=None):
-    """Define z-axis label by using num_slices and depth information.
-    Args:
-        method: "classification" for classify task and "regression" for regression task
-        num_slices: The slice number of each subject (patient)
-        depth: The z-axis value of current slice
-        z_class: The class we want to classify in z-axis
-    Returns:
-        z_label: A number to represent the z-axis value of current slice
-    Raises:
-        ValueError: If method name nethier "classification" nor "regression"
-    """
-    # TODO: Cannot handle the situation that z_class bigger than num_slices
-    # TODO: Convert to tensorflow code
-    # z_label = None
+# def get_z_label(method, num_slices, depth, z_class=None):
+#     """Define z-axis label by using num_slices and depth information.
+#     Args:
+#         method: "classification" for classify task and "regression" for regression task
+#         num_slices: The slice number of each subject (patient)
+#         depth: The z-axis value of current slice
+#         z_class: The class we want to classify in z-axis
+#     Returns:
+#         z_label: A number to represent the z-axis value of current slice
+#     Raises:
+#         ValueError: If method name nethier "classification" nor "regression"
+#     """
+#     # TODO: Cannot handle the situation that z_class bigger than num_slices
+#     # TODO: Convert to tensorflow code
+#     # z_label = None
     
-    # is_classify = math_ops.equal(method, "classification")
-    # z_label = tf.cond(is_classify, lambda: tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int64), 
-    #                                lambda: tf.cast(tf.divide(depth, num_slices-1). tf.float32))
+#     # is_classify = math_ops.equal(method, "classification")
+#     # z_label = tf.cond(is_classify, lambda: tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int64), 
+#     #                                lambda: tf.cast(tf.divide(depth, num_slices-1). tf.float32))
 
-    if method.split("_")[1] == "regression":
-        z_label = tf.cast(tf.divide(depth, num_slices-1), tf.float32)
-    elif method.split("_")[1] == 'classification':
-        z_class = tf.cast(z_class, tf.float32)
-        depth = tf.cast(depth, tf.float32)
-        num_slices = tf.cast(num_slices, tf.float32)
-        z_label = tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int64)   
-    else:
-        raise ValueError('Incorrect method name')             
+#     if method.split("_")[1] == "regression":
+#         z_label = tf.cast(tf.divide(depth, num_slices-1), tf.float32)
+#     elif method.split("_")[1] == 'classification':
+#         z_class = tf.cast(z_class, tf.float32)
+#         depth = tf.cast(depth, tf.float32)
+#         num_slices = tf.cast(num_slices, tf.float32)
+#         z_label = tf.cast(tf.divide(depth, tf.divide(num_slices, z_class)), tf.int64)   
+#     else:
+#         raise ValueError('Incorrect method name')             
 
-    # is_regression = math_ops.equal(method, "regression")
-    # z_label = tf.cond(is_regression, lambda: tf.cast(tf.divide(depth, num_slices-1). tf.float32), lambda: z_label)
+#     # is_regression = math_ops.equal(method, "regression")
+#     # z_label = tf.cond(is_regression, lambda: tf.cast(tf.divide(depth, num_slices-1). tf.float32), lambda: z_label)
    
-    # if z_class > num_slices:
-    #     raise ValueError('z class should be smaller than number of slice')
+#     # if z_class > num_slices:
+#     #     raise ValueError('z class should be smaller than number of slice')
     
-    # if method == "classification":
-    #     level = num_slices / z_class
-    #     z_label = int(depth/level)
-    # elif method == "regression":
-    #     z_label = depth / (num_slices-1)
-    # else:
-    #     raise ValueError('inccorect method name')
-    return z_label
+#     # if method == "classification":
+#     #     level = num_slices / z_class
+#     #     z_label = int(depth/level)
+#     # elif method == "regression":
+#     #     z_label = depth / (num_slices-1)
+#     # else:
+#     #     raise ValueError('inccorect method name')
+#     return z_label
     
     
 def flip_dim(tensor_list, prob=0.5, dim=1):

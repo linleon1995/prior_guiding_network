@@ -79,7 +79,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="p_embed",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -156,14 +156,14 @@ parser.add_argument('--drop_prob', type=float, default=None,
 parser.add_argument('--model_variant', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_model', type=str, default=None,
+parser.add_argument('--z_model', type=str, default="gap_mlp",
                     help='')
 
-parser.add_argument('--z_label_method', type=str, default=None,
+parser.add_argument('--z_label_method', type=str, default="cls",
                     help='')
 
-parser.add_argument('--z_class', type=int, default=None,
-help='')
+parser.add_argument('--z_class', type=int, default=2,
+                    help='')
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"
 # TODO: Check conflict of guidance
@@ -361,7 +361,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 # num_slices=samples[common.NUM_SLICES],
                 prior_slice=prior_slices,
                 batch_size=clone_batch_size,
-                z_label_method=FLAGS.z_label_method,
                 # z_label=samples[common.Z_LABEL],
                 guidance_type=FLAGS.guidance_type,
                 fusion_slice=FLAGS.fusion_slice,
@@ -377,6 +376,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 fusions=FUSIONS,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
+                z_label_method=FLAGS.z_label_method,
                 z_model=FLAGS.z_model,
                 z_class=FLAGS.z_class,
                 guidance_loss=FLAGS.guid_loss_name,
@@ -483,13 +483,20 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.stage_pred_loss_name, 
       #                                                      decay=FLAGS.stage_pred_loss_decay)
       loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
-
+      
+    if common.OUTPUT_Z in output_dict:
+      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "decay": None, "weights": 1.0, "scope": "z_pred"}
+      z_class = FLAGS.z_class
+    else:
+      z_class = None
+       
     train_utils.get_losses(output_dict, 
                            layers_dict, 
                            samples, 
                            loss_dict,
                            num_of_classes,
-                           predict_without_background=FLAGS.predict_without_background)
+                           predict_without_background=FLAGS.predict_without_background,
+                           z_class=z_class)
     
     # if FLAGS.z_loss_decay is not None:
     #     if FLAGS.z_label_method.split("_")[1] == 'regression':
@@ -586,16 +593,16 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
     tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
     # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
     
-  if z_label is not None and z_pred is not None:
-    clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
+  # if z_label is not None and z_pred is not None:
+  #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-    z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
-    z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
-    tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
+  #   z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
+  #   z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
+  #   tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
 
-    z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
-    z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
-    tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
+  #   z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
+  #   z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
+  #   tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
 
 
 def _average_gradients(tower_grads):
@@ -953,7 +960,7 @@ def main(unused_argv):
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
-                mt_label_type="class_label",
+                mt_label_type="z_label",
                 crop_size=[FLAGS.crop_size, FLAGS.crop_size],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -983,7 +990,7 @@ def main(unused_argv):
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
-                mt_label_type="class_label",
+                mt_label_type="z_label",
                 crop_size=[512, 512],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -993,7 +1000,7 @@ def main(unused_argv):
                 # scale_factor_step_size=FLAGS.scale_factor_step_size,
                 # model_variant=FLAGS.model_variant,
                 num_readers=2,
-                is_training=True,
+                is_training=False,
                 shuffle_data=False,
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,

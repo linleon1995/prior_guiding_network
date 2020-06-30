@@ -24,6 +24,14 @@ __2d_unet_decoder = utils.__2d_unet_decoder
 
 
 
+def get_encoded_priors(feature, num_encoder, out_node, is_training=True, scope=None):
+    with tf.variable_scope('encoded_priors', scope):
+        prior_list = []
+        for i in range(num_encoder):
+            prior_list.append(slim.conv2d(feature, out_node, kernel_size=[3,3], activation_fn=None, 
+                                          scope="prior_encoder"+str(i)))
+    return prior_list
+
 # Warping layer ---------------------------------
 def get_grid(x):
     batch_size, height, width, filters = tf.unstack(tf.shape(x))
@@ -157,10 +165,11 @@ def pgb_network(images,
     # Produce Prior
     prior_seg = get_prior(prior_segs, guidance_type, num_class)
                 
-    if guid_encoder == "early":
+    if guid_encoder in ("early", "p_embed_prior"):
         in_node = tf.concat([images, prior_seg], axis=3)
-    elif guid_encoder in ("late", "image_only"):
+    elif guid_encoder in ("late", "image_only", "p_embed"):
         in_node = images
+        
     features, end_points = features_extractor.extract_features(images=in_node,
                                                                output_stride=model_options.output_stride,
                                                                multi_grid=model_options.multi_grid,
@@ -177,14 +186,13 @@ def pgb_network(images,
                    "low_level1": end_points["resnet_v1_50/conv1_3"]}
     
     # Multi-task 
-    if z_label_method is not None:
-        if z_label_method.split("_")[1] == "regression":
+    if z_label_method is not None and z_model is not None:
+        if z_label_method == "reg":
             multi_task_node = 1
-        elif z_label_method.split("_")[1] == "classification": 
-            if z_label_method.split("_")[0] == "z": 
-                multi_task_node = z_class
-            elif z_label_method.split("_")[0] == "organ": 
-                multi_task_node = num_class
+        elif z_label_method == "cls": 
+            if z_class is None:
+                raise ValueError("Unknown Z class")
+            multi_task_node = z_class
             
         z_logits = predict_z_dimension(features, out_node=multi_task_node, 
                                        extractor_type="simple")
@@ -205,6 +213,14 @@ def pgb_network(images,
                     img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
                     prior_embed = utils.get_guidance(tf.concat([images, prior_seg], axis=3), out_node, model_options.output_stride)
                     prior_seg = slim.conv2d(tf.concat([img_embed,prior_embed],axis=3), out_node, 3, scope="prior_seg")
+                elif guid_encoder in ("p_embed", "p_embed_prior"):
+                    if z_class is None:
+                        raise ValueError("Unknown Z class for prior embedding weighting")
+                    prior_list = get_encoded_priors(layers_dict["low_level5"], z_class, out_node)
+                    tf.add_to_collection("prior_list", prior_list)
+                    p = tf.stack(prior_list, axis=4)
+                    z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
+                    prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
                 tf.add_to_collection("guid_f", prior_seg)   
 
                 c = num_class
@@ -239,13 +255,10 @@ def pgb_network(images,
     # logits = tf.identity(logits, "output")    
     output_dict[common.OUTPUT_TYPE] = logits    
     
-    aa = tf.trainable_variables()
-    for v in aa:
-      print(30*"-", v.name)
+    # aa = tf.trainable_variables()
+    # for v in aa:
+    #   print(30*"-", v.name)
     return output_dict, layers_dict
-
-
-
 
 
 def get_slice_indice(indice, num_prior_slice, fused_slice):

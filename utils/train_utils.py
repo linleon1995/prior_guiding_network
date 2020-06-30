@@ -222,7 +222,8 @@ def get_losses(output_dict,
                loss_dict,
                num_classes,
                batch_size=None,
-               predict_without_background=None):
+               predict_without_background=None,
+               z_class=None):
     
     # TODO: layers_dict and output_dict diff, should just input one of them
 
@@ -287,7 +288,16 @@ def get_losses(output_dict,
           ignore_label=255,
           loss_weight=loss_dict[common.GUIDANCE]["weights"],
           scope=loss_dict[common.GUIDANCE]["scope"])
-      
+        
+    if common.OUTPUT_Z in loss_dict:
+        get_loss_func(loss_dict[common.OUTPUT_Z]["loss"])(
+            scales_to_logits={common.OUTPUT_Z: output_dict[common.OUTPUT_Z]},
+            labels=samples[common.Z_LABEL],
+            num_classes=z_class,
+            ignore_label=255,
+            loss_weight=loss_dict[common.OUTPUT_Z]["weights"],
+            upsample_logits=False,
+            scope=loss_dict[common.OUTPUT_Z]["scope"])
     
 def get_files_name(path, data_suffix='*.jpg'):
     subject = glob.glob(path + data_suffix)

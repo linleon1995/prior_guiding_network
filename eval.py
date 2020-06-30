@@ -32,7 +32,7 @@ import cv2
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 EVAL_CROP_SIZE = [256,256]
 EVAL_CROP_SIZE = [512,512]
@@ -41,10 +41,11 @@ ATROUS_RATES = None
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
 HU_WINDOW = [-125, 275]
-IMG_LIST = [50,60, 61, 62, 63, 64, 80, 81, 82, 83, 84,220,221,222,223,224,228,340,350,480,481,482,483,484,495]
+
 # TODO: train image list (optional)
 # TODO: if dir not exist. Don't build new one
 IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
+IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254, 255, 256, 257, 258, 447, 448, 449, 571, 572, 573]
 
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
@@ -76,6 +77,7 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_018/model.ckpt-200000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_013/model.ckpt-160000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-168000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-187000'
 
 # CHECKPOINT = None
 
@@ -84,14 +86,16 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 
 parser = argparse.ArgumentParser()
-
-parser.add_argument('--predict_without_background', type=bool, default=False,
+parser.add_argument('--apply_sram2', type=bool, default=True,
                     help='')
 
 parser.add_argument('--fuse_flag', type=bool, default=True,
                     help='')
+                    
+parser.add_argument('--predict_without_background', type=bool, default=False,
+                    help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="p_embed",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -157,7 +161,13 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--add_flipped_images', type=bool, default=False,
                     help='')
 
-parser.add_argument('--z_label_method', type=str, default=None,
+parser.add_argument('--z_model', type=str, default="gap_mlp",
+                    help='')
+
+parser.add_argument('--z_label_method', type=str, default="cls",
+                    help='')
+
+parser.add_argument('--z_class', type=int, default=2,
                     help='')
 
 parser.add_argument('--affine_transform', type=bool, default=False,
@@ -175,11 +185,17 @@ parser.add_argument('--vis_guidance', type=bool, default=False,
 parser.add_argument('--vis_features', type=bool, default=False,
                     help='')
 
+parser.add_argument('--vis_prior', type=bool, default=True,
+                    help='')
+
 parser.add_argument('--display_box_plot', type=bool, default=False,
                     help='')
 
 parser.add_argument('--store_all_imgs', type=bool, default=False,
                     help='')
+
+parser.add_argument('--show_pred_only', type=bool, default=False,
+                    help='')                  
 
 # Dataset settings.
 parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
@@ -265,7 +281,8 @@ def main(unused_argv):
                 HU_window=HU_WINDOW,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
-                mt_class=FLAGS.prior_num_slice,
+                mt_class=FLAGS.z_class,
+                mt_label_type="z_label",
                 crop_size=EVAL_CROP_SIZE,
                 min_resize_value=EVAL_CROP_SIZE[0],
                 max_resize_value=EVAL_CROP_SIZE[0],
@@ -384,10 +401,10 @@ def main(unused_argv):
                 # num_slices=placeholder_dict[common.NUM_SLICES],
                 # prior_slice=prior_slices,
                 batch_size=FLAGS.eval_batch_size,
-                z_label_method=FLAGS.z_label_method,
-                # z_label=placeholder_dict[common.Z_LABEL],
-                # z_class=FLAGS.prior_num_slice,
                 guidance_type=FLAGS.guidance_type,
+                z_label_method=FLAGS.z_label_method,
+                z_model=FLAGS.z_model,
+                z_class=FLAGS.z_class,
                 fusion_slice=FLAGS.fusion_slice,
                 prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
@@ -408,7 +425,7 @@ def main(unused_argv):
                 fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
                 reuse=tf.AUTO_REUSE,
-                apply_sram2=True,
+                apply_sram2=FLAGS.apply_sram2,
                 )
     
     if FLAGS.vis_guidance:      
@@ -476,8 +493,8 @@ def main(unused_argv):
     #   guid_list = tf.get_collection("guidance")
                        
                  
-    if common.OUTPUT_Z in output_dict:
-      z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
+    # if common.OUTPUT_Z in output_dict:
+    #   z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
       
     # Define the evaluation metric.
     predictions_tag = 'miou'
@@ -555,10 +572,14 @@ def main(unused_argv):
                                                             type_list=3*['img'])
     # Build up Pyplot displaying tool
     # TODO: Image could only show once
+    if FLAGS.show_pred_only:
+        subplot_split=(1,1)
+    else:
+        subplot_split=(1,3)
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
                                                         is_showfig=False,
                                                         is_savefig=True,
-                                                        subplot_split=(1,3),
+                                                        subplot_split=subplot_split,
                                                         type_list=3*['img'])
     # Start Evaluate
     # TODO: The order of subject
@@ -572,12 +593,17 @@ def main(unused_argv):
                                                             is_savefig=True,
                                                             subplot_split=(1,3),
                                                             type_list=3*['img'])
-        
+    if FLAGS.vis_prior:
+        if not os.path.isdir(FLAGS.eval_logdir+"prior"):
+            os.mkdir(FLAGS.eval_logdir+"prior")
+            
+        show_prior = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir+"prior/",
+                                                      is_showfig=False,
+                                                      is_savefig=True,
+                                                      subplot_split=(1,3),
+                                                      type_list=3*['img'])    
     sram_conv = tf.get_collection("/sram_embed")      
-    if FLAGS.store_all_imgs:
-        display_imgs = np.arange(dataset.splits_to_sizes[EVAL_SPLIT])
-    else:
-        display_imgs = IMG_LIST
+    
 
     flops, params = eval_utils.compute_params_and_flops(graph)
     with open(os.path.join(FLAGS.eval_logdir, 'eval_logging.txt'), 'a') as f:
@@ -592,7 +618,10 @@ def main(unused_argv):
        
     for split_name in EVAL_SPLIT:
       num_sample = dataset.splits_to_sizes[split_name]
-      
+      if FLAGS.store_all_imgs:
+          display_imgs = np.arange(num_sample)
+      else:
+          display_imgs = IMG_LIST
       for i in range(num_sample):
           data = sess.run(samples)
           _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
@@ -606,6 +635,9 @@ def main(unused_argv):
 
           
           if i in display_imgs:
+            if FLAGS.show_pred_only:
+              plt.imsave(split_name+'_pred_only_%04d' %i, pred[0])
+            else:
               parameters = [{"cmap": "gray"}]
               parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
               show_seg_results.set_title(["image", "label","prediction"])
@@ -613,45 +645,35 @@ def main(unused_argv):
               show_seg_results.display_figure(split_name+'_pred_%04d' %i,
                                               [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
                                               parameters=parameters)
-              h_min,w_min,h_max,w_max = eval_utils.get_label_range(data[common.LABEL][0], 512, 512)
+            if FLAGS.vis_prior:                                
+              prior_list = sess.run(tf.get_collection("prior_list"), feed_dict=_feed_dict)
+              for z in range(FLAGS.z_class):
+                for node in range(0, FLAGS.out_node, 4):
+                  filename = "{}-prior-sample{}-z{}-feature{}".format(split_name, i, z, node)
+                  show_prior.set_title(["prior_z_feature{}".format(node), 
+                                        "prior_z_feature{}".format(node+1), 
+                                        "prior_z_feature{}".format(node+2)])
+                  show_prior.display_figure(filename, [prior_list[0][z][0,...,node], 
+                                                         prior_list[0][z][0,...,node], 
+                                                         prior_list[0][z][0,...,node]])
+                  
+              # h_min,w_min,h_max,w_max = eval_utils.get_label_range(data[common.LABEL][0], 512, 512)
               
-              h_min_total.append(h_min)
-              w_min_total.append(w_min)
-              h_max_total.append(h_max)
-              w_max_total.append(w_max)
-              # print(h_min,w_min,h_max,w_max)
-              # plt.imshow(data[common.LABEL][0,...,0])
-              # plt.show()
+              # h_min_total.append(h_min)
+              # w_min_total.append(w_min)
+              # h_max_total.append(h_max)
+              # w_max_total.append(w_max)
               
-              # img_128 = sess.run(image_128, feed_dict=_feed_dict)
-              
-              # img_128_cv = cv2.resize(data[common.IMAGE][0,...,0], (128, 128))
-              # img_diff = img_128[0,...,0] - img_128_cv
-              # parameters = 3*[{"cmap": "gray"}]
-              # show_seg_results.set_title(["image", "down_up","diff"])
-              # show_seg_results.set_axis_off()
-              # show_seg_results.display_figure(split_name+'_aliasing_test_%04d' %i,
-              #                                 [img_128_cv, img_128[0,...,0], img_diff],
-              #                                 parameters=parameters)
+          # # Z-information Evaluation
+          # if common.OUTPUT_Z in output_dict:
+          #   eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
+          #   z_label = data[common.Z_LABEL]
+          #   total_z_label.append(z_label)
+          #   total_z_pred.append(z_pred)
+          #   total_eval_z += eval_z
 
-              # show_seg_results.set_title(["label2", "label3","label4"])
-              # show_seg_results.display_figure(split_name+'_dilated_label_%04d' %i,
-              #                                 [l2[0,...,6], l3[0,...,6], l4[0,...,6]])
-              # # plt.imshow(l2[0,...,6]+l3[0,...,6]+l4[0,...,6]+np.int32(data[common.LABEL][0,...,0]==6))
-              # # plt.show()
-              # plt.savefig(FLAGS.eval_logdir+"sample{}-label_compare.png".format(i))
-              
-          # Z-information Evaluation
-          if common.OUTPUT_Z in output_dict:
-            eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
-            z_label = data[common.Z_LABEL]
-            total_z_label.append(z_label)
-            total_z_pred.append(z_pred)
-            total_eval_z += eval_z
-
-          # Guidance Visualization
-          if FLAGS.vis_guidance:
-            if i in display_imgs:
+            # Guidance Visualization
+            if FLAGS.vis_guidance:
               guid_avg = tf.get_collection("guid_avg")
               guid_avgs = sess.run(guid_avg, feed_dict=_feed_dict)     
               layers, pred_layers, gg = sess.run([guidance_dict, pred_dict, guidance_dict["guidance0"]], feed_dict=_feed_dict)
@@ -701,9 +723,8 @@ def main(unused_argv):
                 
                   
                                         
-          # Features Visualization
-          if FLAGS.vis_features:
-            if i in display_imgs:
+            # Features Visualization
+            if FLAGS.vis_features:
               sram1, sram2, embed, feature, refining, guid_f = sess.run([tf.get_collection("sram1"), 
                                                                 tf.get_collection("sram2"), 
                                                                 tf.get_collection("embed"), 
@@ -712,7 +733,7 @@ def main(unused_argv):
                                                                 #  tf.get_collection("feature"),
                                                                 tf.get_collection("guid_f")], feed_dict=_feed_dict)
 
-              for cc in range(0, 32, 4):
+              for cc in range(0, FLAGS.out_node, 4):
                 for w in range(5):
                   filename = "{}-feature1-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
                   show_feature.set_title(["embed", "sram1", "feature"])
@@ -735,18 +756,18 @@ def main(unused_argv):
               
               # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
 
-    def get_list_stats(value):
-      val_arr = np.stack(value)
-      return np.mean(val_arr), np.std(val_arr), np.min(val_arr), np.max(val_arr)
-    h_min_total = [v for v in h_min_total if v!=0]
-    h_max_total = [v for v in h_max_total if v!=0]
-    w_min_total = [v for v in w_min_total if v!=0]
-    w_max_total = [v for v in w_max_total if v!=0]
+    # def get_list_stats(value):
+    #   val_arr = np.stack(value)
+    #   return np.mean(val_arr), np.std(val_arr), np.min(val_arr), np.max(val_arr)
+    # h_min_total = [v for v in h_min_total if v!=0]
+    # h_max_total = [v for v in h_max_total if v!=0]
+    # w_min_total = [v for v in w_min_total if v!=0]
+    # w_max_total = [v for v in w_max_total if v!=0]
     
-    print("Height Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_min_total)))
-    print("Height Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_max_total)))
-    print("Width Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_min_total)))
-    print("Width Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_max_total)))
+    # print("Height Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_min_total)))
+    # print("Height Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_max_total)))
+    # print("Width Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_min_total)))
+    # print("Width Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_max_total)))
     print(10*"=", "Segmentation Evaluation", 10*"=")
     mean_iou = eval_utils.compute_mean_iou(cm_total)
     mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
