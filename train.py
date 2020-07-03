@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -79,7 +79,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="p_embed",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -116,7 +116,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=200000,
+parser.add_argument('--training_number_of_steps', type=int, default=240000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -156,13 +156,13 @@ parser.add_argument('--drop_prob', type=float, default=None,
 parser.add_argument('--model_variant', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_model', type=str, default="gap_mlp",
+parser.add_argument('--z_model', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_label_method', type=str, default="cls",
+parser.add_argument('--z_label_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_class', type=int, default=2,
+parser.add_argument('--z_class', type=int, default=None,
                     help='')
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"

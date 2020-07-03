@@ -220,7 +220,11 @@ def pgb_network(images,
                     tf.add_to_collection("prior_list", prior_list)
                     p = tf.stack(prior_list, axis=4)
                     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
-                    prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
+                    # prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
+                    prior_embed = tf.squeeze(tf.matmul(p, z), axis=4)
+                    prior_seg = tf.concat([layers_dict["low_level5"], prior_embed], axis=3)
+                    prior_seg = slim.conv2d(prior_seg, out_node, kernel_size=[1,1], activation_fn=None, scope="prior_seg")
+    
                 tf.add_to_collection("guid_f", prior_seg)   
 
                 c = num_class

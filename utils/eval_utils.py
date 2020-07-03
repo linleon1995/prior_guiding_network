@@ -323,6 +323,7 @@ def inference_segmentation(logits):
     prediction = tf.cast(prediction, tf.int32)
     return prediction
 
+
 def get_label_range(label, height, width):
     """
     HW1, HW

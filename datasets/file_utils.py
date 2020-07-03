@@ -1,8 +1,24 @@
 import os
+import numpy as np
+import SimpleITK as sitk
 
 
+def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_data_type="3d"):
+    if not isinstance(imgs, list):
+        raise ValueError("imgs should be a list")
+
+    if saving_data_type == "2d":
+        for i, img in enumerate(imgs):
+            out = sitk.GetImageFromArray(img)
+            sitk.WriteImage(out, os.path.join(out_dir, file_name, str(i).zfill(4), saving_data_type))
+    elif saving_data_type == "3d":
+        imgs = np.stack(imgs, axis=0)
+        out = sitk.GetImageFromArray(imgs)
+        sitk.WriteImage(out, os.path.join(out_dir, file_name+image_format))
+    else:
+        raise ValueError("Unknown saving_data_type")
+    
 def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, num_file=None):
-    # TODO: specific file starting
     # TODO: fileStr, fileExt are empty list, string, None condition
     file_list = []
     for _ in os.listdir(path):

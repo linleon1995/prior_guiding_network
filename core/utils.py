@@ -51,6 +51,7 @@ def slim_sram(in_node,
         #                                      "output": output})
 
         output = in_node + tf.multiply(net, guidance_tile)
+        tf.add_to_collection(scope+"_guided_feature", tf.multiply(net, guidance_tile))
         return output
       
       
@@ -118,11 +119,8 @@ class Refine(object):
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
-              if GUID_FUSE == "sum":
-                guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
-                # guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
-              elif GUID_FUSE == "conv":
-                guid = slim.conv2d(self.prior_pred, 1, kernel_size=[3,3], activation_fn=None)
+              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
+              # guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
 
           for i, (k, v) in enumerate(self.low_level.items()):
@@ -197,7 +195,11 @@ class Refine(object):
                   guid = tf.nn.dilation2d(guid, filter=kernel, strides=(1,1,1,1), 
                                             rates=(1,1,1,1), padding="SAME")
                   guid = guid - tf.ones_like(guid)                          
-                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)                          
+                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)   
+                elif GUID_FUSE == "w_sum":
+                  w = tf.nn.softmax(tf.reduce_sum(guid, axis=[1,2], keepdims=True), axis=3)
+                  rev_w = tf.ones_like(w) - w
+                  guid = tf.reduce_sum(tf.multiply(guid, rev_w), axis=3, keepdims=True)
                 tf.add_to_collection("guid_avg", guid)
                 
               y_tm1 = y

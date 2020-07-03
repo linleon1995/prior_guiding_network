@@ -8,15 +8,15 @@ Created on Mon Jan 13 10:18:33 2020
 
 import glob
 import math
-import os.path
+import os
 import re
 import sys
 import argparse
 import numpy as np
 import tensorflow as tf
-
+import matplotlib.pyplot as plt
 import build_medical_data, file_utils
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
  
 # TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
 # FLAGS = tf.app.flags.FLAGS
@@ -32,10 +32,10 @@ import build_medical_data, file_utils
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
+parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/testing/',
                     help='MICCAI 2013 dataset root folder.')
 
-parser.add_argument('--output-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
+parser.add_argument('--output-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/',
                     help='Path to save converted SSTable of TensorFlow examples.')                    
 
 parser.add_argument('--dataset-split', type=str, default=None,
@@ -147,13 +147,13 @@ def _convert_dataset(dataset_split, split_indices=None):
       
       sys.stdout.write('\n>> Converting image %d/%d shard %d in shape [%d,%d] num_frame %d' % (
             shard_id+1, num_images, shard_id+1, height, width, num_slices))
-      if shard_id==21:
-        a=3
+      
       # sys.stdout.flush()
       if dataset_split in ("train", "val"):
         # Read the semantic segmentation annotation.
         seg_data = label_reader.decode_image(label_files[shard_id])
         seg_data = seg_data[:,::-1]
+        
         seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
         if height != seg_height or width != seg_width:
           raise RuntimeError('Shape mismatched between image and label.')
@@ -246,12 +246,12 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   
-  dataset_split = {"train": [0,25],
-                   "val": [25,30]}
-  for split in dataset_split.items():
-    _convert_dataset(*split)
+  # dataset_split = {"train": [0,25],
+  #                  "val": [25,30]}
+  # for split in dataset_split.items():
+  #   _convert_dataset(*split)
 
-  # _convert_dataset(FLAGS.dataset_split, FLAGS.split_indices)
+  _convert_dataset("test", FLAGS.split_indices)
   
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
