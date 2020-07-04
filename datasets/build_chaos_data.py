@@ -8,75 +8,92 @@ Created on Mon Jan 13 10:18:33 2020
 
 import glob
 import math
-import os.path
+import os
 import re
 import sys
 import argparse
 import numpy as np
 import tensorflow as tf
-
+import matplotlib.pyplot as plt
 import build_medical_data, file_utils
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
- 
 # TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
+# TODO: neccary condition for some varaibles
+# TODO: build folder
 # FLAGS = tf.app.flags.FLAGS
-
-# tf.app.flags.DEFINE_string('miccai_2013',
-#                            '/home/acm528_02/Jing_Siang/data/Synpase_raw/',
-#                            'MICCAI 2013 dataset root folder.')
-
-# tf.app.flags.DEFINE_string(
-#     'output_dir',
-#     '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
-#     'Path to save converted SSTable of TensorFlow examples.')
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--miccai-2013', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
+parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/',
                     help='MICCAI 2013 dataset root folder.')
 
-parser.add_argument('--output-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
-                    help='Path to save converted SSTable of TensorFlow examples.')                    
+parser.add_argument('--output-dir', type=str, default='/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/',
+                    help='Path to save converted SSTable of TensorFlow examples.')
 
-parser.add_argument('--prior_id', type=int, default=0,
-                    help='')  
+parser.add_argument('--dataset-split', type=str, default="train",
+                    help='')
+
+parser.add_argument('--dataset-modality', type=str, default="CT",
+                    help='')
+
+parser.add_argument('--num-shard', type=int, default=None,
+                    help='')
 
 parser.add_argument('--num_samples', type=int, default=None,
-                    help='')  
-                    
-_NUM_SHARDS = 25
+                    help='')
+
+# TODO: should manage multiple integers
+parser.add_argument('--split-indices', type=int, default=None,
+                    help='')
+
+
+# TODO:
 _NUM_SLICES = 3779
 _NUM_VOXELS = 30
 _DATA_TYPE = "2D"
-PRIOR_IMGS = 'prior_imgs'
-PRIOR_SEGS = 'prior_segs'
+
+# A map from data split to folder name that saves the data.
+_SPLIT_MAP = {
+    'train': 'Train_Sets',
+    'val': 'Train_Sets',
+    'test': 'Test_Sets',
+}
+
+# A map from data modality to folder name that saves the data.
+_MODALITY_MAP = {
+    'CT': ['CT'],
+    'MR_T1_In': ["MR", "T1DUAL", "InPhase"],
+    'MR_T1_Out': ["MR", "T1DUAL", "OutPhase"],
+    'MR_T2': ["MR", "T2SPIR"],
+}
 
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
-    'image': 'raw',
-    'label': 'label',
+    'image': 'DICOM_anon',
+    'label': 'Ground',
 }
 
 # A map from data type to filename postfix.
 _POSTFIX_MAP = {
-    'image': 'img',
-    'label': 'label',
+    "CT": {'image': ['IMG', "i"],'label': ['liver']},
+    "MR_T1_In": {'image': ['IMG'],'label': ['IMG']},
+    "MR_T1_Out": {'image': ['IMG'],'label': ['IMG']},
+    "MR_T2": {'image': ['IMG'],'label': ['IMG']}
 }
 
 # A map from data type to data format.
 _DATA_FORMAT_MAP = {
-    'image': 'nii.gz',
-    'label': 'nii.gz',
+    'image': 'dcm',
+    'label': 'png',
 }
 
-# TODO: describe
-_DATA_SPLIT = 25/30
-
 # Image file pattern.
-_IMAGE_FILENAME_RE = re.compile('(.+)' + _POSTFIX_MAP['image'])
+# TODO:
+# _IMAGE_FILENAME_RE = re.compile('(.+)' + _POSTFIX_MAP["CT"]['image'])
 
 
-def _get_files(data, dataset_split):
+def _get_files(data_path, modality, img_or_label):
   """Gets files for the specified data type and dataset split.
   Args:
     data: String, desired data ('image' or 'label').
@@ -87,30 +104,66 @@ def _get_files(data, dataset_split):
   """
   # TODO: description
   # TODO: dataset converting and prior converting should be separate, otherwise prior converting will be executed twice
- 
-  if data == 'label' and dataset_split == 'test':
-    return None
-  
-  filenames = file_utils.get_file_list(FLAGS.miccai_2013+_FOLDERS_MAP[data]+"/", fileExt=["nii.gz"], 
+  if "CT" in modality:
+    subject_path = os.path.join(data_path, _FOLDERS_MAP[img_or_label])
+  elif "MR" in modality:
+    subject_path = os.path.join(data_path, _MODALITY_MAP[modality][1], _FOLDERS_MAP[img_or_label])
+    if "MR_T1" in modality and  _FOLDERS_MAP[img_or_label]==_FOLDERS_MAP["image"]:
+      subject_path = os.path.join(subject_path, _MODALITY_MAP[modality][2])
+  else:
+    raise ValueError("Unknown data modality")
+
+  filenames = file_utils.get_file_list(subject_path,
+                                       fileStr=_POSTFIX_MAP[modality][img_or_label],
+                                       fileExt=[_DATA_FORMAT_MAP[img_or_label]],
                                        sort_files=True)
-  if dataset_split[1] > len(filenames):
-    raise ValueError("Unknown split name")
-  filenames = filenames[dataset_split[0]:dataset_split[1]]
-  
-  # if dataset_split in ('train', 'val'):
-  #   split_idx = int(len(filenames)*_DATA_SPLIT)
-  #   if dataset_split == 'train':
-  #       filenames = filenames[:split_idx]
-  #   elif dataset_split == 'val':
-  #       filenames = filenames[split_idx:]
-  # elif dataset_split == 'test':
-  #   pass
-  # else:
-  #   raise ValueError("Unknown split name")
   return filenames
 
 
-def _convert_dataset(dataset_split, split_indices):
+def _convert_single_subject(output_filename, image_files, label_files=None):
+  """write one subject in one tfrecord sample
+  """
+  with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
+    if label_files is not None:
+      assert len(image_files) == len(label_files)
+      label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
+
+    image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
+    for i in range(len(image_files)):
+      # Read the image.
+      image_data = image_reader.decode_image(image_files[i])
+      image_data = image_data[0]
+      image_slice = image_data.tostring()
+      # print(np.shape(image_data))
+      height, width = np.shape(image_data)
+      num_slices = len(image_files)
+      # plt.imshow(image_data)
+      # plt.show()
+
+      # Read the semantic segmentation annotation.
+      example_kwargs = {}
+      if label_files is not None:
+        seg_data = label_reader.decode_image(label_files[i])
+        seg_slice = seg_data.tostring()
+        # seg_onehot = np.eye(N_CLASS)[seg_data]
+        # organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
+        example_kwargs = {"seg_data": seg_slice,
+                          # "organ_label": organ_label
+                          }
+
+      # # TODO: re_match?
+      # re_match = _IMAGE_FILENAME_RE.search(image_files[i])
+      # if re_match is None:
+      #   raise RuntimeError('Invalid image filename: ' + image_files[i])
+      # filename = os.path.basename(re_match.group(1))
+      filename = image_files[i]
+
+      example = build_medical_data.image_seg_to_tfexample(
+          image_slice, filename, height, width, depth=i, num_slices=num_slices, **example_kwargs)
+      tfrecord_writer.write(example.SerializeToString())
+
+
+def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   """Converts the specified dataset split to TFRecord format.
   Args:
     dataset_split: The dataset split (e.g., train, val).
@@ -118,121 +171,72 @@ def _convert_dataset(dataset_split, split_indices):
     RuntimeError: If loaded image and label have different shape, or if the
       image file with specified postfix could not be found.
   """
-  image_files = _get_files('image', split_indices)
-  label_files = _get_files('label', split_indices)
 
-  num_images = len(image_files)
-  num_shard = num_images
+  data_path = os.path.join(FLAGS.data_dir, _SPLIT_MAP[dataset_split], _MODALITY_MAP[modality][0])
 
-  image_reader = build_medical_data.ImageReader('nii.gz', channels=1)
-  label_reader = build_medical_data.ImageReader('nii.gz', channels=1)
+  folder_for_each_subject = os.listdir(data_path)
+  folder_for_each_subject.sort()
+  if split_indices is not None:
+    if split_indices[1] > len(folder_for_each_subject):
+      raise ValueError("Out of Range")
+    folder_for_each_subject = folder_for_each_subject[split_indices[0]:split_indices[1]]
 
-  for shard_id in range(num_shard):
-    shard_filename = '%s-%05d-of-%05d.tfrecord' % (
-        dataset_split, shard_id, _NUM_SHARDS)
-    output_filename = os.path.join(FLAGS.output_dir, shard_filename)
-    with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-      sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
-            shard_id+1, num_images, shard_id+1))
-      # sys.stdout.flush()
-      # Read the image.
-      image_data = image_reader.decode_image(image_files[shard_id])
-      image_data = image_data[:,::-1]
-      height, width, num_slices = image_reader.read_image_dims(image_data)
-      # Read the semantic segmentation annotation.
-      seg_data = label_reader.decode_image(label_files[shard_id])
-      seg_data = seg_data[:,::-1]
-      seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
-      if height != seg_height or width != seg_width:
-        raise RuntimeError('Shape mismatched between image and label.')
-      # Convert to tf example.
-      # TODO: re_match?
-      re_match = _IMAGE_FILENAME_RE.search(image_files[shard_id])
-      if re_match is None:
-        raise RuntimeError('Invalid image filename: ' + image_files[shard_id])
-      filename = os.path.basename(re_match.group(1))
+  if FLAGS.num_shard is not None:
+    num_shard = FLAGS.num_shard
+  else:
+    num_shard = len(folder_for_each_subject)
 
-      # TODO: 14, organ label
-      if _DATA_TYPE == "2D":
-        seg_onehot = np.eye(14)[seg_data]
-        organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
-        organ_labels = np.int32(organ_labels>0)
-        for i in range(num_slices):
-          image_slice = image_data[i].tostring()
-          seg_slice = seg_data[i].tostring()
-          organ_label = organ_labels[i].tostring()
-          example = build_medical_data.image_seg_to_tfexample(image_slice, seg_slice, 
-                                                              filename, height, width, depth=i, 
-                                                              num_slices=num_slices, organ_label=organ_label)
-          tfrecord_writer.write(example.SerializeToString())
-      elif _DATA_TYPE == "3D":
-        pass
-        # image_slice = image_data.tostring()
-        # seg_slice = seg_data.tostring()
-        # organ_label = np.int32(np.nonzero(np.sum(seg_slice)))
-        # example = build_medical_data.image_seg_to_tfexample(
-        #     image_slice, seg_slice, filename, height, width, depth=None, num_slices=num_slices, organ_label=organ_label)
-        # tfrecord_writer.write(example.SerializeToString())
-      
-      
-    # if FLAGS.prior_id is not None:  
-    #   if shard_id == FLAGS.prior_id:
-    #     prior_imgs = image_data
-    #     prior_segs = seg_data
-        
-    #     # Assign one training data (voxel) as a prior
-    #     if prior_imgs is not None:
-    #       prior_filename = '%s-%05d.tfrecord' % (
-    #           PRIOR_IMGS, FLAGS.prior_id)
-    #       output_filename = os.path.join(FLAGS.output_dir, prior_filename)
-    #       with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-    #         sys.stdout.write('\r>> Converting image prior (prior_id %d)' % (FLAGS.prior_id))
-    #         sys.stdout.flush()
-            
-    #         if FLAGS.num_samples is not None:
-    #           indices = np.arange(0, num_slices, num_slices/FLAGS.num_samples)
-    #           indices = np.int32(indices)
-    #           prior_imgs = np.take(prior_imgs, indices, axis=0)
-    #           new_num_slices = FLAGS.num_samples
-    #         else:
-    #           new_num_slices =  num_slices
-              
-    #         example = build_medical_data.priors_to_tfexample(
-    #           prior_imgs.tostring(), PRIOR_IMGS, num_slices=new_num_slices, prior_id=FLAGS.prior_id)
-    #         tfrecord_writer.write(example.SerializeToString())
-            
-    #     if prior_segs is not None:
-    #       prior_filename = '%s-%05d.tfrecord' % (
-    #           PRIOR_SEGS, FLAGS.prior_id)
-    #       output_filename = os.path.join(FLAGS.output_dir, prior_filename)
-    #       with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-    #         sys.stdout.write('\r>> Converting segmentatin prior (prior_id %d)' % (FLAGS.prior_id))
-    #         sys.stdout.flush()
-            
-    #         if FLAGS.num_samples is not None:
-    #           indices = np.arange(0, num_slices, num_slices/FLAGS.num_samples)
-    #           indices = np.int32(indices)
-    #           prior_segs = np.take(prior_segs, indices, axis=0)
-    #           new_num_slices = FLAGS.num_samples
-    #         else:
-    #           new_num_slices =  num_slices
-              
-    #         example = build_medical_data.priors_to_tfexample(
-    #           prior_segs.tostring(), PRIOR_SEGS, num_slices=new_num_slices, prior_id=FLAGS.prior_id)
-    #         tfrecord_writer.write(example.SerializeToString())
-      
+  for shard_id, sub_folder in enumerate(folder_for_each_subject):
+    path = os.path.join(data_path, sub_folder)
+
+    image_files = _get_files(path, modality, img_or_label="image")
+    kwargs={"image_files": image_files}
+    if dataset_split in ("train", "val"):
+      label_files = _get_files(path, modality, img_or_label="label")
+      kwargs["label_files"] = label_files
+
+    # for shard_id in range(num_shard):
+    #   sys.stdout.write('\n>> Converting image %d/%d shard %d in num_frame %d' % (
+    #     shard_id+1, num_shard, shard_id+1, len(image_files)))
+
+    sys.stdout.write('\n>> Converting image %d/%d shard %d in num_frame %d' % (
+        shard_id+1, num_shard, shard_id+1, len(image_files)))
+
+    shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
+          dataset_split, modality, shard_id, num_shard)
+
+    output_filename = os.path.join(out_dir, shard_filename)
+    _convert_single_subject(output_filename, **kwargs)
+
   sys.stdout.write('\n')
   sys.stdout.flush()
+
+
+def unit_test_get_files():
+  total_files = {}
+  for img_or_label in ['image', 'label']:
+    for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
+      path = os.path.join(FLAGS.data_dir, _SPLIT_MAP["train"], _MODALITY_MAP[m][0], str(1))
+      files = _get_files(path, m, img_or_label)
+      total_files[img_or_label+"--"+m] = files
+      print(total_files.items())
+      print(60*"o")
 
 
 def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
+  # unit_test_get_files()
   dataset_split = {"train": [0,15],
-                   "val": [15,20]}
-  for split in dataset_split.items():
-    _convert_dataset(*split)
+                    "val": [15,20],
+                    "test": None}
+  for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
 
+    for split in dataset_split:
+      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split])
+      _convert_dataset(out_dir, split, m, dataset_split[split])
+
+  # _convert_dataset("test", FLAGS.split_indices)
 
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
