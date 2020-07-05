@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -30,23 +30,16 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
-DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/'
-DATASET_DIR = "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/"
-# DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
-
-# LOGGING_PATH = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/tf_thesis/thesis_trained/'
-# DATASET_DIR = '/mnt/md0/home/applyACC/EE_ACM528/EE_ACM528_04/project/data/tfrecord/'
 
 HU_WINDOW = [-125, 275]
-#TRAIN_CROP_SIZE = [257, 257]
-#TRAIN_CROP_SIZE = [512, 512]
 
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
-TRAIN_SPLIT = ["train-CT"]
+TRAIN_SPLIT = ["train"]
 SEG_WEIGHT = 1.0
 PRE_CROP_SIZE = {"train-val": [394, 440],
                  "train": [458, 440]}
+DATASET_NAME = '2019_ISBI_CHAOS_CT'
 # TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
@@ -80,7 +73,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -117,7 +110,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=240000,
+parser.add_argument('--training_number_of_steps', type=int, default=100000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -174,7 +167,7 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=20,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 parser.add_argument('--fusion_slice', type=float, default=3,
@@ -234,11 +227,12 @@ parser.add_argument('--momentum', type=float, default=0.9,
                     help='')
 
 # Dataset settings.
-parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
+# '2019_ISBI_CHAOS_CT', '2019_ISBI_CHAOS_MR', '2013_MICCAI_Abdominal'
+parser.add_argument('--dataset', type=str, default=DATASET_NAME,
                     help='')
 
-parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
-                    help='')
+# parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
+#                     help='')
 
 parser.add_argument('--output_stride', type=int, default=None,
                     help='')
@@ -423,15 +417,15 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   #   guidance_dict = None
 
   # Log the summary
-  _log_summaries(samples[common.IMAGE],
-                 samples[common.LABEL],
-                 outputs_to_num_classes['semantic'],
-                 output_dict[common.OUTPUT_TYPE],
-                 z_label=z_label,
-                 z_pred=z_pred,
-                 prior_segs=prior_seg,
-                 guidance=layers_dict,
-                 guidance_original=guidance_original)
+  # _log_summaries(samples[common.IMAGE],
+  #                samples[common.LABEL],
+  #                outputs_to_num_classes['semantic'],
+  #                output_dict[common.OUTPUT_TYPE],
+  #                z_label=z_label,
+  #                z_pred=z_pred,
+  #                prior_segs=prior_seg,
+  #                guidance=layers_dict,
+  #                guidance_original=guidance_original)
   return output_dict, layers_dict
 
 
@@ -842,7 +836,6 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
     train_tensor: A tensor to update the model variables.
     summary_op: An operation to log the summaries.
   """
-
   with tf.variable_scope(
       tf.get_variable_scope(), reuse=True):
       samples = iterator
@@ -859,7 +852,7 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
 
   labels = tf.squeeze(samples[common.LABEL], axis=3)
   labels_flat = tf.reshape(labels, shape=[-1,])
-
+  print(samples, predictions, logits, 30*"s")
   # Define Confusion Maxtrix
   cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=num_of_classes)
 
@@ -953,7 +946,7 @@ def main(unused_argv):
             train_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name=TRAIN_SPLIT,
-                dataset_dir=FLAGS.dataset_dir,
+                # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
                 HU_window=HU_WINDOW,
@@ -984,7 +977,7 @@ def main(unused_argv):
             val_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name=["val"],
-                dataset_dir=FLAGS.dataset_dir,
+                # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=1,
                 HU_window=HU_WINDOW,
@@ -993,9 +986,9 @@ def main(unused_argv):
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
                 crop_size=[512, 512],
-                min_resize_value=FLAGS.min_resize_value,
-                max_resize_value=FLAGS.max_resize_value,
-                resize_factor=FLAGS.resize_factor,
+                # min_resize_value=FLAGS.min_resize_value,
+                # max_resize_value=FLAGS.max_resize_value,
+                # resize_factor=FLAGS.resize_factor,
                 # min_scale_factor=FLAGS.min_scale_factor,
                 # max_scale_factor=FLAGS.max_scale_factor,
                 # scale_factor_step_size=FLAGS.scale_factor_step_size,

@@ -32,11 +32,11 @@ import cv2
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 EVAL_CROP_SIZE = [256,256]
 EVAL_CROP_SIZE = [512,512]
-ATROUS_RATES = None
+
 # TODO: Multi-Scale Test
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
@@ -46,11 +46,12 @@ HU_WINDOW = [-125, 275]
 # TODO: if dir not exist. Don't build new one
 IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
 IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254, 255, 256, 257, 258, 447, 448, 449, 571, 572, 573]
+
 # TODO: do it correctly
 TEST_FILE_CODE = np.arange(61,81)
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
-EVAL_SPLIT = ["test"]
+EVAL_SPLIT = ["val"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
@@ -58,6 +59,8 @@ GUID_LOSS = "sigmoid_cross_entropy"
 STAGE_PRED_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "sigmoid_cross_entropy"
 SEG_WEIGHT_FLAG = False
+DATASET_NAME = '2013_MICCAI_Abdominal'
+DATASET_NAME = '2019_ISBI_CHAOS_CT'
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-110000'
@@ -79,11 +82,11 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_013/model.ckpt-160000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-168000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-187000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_026/model.ckpt-200000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_026/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-64000'
 
 # CHECKPOINT = None
 
-DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord2/'
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 
@@ -97,7 +100,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -150,7 +153,7 @@ parser.add_argument('--output_stride', type=int, default=8,
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=20,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 parser.add_argument('--fusion_slice', type=int, default=3,
@@ -196,18 +199,15 @@ parser.add_argument('--display_box_plot', type=bool, default=False,
 parser.add_argument('--store_all_imgs', type=bool, default=False,
                     help='')
 
-parser.add_argument('--show_pred_only', type=bool, default=True,
+parser.add_argument('--show_pred_only', type=bool, default=False,
                     help='')                  
 
 # Dataset settings.
-parser.add_argument('--dataset', type=str, default='2013_MICCAI_Abdominal',
+parser.add_argument('--dataset', type=str, default=DATASET_NAME,
                     help='')
 
-parser.add_argument('--eval_split', type=str, default='train-val',
-                    help='')
-
-parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
-                    help='')
+# parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
+#                     help='')
 
 parser.add_argument('--max_number_of_evaluations', type=int, default=1,
                     help='')
@@ -269,14 +269,14 @@ def main(unused_argv):
 
   # TODO:
   model_options = common.ModelOptions(
-              outputs_to_num_classes=14,
+              outputs_to_num_classes=2,
               crop_size=EVAL_CROP_SIZE,
               output_stride=FLAGS.output_stride)
 
   dataset = data_generator.Dataset(
                 dataset_name=FLAGS.dataset,
                 split_name=EVAL_SPLIT,
-                dataset_dir=FLAGS.dataset_dir,
+                # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 batch_size=1,
@@ -358,7 +358,7 @@ def main(unused_argv):
     if FLAGS.guidance_type == "gt":
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 14, 1])
+      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 2, 1])
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
     # if common.PRIOR_SEGS in samples:
     #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
@@ -620,6 +620,7 @@ def main(unused_argv):
           display_imgs = np.arange(num_sample)
       else:
           display_imgs = IMG_LIST
+          
       for i in range(num_sample):
           data = sess.run(samples)
           _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}

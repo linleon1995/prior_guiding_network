@@ -186,7 +186,7 @@ class Refine(object):
                   guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
                 elif GUID_FUSE == "conv":
                   if i < len(self.low_level)-1:
-                    guid = slim.conv2d(guid, 1, kernel_size=[3,3], activation_fn=None)
+                    guid = slim.conv2d(guid, out_node, kernel_size=[3,3], activation_fn=None)
                   else:
                     guid = tf.reduce_sum(guid, axis=3, keepdims=True)  
                 elif GUID_FUSE == "sum_dilated":

@@ -13,37 +13,23 @@ import os
 import tensorflow as tf
 import common
 import input_preprocess
-from datasets import build_prior, file_utils
+from datasets import build_prior, file_utils, dataset_infos
 from utils import train_utils
 
-DatasetDescriptor = collections.namedtuple(
-    'DatasetDescriptor',
-    [
-        'splits_to_sizes',  # Splits of the dataset into training, val and test.
-        'num_classes',  # Number of semantic classes, including the
-                        # background class (if exists). For example, there
-                        # are 20 foreground classes + 1 background class in
-                        # the PASCAL VOC 2012 dataset. Thus, we set
-                        # num_classes=21.
-        'ignore_label',  # Ignore label value.
-    ])
-
-# TODO:
-_MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
-    splits_to_sizes={
-        'train': 3111,
-        'val': 668,
-        'test': 2387
-    },
-    num_classes=14,
-    ignore_label=255,
-) 
-
-
 _DATASETS_INFORMATION = {
-    '2013_MICCAI_Abdominal': _MICCAI_ABDOMINAL_INFORMATION,
+    '2013_MICCAI_Abdominal': dataset_infos._MICCAI_ABDOMINAL_INFORMATION,
+    '2019_ISBI_CHAOS_CT': dataset_infos._ISBI_CHAOS_INFORMATION_CT,
+    '2019_ISBI_CHAOS_MR_T1': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T1,
+    '2019_ISBI_CHAOS_MR_T2': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T2,
 }
 
+# TODO: MR_T1 in and out
+_DATASETS_STORING_PATH_MAP = {
+    '2013_MICCAI_Abdominal': "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/",
+    '2019_ISBI_CHAOS_CT': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
+    '2019_ISBI_CHAOS_MR_T1': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
+    '2019_ISBI_CHAOS_MR_T2': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
+}
 # Default file pattern of TFRecord of TensorFlow Example.
 _FILE_PATTERN = '%s-*'
 
@@ -67,7 +53,6 @@ class Dataset(object):
     def __init__(self,
                  dataset_name,
                  split_name,
-                 dataset_dir,
                  batch_size,
                  crop_size,
                  HU_window,
@@ -98,6 +83,7 @@ class Dataset(object):
         if dataset_name not in _DATASETS_INFORMATION:
             raise ValueError('The specified dataset is not supported yet.')
         self.dataset_name = dataset_name
+        self.dataset_dir = _DATASETS_STORING_PATH_MAP[self.dataset_name]
         
         self.splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
 
@@ -112,7 +98,7 @@ class Dataset(object):
         #     raise ValueError('Please specify the length of sequence')
       
         self.split_name = split_name
-        self.dataset_dir = dataset_dir
+        # self.dataset_dir = dataset_dir
         self.batch_size = batch_size
         self.crop_size = crop_size
         self.pre_crop_size = pre_crop_size
@@ -135,6 +121,8 @@ class Dataset(object):
         self.prior_num_subject = prior_num_subject
         self.prior_dir = prior_dir
         self.guidance_type = guidance_type
+        self.raw_data_height = _DATASETS_INFORMATION[self.dataset_name].height
+        self.raw_data_width = _DATASETS_INFORMATION[self.dataset_name].width
         self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name].num_classes
         self.ignore_label = _DATASETS_INFORMATION[self.dataset_name].ignore_label
         self.seq_length = seq_length
@@ -170,11 +158,11 @@ class Dataset(object):
         parsed_features = tf.parse_single_example(example_proto, features)
         
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
-        image = tf.reshape(image, [512,512,1])
+        image = tf.reshape(image, [self.raw_data_height,self.raw_data_width,1])
         
         if "train" in self.split_name or "val" in self.split_name:
             label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            label = tf.reshape(label, [512,512,1])
+            label = tf.reshape(label, [self.raw_data_height,self.raw_data_width,1])
             # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
 
             organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
@@ -239,10 +227,10 @@ class Dataset(object):
             keys_to_sequence_features)
         
         image = tf.decode_raw(feature_list["image/encoded"], tf.int32)
-        image = tf.reshape(image, [-1,512,512,1])
+        image = tf.reshape(image, [-1,self.raw_data_height,self.raw_data_width,1])
         
         label = tf.decode_raw(feature_list["segmentation/encoded"], tf.int32)
-        label = tf.reshape(label, [-1,512,512,1])
+        label = tf.reshape(label, [-1,self.raw_data_height,self.raw_data_width,1])
         
         depth = feature_list["image/depth"]
         depth = tf.reshape(depth, [-1,1])
@@ -451,7 +439,10 @@ class Dataset(object):
             #     prior_segs = tf.stack(prior_segs, axis=3)
 
             # sample[common.PRIOR_SEGS] = prior_segs 
-
+        else:
+            prior_segs = None
+            
+            
         if self.pre_crop_size is not None:
             pre_crop_height, pre_crop_width = self.pre_crop_size
         else:
@@ -527,6 +518,7 @@ class Dataset(object):
         # for split in self.split_name:
         files = file_utils.get_file_list(self.dataset_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True)
         self.files = files
+        print(self.files, 30*"files")
         # files = self._get_all_files(self.split_name) 
         dataset = (
              tf.data.TFRecordDataset(files)

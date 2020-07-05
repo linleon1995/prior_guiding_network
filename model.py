@@ -161,12 +161,12 @@ def pgb_network(images,
     predict_without_background = kwargs.pop("predict_without_background", False)
     apply_sram2 = kwargs.pop("apply_sram2", False)
 
-    
     # Produce Prior
-    prior_seg = get_prior(prior_segs, guidance_type, num_class)
+    if prior_segs is not None:
+        prior_from_data = get_prior(prior_segs, guidance_type, num_class)
                 
     if guid_encoder in ("early", "p_embed_prior"):
-        in_node = tf.concat([images, prior_seg], axis=3)
+        in_node = tf.concat([images, prior_from_data], axis=3)
     elif guid_encoder in ("late", "image_only", "p_embed"):
         in_node = images
         
@@ -211,7 +211,7 @@ def pgb_network(images,
                     prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
                 elif guid_encoder == "late":
                     img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
-                    prior_embed = utils.get_guidance(tf.concat([images, prior_seg], axis=3), out_node, model_options.output_stride)
+                    prior_embed = utils.get_guidance(tf.concat([images, prior_from_data], axis=3), out_node, model_options.output_stride)
                     prior_seg = slim.conv2d(tf.concat([img_embed,prior_embed],axis=3), out_node, 3, scope="prior_seg")
                 elif guid_encoder in ("p_embed", "p_embed_prior"):
                     if z_class is None:
@@ -245,7 +245,7 @@ def pgb_network(images,
     refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type, 
                                 embed_node=out_node, predict_without_background=predict_without_background,
-                                weight_decay=weight_decay, is_training=is_training,
+                                weight_decay=weight_decay, is_training=is_training,num_class=num_class,
                                 apply_sram2=apply_sram2)  
     logits, preds = refine_model.model()    
     # logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 

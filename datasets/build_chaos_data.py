@@ -128,6 +128,8 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       assert len(image_files) == len(label_files)
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
+    min_v = 1000
+    max_v = -1
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
     for i in range(len(image_files)):
       # Read the image.
@@ -136,6 +138,7 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       image_slice = image_data.tostring()
       # print(np.shape(image_data))
       height, width = np.shape(image_data)
+      
       num_slices = len(image_files)
       # plt.imshow(image_data)
       # plt.show()
@@ -144,13 +147,17 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       example_kwargs = {}
       if label_files is not None:
         seg_data = label_reader.decode_image(label_files[i])
+        seg_data = seg_data // 255
         seg_slice = seg_data.tostring()
         # seg_onehot = np.eye(N_CLASS)[seg_data]
         # organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
         example_kwargs = {"seg_data": seg_slice,
                           # "organ_label": organ_label
                           }
-
+        if np.min(seg_data) < min_v:
+          min_v = np.min(seg_data)
+        if np.max(seg_data) > max_v:
+          max_v = np.max(seg_data)
       # # TODO: re_match?
       # re_match = _IMAGE_FILENAME_RE.search(image_files[i])
       # if re_match is None:
@@ -161,7 +168,8 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       example = build_medical_data.image_seg_to_tfexample(
           image_slice, filename, height, width, depth=i, num_slices=num_slices, **example_kwargs)
       tfrecord_writer.write(example.SerializeToString())
-
+    print(min_v, max_v)
+  return height, width
 
 def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   """Converts the specified dataset split to TFRecord format.
@@ -186,6 +194,10 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   else:
     num_shard = len(folder_for_each_subject)
 
+  if not os.path.isdir(out_dir):
+    os.mkdir(out_dir)
+          
+  total_slices = 0
   for shard_id, sub_folder in enumerate(folder_for_each_subject):
     path = os.path.join(data_path, sub_folder)
 
@@ -199,15 +211,19 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
     #   sys.stdout.write('\n>> Converting image %d/%d shard %d in num_frame %d' % (
     #     shard_id+1, num_shard, shard_id+1, len(image_files)))
 
-    sys.stdout.write('\n>> Converting image %d/%d shard %d in num_frame %d' % (
-        shard_id+1, num_shard, shard_id+1, len(image_files)))
-
+    total_slices += len(image_files)
+    
     shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
           dataset_split, modality, shard_id, num_shard)
 
     output_filename = os.path.join(out_dir, shard_filename)
-    _convert_single_subject(output_filename, **kwargs)
-
+    height, width = _convert_single_subject(output_filename, **kwargs)
+    
+    sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
+        dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
+  
+  sys.stdout.write('\n' + 60*"-")
+  sys.stdout.write('\n total_slices: {}'.format(total_slices))
   sys.stdout.write('\n')
   sys.stdout.flush()
 
@@ -227,13 +243,12 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   # unit_test_get_files()
-  dataset_split = {"train": [0,15],
-                    "val": [15,20],
+  dataset_split = {"train": [0,16],
+                    "val": [16,20],
                     "test": None}
   for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
-
     for split in dataset_split:
-      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split])
+      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split], m)
       _convert_dataset(out_dir, split, m, dataset_split[split])
 
   # _convert_dataset("test", FLAGS.split_indices)
