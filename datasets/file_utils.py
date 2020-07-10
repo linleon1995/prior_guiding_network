@@ -13,6 +13,7 @@ def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_da
             sitk.WriteImage(out, os.path.join(out_dir, file_name, str(i).zfill(4), saving_data_type))
     elif saving_data_type == "3d":
         imgs = np.stack(imgs, axis=0)
+        print(np.shape(imgs))
         out = sitk.GetImageFromArray(imgs)
         sitk.WriteImage(out, os.path.join(out_dir, file_name+image_format))
     else:

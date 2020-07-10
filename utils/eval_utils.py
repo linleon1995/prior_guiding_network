@@ -284,7 +284,7 @@ def load_model(saver, sess, ckpt_path):
     print("Restored model parameters from {}".format(ckpt_path))
 
 
-def plot_confusion_matrix(cm, classes,
+def plot_confusion_matrix(cm, classes, filename,
                           normalize=False,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues,
@@ -312,14 +312,14 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
     plt.tight_layout()  
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, "CM.png"))
+        plt.savefig(os.path.join(save_path, filename+".png"))
     else:
         plt.show()
         
-def inference_segmentation(logits):
-    prediction = tf.nn.softmax(logits, axis=3)
+def inference_segmentation(logits, dim):
+    prediction = tf.nn.softmax(logits, axis=dim)
     # prediction = tf.identity(prediction, name=common.OUTPUT_TYPE)
-    prediction = tf.argmax(prediction, axis=3)
+    prediction = tf.argmax(prediction, axis=dim)
     prediction = tf.cast(prediction, tf.int32)
     return prediction
 

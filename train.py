@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -32,6 +32,7 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 
 HU_WINDOW = [-125, 275]
+# HU_WINDOW = None
 
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
@@ -39,7 +40,8 @@ TRAIN_SPLIT = ["train"]
 SEG_WEIGHT = 1.0
 PRE_CROP_SIZE = {"train-val": [394, 440],
                  "train": [458, 440]}
-DATASET_NAME = '2019_ISBI_CHAOS_CT'
+DATASET_NAME = ['2013_MICCAI_Abdominal']
+# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1']
 # TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
@@ -64,6 +66,15 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--guid_feature_only', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--stage_pred_ks', type=int, default=3,
+                    help='')
+
+parser.add_argument('--add_feature', type=bool, default=True,
+                    help='')
+
 parser.add_argument('--apply_sram2', type=bool, default=True,
                     help='')
 
@@ -73,7 +84,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="image_only",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -110,7 +121,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=100000,
+parser.add_argument('--training_number_of_steps', type=int, default=240000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -167,7 +178,7 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=None,
+parser.add_argument('--prior_num_subject', type=int, default=20,
                     help='')
 
 parser.add_argument('--fusion_slice', type=float, default=3,
@@ -182,10 +193,10 @@ parser.add_argument('--deformable_transform', type=bool, default=False,
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss_decay', type=bool, default=True,
+parser.add_argument('--stage_pred_loss', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guidance_loss_decay', type=bool, default=True,
+parser.add_argument('--guidance_loss', type=bool, default=False,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -228,8 +239,8 @@ parser.add_argument('--momentum', type=float, default=0.9,
 
 # Dataset settings.
 # '2019_ISBI_CHAOS_CT', '2019_ISBI_CHAOS_MR', '2013_MICCAI_Abdominal'
-parser.add_argument('--dataset', type=str, default=DATASET_NAME,
-                    help='')
+# parser.add_argument('--dataset', type=str, default=DATASET_NAME,
+#                     help='')
 
 # parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
 #                     help='')
@@ -261,7 +272,7 @@ parser.add_argument('--max_resize_value', type=int, default=None,
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
-parser.add_argument('--pre_crop_flag', type=bool, default=False,
+parser.add_argument('--pre_crop_flag', type=bool, default=True,
                     help='')
 
 def check_model_conflict(model_options):
@@ -293,7 +304,7 @@ class DSHandleHook(tf.train.SessionRunHook):
                                                                 self.valid_str])
         print('session run ds string-handle done....')
 
-def _build_network(samples, outputs_to_num_classes, model_options, ignore_label):
+def _build_network(samples, outputs_to_num_classes, model_options, ignore_label, is_training):
   """Builds a clone of DeepLab.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
@@ -356,7 +367,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 # num_slices=samples[common.NUM_SLICES],
                 prior_slice=prior_slices,
                 batch_size=clone_batch_size,
-                # z_label=samples[common.Z_LABEL],
                 guidance_type=FLAGS.guidance_type,
                 fusion_slice=FLAGS.fusion_slice,
                 prior_dir=FLAGS.prior_dir,
@@ -364,7 +374,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 stn_in_each_class=True,
                 # prior_num_slice=FLAGS.prior_num_slice,
                 reuse=tf.AUTO_REUSE,
-                is_training=True,
+                is_training=is_training,
                 weight_decay=FLAGS.weight_decay,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 share=FLAGS.share,
@@ -374,13 +384,18 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
                 z_label_method=FLAGS.z_label_method,
                 z_model=FLAGS.z_model,
                 z_class=FLAGS.z_class,
-                guidance_loss=FLAGS.guid_loss_name,
-                stage_pred_loss=FLAGS.stage_pred_loss_name,
+                guidance_loss=FLAGS.guidance_loss,
+                stage_pred_loss=FLAGS.stage_pred_loss,
+                guidance_loss_name=FLAGS.guid_loss_name,
+                stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
                 fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
                 apply_sram2=FLAGS.apply_sram2,
+                add_feature=FLAGS.add_feature,
+                guid_feature_only=FLAGS.guid_feature_only,
+                stage_pred_ks=FLAGS.stage_pred_ks,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -416,16 +431,17 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label)
   # if len(guidance_dict) == 0:
   #   guidance_dict = None
 
+  # TODO validation phase can use log_summaries?
   # Log the summary
-  # _log_summaries(samples[common.IMAGE],
-  #                samples[common.LABEL],
-  #                outputs_to_num_classes['semantic'],
-  #                output_dict[common.OUTPUT_TYPE],
-  #                z_label=z_label,
-  #                z_pred=z_pred,
-  #                prior_segs=prior_seg,
-  #                guidance=layers_dict,
-  #                guidance_original=guidance_original)
+  _log_summaries(samples[common.IMAGE],
+                 samples[common.LABEL],
+                 outputs_to_num_classes['semantic'],
+                 output_dict[common.OUTPUT_TYPE],
+                 z_label=z_label,
+                 z_pred=z_pred,
+                 prior_segs=prior_seg,
+                 guidance=layers_dict,
+                 guidance_original=guidance_original)
   return output_dict, layers_dict
 
 
@@ -444,16 +460,16 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
         tf.get_variable_scope(), reuse=True if reuse_variable else None):
         samples = iterator
         output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes},
-                                                model_options, ignore_label)
+                                                model_options, ignore_label, is_training=True)
 
     loss_dict = {}
     seg_weight = SEG_WEIGHT
-    # guidance_loss_weight = FLAGS.guidance_loss_decay
-    # stage_pred_loss_weight = FLAGS.stage_pred_loss_decay
+    # guidance_loss_weight = FLAGS.guidance_loss
+    # stage_pred_loss_weight = FLAGS.stage_pred_loss
     # stage_pred_loss_weight = [0.04] + 13*[1.0]
-    # TODO: stage_pred_loss_decay should be weight or flag
+    # TODO: stage_pred_loss should be weight or flag
     # TODO: predict_w.o_bg case
-    if FLAGS.stage_pred_loss_decay:
+    if FLAGS.stage_pred_loss:
       if FLAGS.stage_pred_loss_name == "softmax_generaled_dice_loss":
         num_label_pixels = tf.reduce_sum(tf.one_hot(
           samples[common.LABEL][...,0], num_of_classes, on_value=1.0, off_value=0.0), axis=[1,2])
@@ -463,20 +479,20 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
         stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (num_label_pixels + 1e-10)
     else:
       stage_pred_loss_weight = 1.0
-    if FLAGS.guidance_loss_decay:
+    if FLAGS.guidance_loss:
       guidance_loss_weight = stage_pred_loss_weight
     else:
       guidance_loss_weight = 1.0
     # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
 
     loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "decay": None, "weights": seg_weight, "scope": "segmenation"}
-    if FLAGS.guidance_loss_decay is not None:
+    if FLAGS.guidance_loss:
       # guidance_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.guid_loss_name,
-      #                                                    decay=FLAGS.guidance_loss_decay)
+      #                                                    decay=FLAGS.guidance_loss)
       loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "decay": None, "weights": guidance_loss_weight, "scope": "guidance"}
-    if FLAGS.stage_pred_loss_decay is not None:
+    if FLAGS.stage_pred_loss:
       # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.stage_pred_loss_name,
-      #                                                      decay=FLAGS.stage_pred_loss_decay)
+      #                                                      decay=FLAGS.stage_pred_loss)
       loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
 
     if common.OUTPUT_Z in output_dict:
@@ -499,8 +515,8 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     #     elif FLAGS.z_label_method.split("_")[1] == 'classification':
     #         loss_dict[common.OUTPUT_Z] = {"loss": "cross_entropy_zlabel", "decay": FLAGS.z_loss_decay}
 
-    # if FLAGS.guidance_loss_decay is not None:
-    #     loss_dict[common.GUIDANCE] = {"loss": "mean_dice_coefficient", "decay": FLAGS.guidance_loss_decay}
+    # if FLAGS.guidance_loss is not None:
+    #     loss_dict[common.GUIDANCE] = {"loss": "mean_dice_coefficient", "decay": FLAGS.guidance_loss}
 
     # if FLAGS.transform_loss_decay is not None:
     #     loss_dict["transform"] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.transform_loss_decay}
@@ -558,46 +574,46 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
     tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
 
   # TODO: parameterization
-  if guidance is not None:
-    # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
-    # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
+  # if guidance is not None:
+  #   # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
+  #   # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
 
-    if FLAGS.affine_transform:
-      tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
-      tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
+  #   if FLAGS.affine_transform:
+  #     tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
+  #     tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
 
-    tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
 
-    tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
 
-    tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
 
-    tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
 
-    tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
 
-    guid_avg = tf.get_collection("guid_avg")
-    tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
+  #   guid_avg = tf.get_collection("guid_avg")
+  #   tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
+  #   tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
+  #   # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
 
-  # if z_label is not None and z_pred is not None:
-  #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
+  # # if z_label is not None and z_pred is not None:
+  # #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-  #   z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
-  #   z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
-  #   tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
+  # #   z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
+  # #   z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
+  # #   tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
 
-  #   z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
-  #   z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
-  #   tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
+  # #   z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
+  # #   z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
+  # #   tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
 
 
 def _average_gradients(tower_grads):
@@ -840,19 +856,20 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
       tf.get_variable_scope(), reuse=True):
       samples = iterator
       output_dict, layers_dict = _build_network(samples, {common.OUTPUT_TYPE: num_of_classes},
-                                              model_options, ignore_label)
+                                              model_options, ignore_label, is_training=False)
 
 
   logits = output_dict[common.OUTPUT_TYPE]
-  preds = tf.nn.softmax(logits)
-  predictions = tf.identity(preds, name=common.OUTPUT_TYPE)
-  predictions = tf.argmax(predictions, axis=3)
-  predictions = tf.cast(predictions, tf.int32)
-  pred_flat = tf.reshape(predictions, shape=[-1,])
-
+  # preds = tf.nn.softmax(logits)
+  # predictions = tf.identity(preds, name=common.OUTPUT_TYPE)
+  # predictions = tf.argmax(predictions, axis=3)
+  # predictions = tf.cast(predictions, tf.int32)
+  prediction = eval_utils.inference_segmentation(logits, dim=3)
+  pred_flat = tf.reshape(prediction, shape=[-1,])
+  
   labels = tf.squeeze(samples[common.LABEL], axis=3)
   labels_flat = tf.reshape(labels, shape=[-1,])
-  print(samples, predictions, logits, 30*"s")
+  # print(samples, predictions, logits, 30*"s")
   # Define Confusion Maxtrix
   cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=num_of_classes)
 
@@ -944,7 +961,7 @@ def main(unused_argv):
               pre_crop_size = None
 
             train_generator = data_generator.Dataset(
-                dataset_name=FLAGS.dataset,
+                dataset_name=DATASET_NAME,
                 split_name=TRAIN_SPLIT,
                 # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
@@ -975,7 +992,7 @@ def main(unused_argv):
 
             # TODO: no validation option
             val_generator = data_generator.Dataset(
-                dataset_name=FLAGS.dataset,
+                dataset_name=DATASET_NAME,
                 split_name=["val"],
                 # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
@@ -1083,8 +1100,9 @@ def main(unused_argv):
                     _, global_step = sess.run([train_tensor, tf.train.get_global_step()])
                     if global_step%FLAGS.validation_steps == 0:
                       cm_total = 0
-                      for j in range(val_generator.splits_to_sizes["val"]):
-                        cm_total += sess.run(val_tensor, feed_dict={steps: j})
+                      for sub_split in val_generator.splits_to_sizes.values():
+                        for j in range(sub_split["val"]):
+                          cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
                       mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)
 

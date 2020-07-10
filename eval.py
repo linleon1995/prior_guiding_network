@@ -48,6 +48,12 @@ IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
 IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254, 255, 256, 257, 258, 447, 448, 449, 571, 572, 573]
 
 # TODO: do it correctly
+CT_TRAIN_SET = [1,2,5,6,8,10,14,16,18,19,21,22,23,24,25,26,27,28,29,30]
+CT_TEST_SET = [3,4,7,9,11,12,13,15,17,20,31,32,33,34,35,36,37,38,39,40]
+CT_TEST_SET = [11,12,13,15,17,20,3,31,32,33,34,35,36,37,38,39,4,40,7,9,]
+MR_TRAIN_SET = [1,2,3,5,8,10,13,15,19,20,21,22,31,32,33,34,36,37,38,39]
+MR_TEST_SET = [4,6,7,9,11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,40]
+
 TEST_FILE_CODE = np.arange(61,81)
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
@@ -59,8 +65,8 @@ GUID_LOSS = "sigmoid_cross_entropy"
 STAGE_PRED_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "sigmoid_cross_entropy"
 SEG_WEIGHT_FLAG = False
-DATASET_NAME = '2013_MICCAI_Abdominal'
-DATASET_NAME = '2019_ISBI_CHAOS_CT'
+DATASET_NAME = ['2013_MICCAI_Abdominal']
+# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-110000'
@@ -83,7 +89,9 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-168000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_003/model.ckpt-187000'
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_026/model.ckpt-200000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-64000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-100000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-4000'
 
 # CHECKPOINT = None
 
@@ -91,6 +99,15 @@ PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--guid_feature_only', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--stage_pred_ks', type=int, default=1,
+                    help='')
+
+parser.add_argument('--add_feature', type=bool, default=True,
+                    help='')
+
 parser.add_argument('--apply_sram2', type=bool, default=True,
                     help='')
 
@@ -100,7 +117,7 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="image_only",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -116,9 +133,6 @@ parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
 parser.add_argument('--share', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--guidance_acc', type=str, default=None,
                     help='')
 
 parser.add_argument('--master', type=str, default='',
@@ -175,6 +189,12 @@ parser.add_argument('--z_label_method', type=str, default=None,
 parser.add_argument('--z_class', type=int, default=None,
                     help='')
 
+parser.add_argument('--stage_pred_loss', type=bool, default=True,
+                    help='')
+
+parser.add_argument('--guidance_loss', type=bool, default=True,
+                    help='')
+
 parser.add_argument('--affine_transform', type=bool, default=False,
                     help='')
 
@@ -203,8 +223,8 @@ parser.add_argument('--show_pred_only', type=bool, default=False,
                     help='')                  
 
 # Dataset settings.
-parser.add_argument('--dataset', type=str, default=DATASET_NAME,
-                    help='')
+# parser.add_argument('--dataset', type=str, default=DATASET_NAME,
+#                     help='')
 
 # parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
 #                     help='')
@@ -268,13 +288,13 @@ def main(unused_argv):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # TODO:
-  model_options = common.ModelOptions(
-              outputs_to_num_classes=2,
-              crop_size=EVAL_CROP_SIZE,
-              output_stride=FLAGS.output_stride)
+  # model_options = common.ModelOptions(
+  #             outputs_to_num_classes=14,
+  #             crop_size=EVAL_CROP_SIZE,
+  #             output_stride=FLAGS.output_stride)
 
   dataset = data_generator.Dataset(
-                dataset_name=FLAGS.dataset,
+                dataset_name=DATASET_NAME,
                 split_name=EVAL_SPLIT,
                 # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
@@ -286,8 +306,8 @@ def main(unused_argv):
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
                 crop_size=EVAL_CROP_SIZE,
-                min_resize_value=EVAL_CROP_SIZE[0],
-                max_resize_value=EVAL_CROP_SIZE[0],
+                # min_resize_value=EVAL_CROP_SIZE[0],
+                # max_resize_value=EVAL_CROP_SIZE[0],
                 # resize_factor=FLAGS.resize_factor,
                 # min_scale_factor=FLAGS.min_scale_factor,
                 # max_scale_factor=FLAGS.max_scale_factor,
@@ -358,7 +378,7 @@ def main(unused_argv):
     if FLAGS.guidance_type == "gt":
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 2, 1])
+      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], dataset.num_of_classes, 1])
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
     # if common.PRIOR_SEGS in samples:
     #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
@@ -383,10 +403,10 @@ def main(unused_argv):
     output_dict, layers_dict = model.pgb_network(
                 placeholder_dict[common.IMAGE],
                 model_options=model_options,
-                affine_transform=FLAGS.affine_transform,
+                # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 # labels=placeholder_dict[common.LABEL],
-                samples=placeholder_dict["organ_label"],
+                # samples=placeholder_dict["organ_label"],
                 # prior_imgs=placeholder_dict[common.PRIOR_IMGS],
                 prior_segs=placeholder_dict[common.PRIOR_SEGS],
                 num_class=dataset.num_of_classes,
@@ -394,9 +414,7 @@ def main(unused_argv):
                 # prior_slice=prior_slices,
                 batch_size=FLAGS.eval_batch_size,
                 guidance_type=FLAGS.guidance_type,
-                z_label_method=FLAGS.z_label_method,
-                z_model=FLAGS.z_model,
-                z_class=FLAGS.z_class,
+                
                 fusion_slice=FLAGS.fusion_slice,
                 prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
@@ -405,19 +423,27 @@ def main(unused_argv):
                 is_training=False,
                 weight_decay=0.0,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                guidance_acc=FLAGS.guidance_acc,
+                # guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
                 fusions=FUSIONS,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
-                guidance_loss=GUID_LOSS,
-                stage_pred_loss=STAGE_PRED_LOSS,
+                z_label_method=FLAGS.z_label_method,
+                z_model=FLAGS.z_model,
+                z_class=FLAGS.z_class,
+                guidance_loss=FLAGS.guidance_loss,
+                stage_pred_loss=FLAGS.stage_pred_loss,
+                guidance_loss_name=GUID_LOSS,
+                stage_pred_loss_name=STAGE_PRED_LOSS,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
                 fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
                 reuse=tf.AUTO_REUSE,
                 apply_sram2=FLAGS.apply_sram2,
+                add_feature=FLAGS.add_feature,
+                guid_feature_only=FLAGS.guid_feature_only,
+                stage_pred_ks=FLAGS.stage_pred_ks,
                 )
     
     if FLAGS.vis_guidance:      
@@ -434,7 +460,7 @@ def main(unused_argv):
 
     # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
-    prediction = eval_utils.inference_segmentation(logits)
+    prediction = eval_utils.inference_segmentation(logits, dim=3)
     
     if "train" in EVAL_SPLIT or "val" in EVAL_SPLIT:
       pred_flat = tf.reshape(prediction, shape=[-1,])
@@ -446,6 +472,9 @@ def main(unused_argv):
                                 off_value=0.0,
                                 axis=3)
       labels_flat = tf.reshape(labels, shape=[-1,])
+      # Define Confusion Maxtrix
+      cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
+      
       def cm_in_each_stage(pred):
             cm_list = []
             pred = tf.image.resize(pred, [EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1]], align_corners=False)
@@ -466,6 +495,10 @@ def main(unused_argv):
       cm_g4 = cm_in_each_stage(layers_dict["guidance4"])
       cm_guid = [cm_g0, cm_g4, cm_g3, cm_g2, cm_g1]
 
+      if common.OUTPUT_Z in output_dict:
+        pred_z = eval_utils.inference_segmentation(output_dict[common.OUTPUT_Z], dim=1)
+        label_z = placeholder_dict[common.Z_LABEL]
+        cm_z = tf.confusion_matrix(label_z, pred_z, num_classes=dataset.mt_class)
 
     # num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2]) 
     # labels_flat = tf.reshape(labels, shape=[-1,])
@@ -515,9 +548,6 @@ def main(unused_argv):
     #                                                         )
     # tf.summary.scalar(predictions_tag, mIoU)
 
-    if "train" in EVAL_SPLIT or "val" in EVAL_SPLIT:
-      # Define Confusion Maxtrix
-      cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
 
     summary_op = tf.summary.merge_all()
     summary_hook = tf.contrib.training.SummaryAtEndHook(
@@ -571,7 +601,7 @@ def main(unused_argv):
     # Build up Pyplot displaying tool
     # TODO: Image could only show once
     if FLAGS.show_pred_only:
-        subplot_split=(3,1)
+        subplot_split=(1,3)
     else:
         subplot_split=(1,3)
     show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
@@ -614,177 +644,185 @@ def main(unused_argv):
     if FLAGS.predict_without_background:
       num_class -= 1 
        
-    for split_name in EVAL_SPLIT:
-      num_sample = dataset.splits_to_sizes[split_name]
-      if FLAGS.store_all_imgs:
-          display_imgs = np.arange(num_sample)
-      else:
-          display_imgs = IMG_LIST
-          
-      for i in range(num_sample):
-          data = sess.run(samples)
-          _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-          print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
-
-          # Segmentation Evaluation
-          pred = sess.run(prediction, feed_dict=_feed_dict)
-          if split_name in ("train", "val"):
-            cm_slice = sess.run(cm, feed_dict=_feed_dict)
-            if FLAGS.vis_guidance:
-              cm_g_slice = sess.run(cm_guid, feed_dict=_feed_dict)
-              for stage in range(len(cm_g_slice)):
-                cm_g_total[stage] = cm_g_total[stage] + cm_g_slice[stage]
-            # cm_slice, cm_g_slice, pred = sess.run([cm, cm_guid, prediction], feed_dict=_feed_dict)
+    # TODO:
+    for sub_dataset in DATASET_NAME:
+      for split_name in EVAL_SPLIT:
+        num_sample = dataset.splits_to_sizes[sub_dataset][split_name]
+        if FLAGS.store_all_imgs:
+            display_imgs = np.arange(num_sample)
+        else:
+            display_imgs = IMG_LIST
             
-            _, dscs = eval_utils.compute_mean_dsc(cm_slice)
-            DSC_slice.append(dscs)
-            cm_total += cm_slice
+        for i in range(num_sample):
+            data = sess.run(samples)
+            _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
+            print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
 
-          # Save testing results in nii format
-          if split_name == "test":
-            if data[common.DEPTH][0] == 0:
-              imgs = []
-            elif data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
-              file_name = "img{:04d}".format(TEST_FILE_CODE[j])
-              file_utils.write_medical_images(imgs, out_dir=FLAGS.eval_logdir, image_format=".nii.gz", file_name=file_name)
-              print("Save results in {}".format(file_name))
-              j += 1
-            imgs.append(pred[0,::-1])  
-          
-          if i in display_imgs:
-            if FLAGS.show_pred_only:
-              pass
-            else:
-              parameters = [{"cmap": "gray"}]
-              parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
-              show_seg_results.set_title(["image", "label","prediction"])
-              show_seg_results.set_axis_off()
-              show_seg_results.display_figure(split_name+'_pred_%04d' %i,
-                                              [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
-                                              parameters=parameters)
-            if FLAGS.vis_prior:                                
-              prior_list = sess.run(tf.get_collection("prior_list"), feed_dict=_feed_dict)
-              for z in range(FLAGS.z_class):
-                for node in range(0, FLAGS.out_node, 4):
-                  filename = "{}-prior-sample{}-z{}-feature{}".format(split_name, i, z, node)
-                  show_prior.set_title(["prior_z_feature{}".format(node), 
-                                        "prior_z_feature{}".format(node+1), 
-                                        "prior_z_feature{}".format(node+2)])
-                  show_prior.display_figure(filename, [prior_list[0][z][0,...,node], 
-                                                         prior_list[0][z][0,...,node], 
-                                                         prior_list[0][z][0,...,node]])
-                  
-              # h_min,w_min,h_max,w_max = eval_utils.get_label_range(data[common.LABEL][0], 512, 512)
+            # Segmentation Evaluation
+            pred = sess.run(prediction, feed_dict=_feed_dict)
+            if split_name in ("train", "val"):
+              cm_slice = sess.run(cm, feed_dict=_feed_dict)
+              if FLAGS.vis_guidance:
+                cm_g_slice = sess.run(cm_guid, feed_dict=_feed_dict)
+                for stage in range(len(cm_g_slice)):
+                  cm_g_total[stage] = cm_g_total[stage] + cm_g_slice[stage]
+              # cm_slice, cm_g_slice, pred = sess.run([cm, cm_guid, prediction], feed_dict=_feed_dict)
               
-              # h_min_total.append(h_min)
-              # w_min_total.append(w_min)
-              # h_max_total.append(h_max)
-              # w_max_total.append(w_max)
+              _, dscs = eval_utils.compute_mean_dsc(cm_slice)
+              DSC_slice.append(dscs)
+              cm_total += cm_slice
               
-          # # Z-information Evaluation
-          # if common.OUTPUT_Z in output_dict:
-          #   eval_z, z_pred = sess.run([z_mse, output_dict[common.OUTPUT_Z]], feed_dict=_feed_dict)
-          #   z_label = data[common.Z_LABEL]
-          #   total_z_label.append(z_label)
-          #   total_z_pred.append(z_pred)
-          #   total_eval_z += eval_z
+              if common.OUTPUT_Z in output_dict:
+                eval_z = sess.run(cm_z, feed_dict=_feed_dict)
+                total_eval_z += eval_z
+                
 
-            # Guidance Visualization
-            if FLAGS.vis_guidance:
-              guid_avg = tf.get_collection("guid_avg")
-              guid_avgs = sess.run(guid_avg, feed_dict=_feed_dict)     
-              layers, pred_layers, gg = sess.run([guidance_dict, pred_dict, guidance_dict["guidance0"]], feed_dict=_feed_dict)
-              
-              # if i == 64:
-              #   for ii in range(5):
-              #     plt.imshow(guid_avgs[ii][0,...,0])
-              #     plt.show()
+            # Save testing results in nii format
+            if split_name == "test":
+              # if data[common.DEPTH][0] == 0:
+              #   imgs = []
+              # elif data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
+              #   file_name = "img{:04d}".format(TEST_FILE_CODE[j])
+              #   file_utils.write_medical_images(imgs, out_dir=FLAGS.eval_logdir, image_format=".nii.gz", file_name=file_name)
+              #   print("Save results in {}".format(file_name))
+              #   j += 1
+              # imgs.append(pred[0,::-1])  
+              import cv2
+              pred_for_save = np.int32(pred * 255)
+              if not os.path.exists(os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results")):
+                os.makedirs(os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results"))
+              file_name = os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results", "result{:03d}.png".format(data[common.DEPTH][0]))
+              cv2.imwrite(file_name, pred_for_save[0])
+              if data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
+                j += 1
+            if i in display_imgs:
+              if FLAGS.show_pred_only:
+                pass
+              else:
+                parameters = [{"cmap": "gray"}]
+                parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
+                show_seg_results.set_title(["image", "label","prediction"])
+                show_seg_results.set_axis_off()
+                show_seg_results.display_figure(split_name+'_pred_%04d' %i,
+                                                [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
+                                                parameters=parameters)
+              if FLAGS.vis_prior:                                
+                prior_list = sess.run(tf.get_collection("prior_list"), feed_dict=_feed_dict)
+                for z in range(FLAGS.z_class):
+                  for node in range(0, FLAGS.out_node, 4):
+                    filename = "{}-prior-sample{}-z{}-feature{}".format(split_name, i, z, node)
+                    show_prior.set_title(["prior_z_feature{}".format(node), 
+                                          "prior_z_feature{}".format(node+1), 
+                                          "prior_z_feature{}".format(node+2)])
+                    show_prior.display_figure(filename, [prior_list[0][z][0,...,node], 
+                                                          prior_list[0][z][0,...,node+1], 
+                                                          prior_list[0][z][0,...,node+2]])
+                    
+                # h_min,w_min,h_max,w_max = eval_utils.get_label_range(data[common.LABEL][0], 512, 512)
                 
-              show_guidance.set_title(["guid_avg0", "guid_avg1", "guid_avg2"])
-              show_guidance.display_figure(split_name+'-guid_avg012-%04d' %i,
-                                            [guid_avgs[0][0,...,0],
-                                            guid_avgs[1][0,...,0],
-                                            guid_avgs[2][0,...,0]])
+                # h_min_total.append(h_min)
+                # w_min_total.append(w_min)
+                # h_max_total.append(h_max)
+                # w_max_total.append(w_max)
+                
+            
 
-              show_guidance.set_title(["guid_avg3", "guid_avg4", "guid_avg5"])
-              show_guidance.display_figure(split_name+'-guid_avg345-%04d' %i,
-                                            [guid_avgs[3][0,...,0],
-                                            guid_avgs[4][0,...,0],
-                                            guid_avgs[4][0,...,0]])
-
-              # show_guidance.set_title(["pred0", "pred1", "pred2"])
-              # show_guidance.display_figure(split_name+'-pred012-%04d' %i,
-              #                               [pred_layers["guidance0"][0],
-              #                               pred_layers["guidance5"][0],
-              #                               pred_layers["guidance4"][0]])
-
-              # show_guidance.set_title(["pred3", "pred4", "pred5"])
-              # show_guidance.display_figure(split_name+'-pred345-%04d' %i,
-              #                               [pred_layers["guidance3"][0],
-              #                               pred_layers["guidance2"][0],
-              #                               pred_layers["guidance1"][0]])
+              # Guidance Visualization
+              if FLAGS.vis_guidance:
+                guid_avg = tf.get_collection("guid_avg")
+                guid_avgs = sess.run(guid_avg, feed_dict=_feed_dict)     
+                layers, pred_layers, gg = sess.run([guidance_dict, pred_dict, guidance_dict["guidance0"]], feed_dict=_feed_dict)
                 
-              for c in range(num_class):
-                show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
-                show_guidance.display_figure(split_name+'-guid012-%04d-%03d' % (i,c),
-                                              [layers["guidance0"][0,...,c],
-                                              layers["guidance5"][0,...,c],
-                                              layers["guidance4"][0,...,c]])
-                
-                show_guidance.set_title(["guidance3", "guidance4", "guidance5"])
-                show_guidance.display_figure(split_name+'-guid345-%04d-%03d' % (i,c),
-                                              [layers["guidance3"][0,...,c],
-                                              layers["guidance2"][0,...,c],
-                                              layers["guidance1"][0,...,c]])
-                
-                
+                # if i == 64:
+                #   for ii in range(5):
+                #     plt.imshow(guid_avgs[ii][0,...,0])
+                #     plt.show()
                   
-                                        
-            # Features Visualization
-            if FLAGS.vis_features:
-              sram1, sram2, embed, feature, refining, sram1_guided_f, sram2_guided_f, guid_f = sess.run([tf.get_collection("sram1"), 
-                                                                tf.get_collection("sram2"), 
-                                                                tf.get_collection("embed"), 
-                                                                tf.get_collection("feature"), 
-                                                                tf.get_collection("refining"),
-                                                                tf.get_collection("sram1_guided_feature"),
-                                                                tf.get_collection("sram2_guided_feature"),
-                                                                #  tf.get_collection("feature"),
-                                                                tf.get_collection("guid_f")], feed_dict=_feed_dict)
+                show_guidance.set_title(["guid_avg0", "guid_avg1", "guid_avg2"])
+                show_guidance.display_figure(split_name+'-guid_avg012-%04d' %i,
+                                              [guid_avgs[0][0,...,0],
+                                              guid_avgs[1][0,...,0],
+                                              guid_avgs[2][0,...,0]])
 
-              for cc in range(0, FLAGS.out_node, 4):
-                for w in range(5):
-                  filename = "{}-sram1_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                  show_feature.set_title(["embed", "sram1", "sram1_guided_feature"])
-                  # show_feature.set_axis_off()
-                  show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], sram1_guided_f[w][0,...,cc]])
+                show_guidance.set_title(["guid_avg3", "guid_avg4", "guid_avg5"])
+                show_guidance.display_figure(split_name+'-guid_avg345-%04d' %i,
+                                              [guid_avgs[3][0,...,0],
+                                              guid_avgs[4][0,...,0],
+                                              guid_avgs[4][0,...,0]])
+
+                # show_guidance.set_title(["pred0", "pred1", "pred2"])
+                # show_guidance.display_figure(split_name+'-pred012-%04d' %i,
+                #                               [pred_layers["guidance0"][0],
+                #                               pred_layers["guidance5"][0],
+                #                               pred_layers["guidance4"][0]])
+
+                # show_guidance.set_title(["pred3", "pred4", "pred5"])
+                # show_guidance.display_figure(split_name+'-pred345-%04d' %i,
+                #                               [pred_layers["guidance3"][0],
+                #                               pred_layers["guidance2"][0],
+                #                               pred_layers["guidance1"][0]])
                   
-                  # filename = "{}-sram2_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                  # show_feature.set_title(["sram1+feature", "sram2", "sram2_guided_featurel"])
+                for c in range(num_class):
+                  show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
+                  show_guidance.display_figure(split_name+'-guid012-%04d-%03d' % (i,c),
+                                                [layers["guidance0"][0,...,c],
+                                                layers["guidance5"][0,...,c],
+                                                layers["guidance4"][0,...,c]])
+                  
+                  show_guidance.set_title(["guidance3", "guidance4", "guidance5"])
+                  show_guidance.display_figure(split_name+'-guid345-%04d-%03d' % (i,c),
+                                                [layers["guidance3"][0,...,c],
+                                                layers["guidance2"][0,...,c],
+                                                layers["guidance1"][0,...,c]])
+                  
+                  
+                    
+                                          
+              # Features Visualization
+              if FLAGS.vis_features:
+                sram1, sram2, embed, feature, refining, sram1_guided_f, sram2_guided_f, guid_f = sess.run([tf.get_collection("sram1"), 
+                                                                  tf.get_collection("sram2"), 
+                                                                  tf.get_collection("embed"), 
+                                                                  tf.get_collection("feature"), 
+                                                                  tf.get_collection("refining"),
+                                                                  tf.get_collection("sram1_guided_feature"),
+                                                                  tf.get_collection("sram2_guided_feature"),
+                                                                  #  tf.get_collection("feature"),
+                                                                  tf.get_collection("guid_f")], feed_dict=_feed_dict)
+
+                for cc in range(0, FLAGS.out_node, 4):
+                  for w in range(5):
+                    filename = "{}-sram1_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
+                    show_feature.set_title(["embed", "sram1", "sram1_guided_feature"])
+                    # show_feature.set_axis_off()
+                    show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], sram1_guided_f[w][0,...,cc]])
+                    
+                    # filename = "{}-sram2_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
+                    # show_feature.set_title(["sram1+feature", "sram2", "sram2_guided_featurel"])
+                    # # show_feature.set_axis_off()
+                    # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], sram2_guided_f[w][0,...,cc]])
+                
+                
+                    # filename = "{}-feature1-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
+                    # show_feature.set_title(["embed", "sram1", "feature"])
+                    # # show_feature.set_axis_off()
+                    # show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], feature[w][0,...,cc]])
+                    
+                    # filename = "{}-feature2-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
+                    # show_feature.set_title(["sram1+feature", "sram2", "refine"])
+                    # # show_feature.set_axis_off()
+                    # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], refining[w][0,...,cc]])
+                
+                  # filename = "{}-guidingf-sample{}-feature{}".format(EVAL_SPLIT, i, cc)
+                  # show_feature.set_title(["guiding_feature{}".format(cc), 
+                  #                         "guiding_feature{}".format(cc+1), 
+                  #                         "guiding_feature{}".format(cc+2)])
                   # # show_feature.set_axis_off()
-                  # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], sram2_guided_f[w][0,...,cc]])
-              
-              
-                  # filename = "{}-feature1-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                  # show_feature.set_title(["embed", "sram1", "feature"])
-                  # # show_feature.set_axis_off()
-                  # show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], feature[w][0,...,cc]])
-                  
-                  # filename = "{}-feature2-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                  # show_feature.set_title(["sram1+feature", "sram2", "refine"])
-                  # # show_feature.set_axis_off()
-                  # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], refining[w][0,...,cc]])
-              
-                # filename = "{}-guidingf-sample{}-feature{}".format(EVAL_SPLIT, i, cc)
-                # show_feature.set_title(["guiding_feature{}".format(cc), 
-                #                         "guiding_feature{}".format(cc+1), 
-                #                         "guiding_feature{}".format(cc+2)])
-                # # show_feature.set_axis_off()
-                # show_feature.display_figure(filename, [guid_f[0][0,...,cc],
-                #                                       guid_f[0][0,...,cc+1],
-                #                                       guid_f[0][0,...,cc+2]])
-              
-              # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
+                  # show_feature.display_figure(filename, [guid_f[0][0,...,cc],
+                  #                                       guid_f[0][0,...,cc+1],
+                  #                                       guid_f[0][0,...,cc+2]])
+                
+                # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
 
     # def get_list_stats(value):
     #   val_arr = np.stack(value)
@@ -820,8 +858,8 @@ def main(unused_argv):
         f.write(60*"="+"\n")
         f.write("End Evaluation\n")
 
-      eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), normalize=True,
-                                        title='Confusion matrix, without normalization', save_path=FLAGS.eval_logdir)
+      eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), filename="CM",
+                                       normalize=True, title='Confusion matrix, without normalization', save_path=FLAGS.eval_logdir)
     
       if FLAGS.vis_guidance:
         print(10*"=", "Guidance Evaluation", 10*"=")
@@ -831,15 +869,38 @@ def main(unused_argv):
             eval_utils.compute_mean_dsc(cm_g[...,_])
      
       if common.Z_LABEL in samples:
-        total_eval_z /= dataset.splits_to_sizes[split_name]
-        print("MSE of z prediction {}".format(total_eval_z))
-        plt.plot(total_z_label, total_z_pred, ".")
-        plt.hold(True)
-        plt.plot(total_z_label, total_z_label, "r")
-        plt.title("Z labeld and prediction")
-        plt.xlabel("z_label")
-        plt.ylabel("z_prediction")
-        plt.savefig(FLAGS.eval_logdir+"z_information.png")
+        print(10*"=", "Z Evaluation", 10*"=")
+        mean_iou = eval_utils.compute_mean_iou(total_eval_z)
+        mean_dice_score, dice_score = eval_utils.compute_mean_dsc(total_eval_z)
+        pixel_acc = eval_utils.compute_accuracy(total_eval_z)
+        p_mean, p_std, r_mean, r_std = eval_utils.precision_and_recall(total_eval_z)
+        
+        with open(os.path.join(FLAGS.eval_logdir, 'eval_logging.txt'), 'a') as f:
+          f.write("\nPixel ACC: {:.4f}".format(pixel_acc))
+          f.write("\nMean IoU: {:.4f}".format(mean_iou))
+          
+          for i, dsc in enumerate(dice_score):
+              f.write("\n    class {}: {:.4f}".format(i, dsc))
+          f.write("\nMean DSC: {:.4f}".format(mean_dice_score))
+          f.write("\nPrecision mean: {:.4f} std: {:.4f}".format(p_mean, p_std))
+          f.write("\nRecall mean: {:.4f} std: {:.4f}".format(r_mean, r_std))
+          f.write("\n")  
+          f.write(60*"="+"\n")
+          f.write("End Evaluation\n")
+
+        eval_utils.plot_confusion_matrix(total_eval_z, classes=np.arange(dataset.mt_class), filename="CM_z",
+                                         normalize=True, title='Confusion matrix, without normalization', save_path=FLAGS.eval_logdir)
+      
+      
+        # total_eval_z /= dataset.splits_to_sizes[split_name]
+        # print("MSE of z prediction {}".format(total_eval_z))
+        # plt.plot(total_z_label, total_z_pred, ".")
+        # plt.hold(True)
+        # plt.plot(total_z_label, total_z_label, "r")
+        # plt.title("Z labeld and prediction")
+        # plt.xlabel("z_label")
+        # plt.ylabel("z_prediction")
+        # plt.savefig(FLAGS.eval_logdir+"z_information.png")
     
     if FLAGS.display_box_plot:
         show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=FLAGS.eval_logdir,
@@ -872,6 +933,11 @@ if __name__ == '__main__':
     # for i in range(14):
     #   plt.imshow(guidance[...,i])
     #   plt.show()
+    # import cv2
+    # a = cv2.imread("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000-eval/Results/11/result016.png", 0)
+    # b = cv2.imread("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000-eval/Results2/11/result016.png", 0)
+    # plt.imshow(a)
+    # plt.show()
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
     

@@ -254,5 +254,16 @@ def main(unused_argv):
   _convert_dataset("test", FLAGS.split_indices)
   
 if __name__ == '__main__':
-  FLAGS, unparsed = parser.parse_known_args()
-  main(unparsed)
+  image_reader = build_medical_data.ImageReader('dcm', channels=1)
+  path = "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/Train_Sets/MR/38/T2SPIR/Ground/"
+  for f in os.listdir(path):
+    image_data = image_reader.decode_image(
+      os.path.abspath(path+f)
+      )
+    print(np.shape(image_data))
+    print(image_data)
+    plt.imshow(image_data)
+    plt.show()
+    
+  # FLAGS, unparsed = parser.parse_known_args()
+  # main(unparsed)

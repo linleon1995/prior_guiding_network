@@ -153,13 +153,16 @@ def pgb_network(images,
     out_node = kwargs.pop("out_node", None)  
     guid_encoder = kwargs.pop("guid_encoder", None)
     z_model = kwargs.pop("z_model", None)
-    guidance_loss = kwargs.pop("guidance_loss", None)
-    stage_pred_loss = kwargs.pop("stage_pred_loss", None)
+    guidance_loss = kwargs.pop("guidance_loss", False)
+    stage_pred_loss = kwargs.pop("stage_pred_loss", False)
+    guidance_loss_name = kwargs.pop("guidance_loss_name", None)
+    stage_pred_loss_name = kwargs.pop("stage_pred_loss_name", None)
     guid_conv_nums = kwargs.pop("guid_conv_nums", None)
     guid_conv_type = kwargs.pop("guid_conv_type", None)
     fuse_flag = kwargs.pop("fuse_flag", None)
     predict_without_background = kwargs.pop("predict_without_background", False)
-    apply_sram2 = kwargs.pop("apply_sram2", False)
+    ks = kwargs.pop("stage_pred_ks", None)
+
 
     # Produce Prior
     if prior_segs is not None:
@@ -193,11 +196,12 @@ def pgb_network(images,
             if z_class is None:
                 raise ValueError("Unknown Z class")
             multi_task_node = z_class
-            
-        z_logits = predict_z_dimension(features, out_node=multi_task_node, 
+        else:
+            raise ValueError("Unknown Z label method")    
+        z_logits = predict_z_dimension(layers_dict["low_level5"], out_node=multi_task_node, 
                                        extractor_type="simple")
         output_dict[common.OUTPUT_Z] = z_logits
-    
+
     with slim.arg_scope([slim.batch_norm],
                         is_training=is_training):
         with slim.arg_scope([slim.conv2d], 
@@ -208,7 +212,7 @@ def pgb_network(images,
             if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions:
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
-                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
+                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[ks,ks], scope="guidance_embedding")
                 elif guid_encoder == "late":
                     img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
                     prior_embed = utils.get_guidance(tf.concat([images, prior_from_data], axis=3), out_node, model_options.output_stride)
@@ -220,33 +224,36 @@ def pgb_network(images,
                     tf.add_to_collection("prior_list", prior_list)
                     p = tf.stack(prior_list, axis=4)
                     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
-                    # prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
-                    prior_embed = tf.squeeze(tf.matmul(p, z), axis=4)
-                    prior_seg = tf.concat([layers_dict["low_level5"], prior_embed], axis=3)
-                    prior_seg = slim.conv2d(prior_seg, out_node, kernel_size=[1,1], activation_fn=None, scope="prior_seg")
+                    prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
+                    # prior_embed = tf.squeeze(tf.matmul(p, z), axis=4)
+                    # prior_seg = tf.concat([layers_dict["low_level5"], prior_embed], axis=3)
+                    # prior_seg = slim.conv2d(prior_seg, out_node, kernel_size=[1,1], activation_fn=None, scope="prior_seg")
     
                 tf.add_to_collection("guid_f", prior_seg)   
-
-                c = num_class
-                if predict_without_background:
-                    c -= 1
-                prior_pred = slim.conv2d(prior_seg, c, kernel_size=[1, 1], stride=1, activation_fn=None, scope='prior_pred')
-                output_dict[common.GUIDANCE] = prior_pred
                 
-                if "softmax" in guidance_loss:
-                    prior_pred = tf.nn.softmax(prior_pred, axis=3)
-                elif "sigmoid" in guidance_loss:
-                    prior_pred = tf.nn.sigmoid(prior_pred)
+                if guidance_loss:
+                    c = num_class
+                    if predict_without_background:
+                        c -= 1
+                    prior_pred = slim.conv2d(prior_seg, c, kernel_size=[ks,ks], stride=1, activation_fn=None, scope='prior_pred')
+                    output_dict[common.GUIDANCE] = prior_pred
+                    
+                    if "softmax" in guidance_loss_name:
+                        prior_pred = tf.nn.softmax(prior_pred, axis=3)
+                    elif "sigmoid" in guidance_loss_name:
+                        prior_pred = tf.nn.sigmoid(prior_pred)
+                else:
+                    prior_pred = None
                     
             else:
                 prior_seg = None
                 prior_pred = None
 
-    refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior=prior_seg, stage_pred_loss=stage_pred_loss, 
+    refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior_seg=prior_seg, stage_pred_loss_name=stage_pred_loss_name, 
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type, 
                                 embed_node=out_node, predict_without_background=predict_without_background,
-                                weight_decay=weight_decay, is_training=is_training,num_class=num_class,
-                                apply_sram2=apply_sram2)  
+                                weight_decay=weight_decay, is_training=is_training,num_class=num_class, ks=ks,
+                                **kwargs)  
     logits, preds = refine_model.model()    
     # logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
     #                                   out_node=out_node, weight_decay=weight_decay, reuse=reuse, 
@@ -259,9 +266,9 @@ def pgb_network(images,
     # logits = tf.identity(logits, "output")    
     output_dict[common.OUTPUT_TYPE] = logits    
     
-    # aa = tf.trainable_variables()
-    # for v in aa:
-    #   print(30*"-", v.name)
+    trainable_vars = tf.trainable_variables()
+    for v in trainable_vars:
+      print(30*"-", v.name)
     return output_dict, layers_dict
 
 

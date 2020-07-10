@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import build_medical_data, file_utils
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
+MR_LABEL_CONVERT = {1: 63, 2: 126, 3: 189, 4: 252}
 # TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
 # TODO: neccary condition for some varaibles
 # TODO: build folder
@@ -120,7 +121,7 @@ def _get_files(data_path, modality, img_or_label):
   return filenames
 
 
-def _convert_single_subject(output_filename, image_files, label_files=None):
+def _convert_single_subject(output_filename, modality, image_files, label_files=None):
   """write one subject in one tfrecord sample
   """
   with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
@@ -128,8 +129,6 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       assert len(image_files) == len(label_files)
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
-    min_v = 1000
-    max_v = -1
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
     for i in range(len(image_files)):
       # Read the image.
@@ -147,17 +146,26 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       example_kwargs = {}
       if label_files is not None:
         seg_data = label_reader.decode_image(label_files[i])
-        seg_data = seg_data // 255
+        
+        if "MR" in modality:
+          seg_data = convert_label_value(seg_data, MR_LABEL_CONVERT)
+          # if i %10 == 0:
+          #   print(np.shape(seg_data))
+          #   plt.imshow(seg_data)
+          #   plt.show()
+        elif "CT" in modality:
+          seg_data = convert_label_value(seg_data, {1: 255})
+        # seg_data = seg_data // 255
+        
         seg_slice = seg_data.tostring()
+        
         # seg_onehot = np.eye(N_CLASS)[seg_data]
         # organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
         example_kwargs = {"seg_data": seg_slice,
                           # "organ_label": organ_label
                           }
-        if np.min(seg_data) < min_v:
-          min_v = np.min(seg_data)
-        if np.max(seg_data) > max_v:
-          max_v = np.max(seg_data)
+        
+        # print(np.min(seg_data), np.max(seg_data))
       # # TODO: re_match?
       # re_match = _IMAGE_FILENAME_RE.search(image_files[i])
       # if re_match is None:
@@ -168,7 +176,7 @@ def _convert_single_subject(output_filename, image_files, label_files=None):
       example = build_medical_data.image_seg_to_tfexample(
           image_slice, filename, height, width, depth=i, num_slices=num_slices, **example_kwargs)
       tfrecord_writer.write(example.SerializeToString())
-    print(min_v, max_v)
+
   return height, width
 
 def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
@@ -194,8 +202,9 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   else:
     num_shard = len(folder_for_each_subject)
 
-  if not os.path.isdir(out_dir):
-    os.mkdir(out_dir)
+  # TODO: make dir automatically
+  if not os.path.exists(out_dir):
+    os.makedirs(out_dir, exist_ok=True)
           
   total_slices = 0
   for shard_id, sub_folder in enumerate(folder_for_each_subject):
@@ -217,7 +226,7 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
           dataset_split, modality, shard_id, num_shard)
 
     output_filename = os.path.join(out_dir, shard_filename)
-    height, width = _convert_single_subject(output_filename, **kwargs)
+    height, width = _convert_single_subject(output_filename, modality, **kwargs)
     
     sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
         dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
@@ -227,7 +236,12 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   sys.stdout.write('\n')
   sys.stdout.flush()
 
-
+def convert_label_value(data, convert_dict):
+  # TODO: optimize
+  for k, v in convert_dict.items():
+    data[data==v] = k
+  return data
+ 
 def unit_test_get_files():
   total_files = {}
   for img_or_label in ['image', 'label']:
@@ -248,7 +262,12 @@ def main(unused_argv):
                     "test": None}
   for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
     for split in dataset_split:
-      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split], m)
+      # TODO: 
+      modality_for_output = m
+      if "MR_T1" in modality_for_output:
+        modality_for_output = "MR_T1"
+        
+      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split], modality_for_output)
       _convert_dataset(out_dir, split, m, dataset_split[split])
 
   # _convert_dataset("test", FLAGS.split_indices)

@@ -24,6 +24,7 @@ _DATASETS_INFORMATION = {
 }
 
 # TODO: MR_T1 in and out
+#TODO: test set
 _DATASETS_STORING_PATH_MAP = {
     '2013_MICCAI_Abdominal': "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/",
     '2019_ISBI_CHAOS_CT': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
@@ -80,16 +81,20 @@ class Dataset(object):
                  label_for_each_frame=None,
                  ):
         """Initializes the dataset."""
-        if dataset_name not in _DATASETS_INFORMATION:
-            raise ValueError('The specified dataset is not supported yet.')
+        # TODO: make sure num_class in all datasets are same
+        self.dataset_dir = {}
+        self.splits_to_sizes = {}
+        for sub_dataset in dataset_name:
+            if sub_dataset not in _DATASETS_INFORMATION:
+                raise ValueError('The specified dataset is not supported yet.')
+            self.dataset_dir[sub_dataset] = _DATASETS_STORING_PATH_MAP[sub_dataset]
+            self.splits_to_sizes[sub_dataset] = _DATASETS_INFORMATION[sub_dataset].splits_to_sizes
         self.dataset_name = dataset_name
-        self.dataset_dir = _DATASETS_STORING_PATH_MAP[self.dataset_name]
         
-        self.splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
-
         for split in split_name:
-            if split not in self.splits_to_sizes:
-                raise ValueError('data split name %s not recognized' % split)
+            for sub_dataset_split in self.splits_to_sizes.values():
+                if split not in sub_dataset_split:
+                    raise ValueError('data split name %s not recognized' % split)
       
         if model_variant is None:
             tf.logging.warning('Please specify a model_variant.')
@@ -121,10 +126,10 @@ class Dataset(object):
         self.prior_num_subject = prior_num_subject
         self.prior_dir = prior_dir
         self.guidance_type = guidance_type
-        self.raw_data_height = _DATASETS_INFORMATION[self.dataset_name].height
-        self.raw_data_width = _DATASETS_INFORMATION[self.dataset_name].width
-        self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name].num_classes
-        self.ignore_label = _DATASETS_INFORMATION[self.dataset_name].ignore_label
+        # self.raw_data_height = _DATASETS_INFORMATION[self.dataset_name].height
+        # self.raw_data_width = _DATASETS_INFORMATION[self.dataset_name].width
+        self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name[0]].num_classes
+        self.ignore_label = _DATASETS_INFORMATION[self.dataset_name[0]].ignore_label
         self.seq_length = seq_length
         self.seq_type = seq_type
         self.label_for_each_frame = label_for_each_frame
@@ -154,20 +159,27 @@ class Dataset(object):
             features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
   
-  
+
         parsed_features = tf.parse_single_example(example_proto, features)
         
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
-        image = tf.reshape(image, [self.raw_data_height,self.raw_data_width,1])
-        
         if "train" in self.split_name or "val" in self.split_name:
             label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            label = tf.reshape(label, [self.raw_data_height,self.raw_data_width,1])
-            # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
-
             organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
+            
+        # image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
+        # image = tf.reshape(image, [self.raw_data_height,self.raw_data_width,1])
+        
+        # if "train" in self.split_name or "val" in self.split_name:
+        #     label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+        #     label = tf.reshape(label, [self.raw_data_height,self.raw_data_width,1])
+        #     # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
+
+        #     organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
+        # elif "test" in self.split_name:
+        #     label = None
             
         # import prior
         # TODO: paramarize subject selection
@@ -185,15 +197,15 @@ class Dataset(object):
         
 
         if label is not None:
-          if label.get_shape().ndims == 2:
-            label = tf.expand_dims(label, 2)
-          elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
-            pass
-          else:
-            raise ValueError('Input label shape must be [height, width], or '
-                             '[height, width, 1].')
+        #   if label.get_shape().ndims == 2:
+        #     label = tf.expand_dims(label, 2)
+        #   elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
+        #     pass
+        #   else:
+        #     raise ValueError('Input label shape must be [height, width], or '
+        #                      '[height, width, 1].')
     
-          label.set_shape([None, None, 1])
+        #   label.set_shape([None, None, 1])
     
           sample[common.LABEL] = label
       
@@ -415,10 +427,33 @@ class Dataset(object):
         label: [num_frame, height, width, 1]
         prior_segs: [num_frame, height, width, class]
         """
-        if sample[common.IMAGE].get_shape().ndims == 4:
-            height, width = sample[common.IMAGE].get_shape().as_list()[1:3]
-        elif sample[common.IMAGE].get_shape().ndims == 3:
-            height, width = sample[common.IMAGE].get_shape().as_list()[0:2]
+        height = sample[common.HEIGHT]
+        width = sample[common.WIDTH]
+        sample[common.IMAGE] = tf.reshape(sample[common.IMAGE], [height, width,1])
+        
+        if common.LABEL in sample:
+          sample[common.LABEL] = tf.reshape(sample[common.LABEL], [height, width,1])
+          label = sample[common.LABEL]
+          if label.get_shape().ndims == 2:
+            label = tf.expand_dims(label, 2)
+          elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
+            pass
+          else:
+            raise ValueError('Input label shape must be [height, width], or '
+                             '[height, width, 1].')
+    
+          label.set_shape([None, None, 1])
+          sample[common.LABEL] = label
+          
+        # if "train" in self.split_name or "val" in self.split_name:
+        #   sample[common.LABEL] = tf.reshape(sample[common.LABEL], [height, width,1])
+        
+        
+              
+        # if sample[common.IMAGE].get_shape().ndims == 4:
+        #     height, width = sample[common.IMAGE].get_shape().as_list()[1:3]
+        # elif sample[common.IMAGE].get_shape().ndims == 3:
+        #     height, width = sample[common.IMAGE].get_shape().as_list()[0:2]
         image = tf.reshape(sample[common.IMAGE], [height, width, -1])
         if "train" in self.split_name or "val" in self.split_name:
             label = tf.reshape(sample[common.LABEL], [height, width, -1])
@@ -516,9 +551,11 @@ class Dataset(object):
         # elif isinstance(self.split_name, list):
         # files = []
         # for split in self.split_name:
-        files = file_utils.get_file_list(self.dataset_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True)
+        files = []
+        for sub_data_dir in self.dataset_dir.values():
+            files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True))
         self.files = files
-        print(self.files, 30*"files")
+        # print(self.files, 30*"files")
         # files = self._get_all_files(self.split_name) 
         dataset = (
              tf.data.TFRecordDataset(files)

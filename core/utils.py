@@ -56,18 +56,19 @@ def slim_sram(in_node,
       
       
 class Refine(object):
-  def __init__(self, low_level, fusions, fuse_flag, prior=None, prior_pred=None, stage_pred_loss=None, guid_conv_nums=64, 
+  def __init__(self, low_level, fusions, fuse_flag, prior_seg=None, prior_pred=None, stage_pred_loss_name=None, guid_conv_nums=64, 
                guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
-               num_class=14, weight_decay=0.0, scope=None, is_training=None, **kwargs):
-    if GUID_FEATURE_ONLY:
+               num_class=14, weight_decay=0.0, scope=None, is_training=None, ks=None, **kwargs):
+    guid_feature_only = kwargs.pop("guid_feature_only", False)
+    if guid_feature_only:
       low_level.pop("low_level5")
       fusions = fusions[1:]
     self.low_level = low_level
     self.fusions = fusions
     self.fuse_flag = fuse_flag
-    self.prior = prior
+    self.prior_seg = prior_seg
     self.prior_pred = prior_pred
-    self.stage_pred_loss = stage_pred_loss
+    self.stage_pred_loss_name = stage_pred_loss_name
     self.embed_node = embed_node
     self.guid_conv_type = guid_conv_type
     self.guid_conv_nums = guid_conv_nums
@@ -79,8 +80,10 @@ class Refine(object):
     self.num_stage = len(self.low_level)
     self.is_training = is_training
     self.fine_tune_batch_norm = True
-  
+    
     self.apply_sram2 = kwargs.pop("apply_sram2", False)
+    self.add_feature = kwargs.pop("add_feature", True)
+    self.ks = ks
   def embed(self, x, out_node, scope):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
     
@@ -108,14 +111,17 @@ class Refine(object):
                         padding='SAME',
                         normalizer_fn=slim.batch_norm):
         with slim.arg_scope([batch_norm], **batch_norm_params):
-          y_tm1 = None
+          if self.add_feature:
+            y_tm1 = self.prior_seg
+          else:
+            y_tm1 = None
           preds = {}
           
           # TODO: input guid in each stage?
           # TODO: Would default vars value causes error?
-          if self.prior is not None and self.prior_pred is not None:
+          if self.prior_seg is not None and self.prior_pred is not None:
             if "guid" in self.fusions:
-              guid = self.prior
+              guid = self.prior_seg
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
@@ -144,10 +150,11 @@ class Refine(object):
               else:
                 y = tf.identity(embed, name="identity%d" %module_order)
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
-              guid = resize_bilinear(guid, [h, w])
-              tf.add_to_collection("guid", guid)
-              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
-                            num_classes=self.num_class, apply_sram2=self.apply_sram2)
+              if guid is not None:
+                guid = resize_bilinear(guid, [h, w])
+                tf.add_to_collection("guid", guid)
+                y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
+                              num_classes=self.num_class, apply_sram2=self.apply_sram2)
               
               
               if self.fuse_flag:
@@ -155,22 +162,29 @@ class Refine(object):
                 tf.add_to_collection("refining", y)
                 # y = slim.conv2d(y, self.embed_node, scope='fuse2_'+str(i))
                 # tf.add_to_collection("refining2", y)
-                
-            if self.stage_pred_loss is not None:
+             
+            if self.stage_pred_loss_name is not None:
+              
               num_class = self.num_class
               if self.predict_without_background:
                 num_class -= 1
-              stage_pred =  slim.conv2d(y, num_class, kernel_size=[1,1], activation_fn=None, 
+              stage_pred =  slim.conv2d(y, num_class, kernel_size=[self.ks, self.ks], activation_fn=None, 
                                           scope="stage_pred%d" %module_order)
+              # stage_pred = []
+              # for _ in range(num_class):
+              #   stage_pred_c = slim.conv2d(y, 1, kernel_size=[3,3], activation_fn=None, 
+              #                             scope="stage_pred%d_class%d" % (module_order, _))
+              #   stage_pred.append(stage_pred_c)
+              # stage_pred = tf.concat(stage_pred, axis=3)
               preds["guidance%d" %module_order] = stage_pred
             
             if fuse_method in ("guid"):
               guid = y
               y_tm1 = None
             elif fuse_method in ("guid_class", "guid_uni"):
-              if "softmax" in self.stage_pred_loss:
+              if "softmax" in self.stage_pred_loss_name:
                 guid = tf.nn.softmax(stage_pred, axis=3)
-              elif "sigmoid" in self.stage_pred_loss:
+              elif "sigmoid" in self.stage_pred_loss_name:
                 # guid = tf.nn.sigmoid(guid)
                 guid = tf.nn.sigmoid(stage_pred)
                 
