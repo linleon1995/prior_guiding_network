@@ -2,20 +2,421 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
-
+from core import resnet_v1_beta, preprocess_utils
 slim = contrib_slim
+resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
 
 # Quantized version of sigmoid function.
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
+remove_noise = False
 
+def slim_sram(in_node,
+              guidance,
+              num_conv=1,
+              conv_type="conv",
+              conv_node=64,
+              scope=None):
+    """Single Residual Attention Module"""
+    with tf.variable_scope(scope, "sram", reuse=tf.AUTO_REUSE):
+        # channel = in_node.get_shape().as_list()[3]
+        net = in_node
+        if conv_type == "conv":
+          conv_op = slim.conv2d
+        elif conv_type == "separable_conv":
+          conv_op = slim.separable_conv2d
+        else:
+          raise ValueError("Unknown convolution type")
 
-# def conv_block(inputs, output_dims, embed=None):
-#   conv = inputs
-#   for i, k in enumerate(embed):
-#     conv = conv2d(conv, [3,3,num_filters,num_filters], activate=tf.nn.relu, scope="fuse", is_training=is_training) 
+        for i in range(num_conv-1):
+          net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
+        net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+"out", activation_fn=None)
+        # for i in range(num_conv):
+        #   net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
+
+        # guidance_filters = guidance.get_shape().as_list()[3]
+        guidance_filters = preprocess_utils.resolve_shape(guidance, rank=4)[3]
+        if guidance_filters == 1:
+            guidance_tile = tf.tile(guidance, [1,1,1,conv_node])
+        elif guidance_filters == conv_node:
+            guidance_tile = guidance
+        else:
+            raise ValueError("Unknown guidance filters number")
+
+        # tf.add_to_collection("/sram_embed", {"in_node": in_node,
+        #                                      "conv2": conv2, 
+        #                                      "guidance_tile": guidance_tile, 
+        #                                      "output": output})
+
+        output = in_node + tf.multiply(net, guidance_tile)
+        tf.add_to_collection(scope+"_guided_feature", tf.multiply(net, guidance_tile))
+        return output
+      
+      
+class Refine(object):
+  def __init__(self, low_level, fusions, fuse_flag, prior_seg=None, prior_pred=None, stage_pred_loss_name=None, guid_conv_nums=64, 
+               guid_conv_type="conv2d", embed_node=32, predict_without_background=False, 
+               num_class=14, weight_decay=0.0, scope=None, is_training=None, ks=None, **kwargs):
+    guid_feature_only = kwargs.pop("guid_feature_only", False)
+    if guid_feature_only:
+      low_level.pop("low_level5")
+      # fusions = fusions[1:]
+    self.low_level = list(low_level.values())
+    self.fusions = fusions
+    self.fuse_flag = fuse_flag
+    self.prior_seg = prior_seg
+    self.prior_pred = prior_pred
+    self.stage_pred_loss_name = stage_pred_loss_name
+    self.embed_node = embed_node
+    self.guid_conv_type = guid_conv_type
+    self.guid_conv_nums = guid_conv_nums
+    self.predict_without_background = predict_without_background
+    self.num_class = num_class
+    self.weight_decay = weight_decay
+    self.scope = scope
+    # assert len(self.low_level) == len(self.fusions)
+    self.num_stage = len(self.low_level)
+    self.is_training = is_training
+    self.fine_tune_batch_norm = True
+    
+    self.apply_sram2 = kwargs.pop("apply_sram2", False)
+    self.add_feature = kwargs.pop("add_feature", True)
+    self.guid_fuse = kwargs.pop("guid_fuse", "sum")
+    self.ks = ks
+  def embed(self, x, out_node, scope):
+    return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
+    
+  def model(self):
+    # TODO: reolve_shape
+    # TODO: image size
+    # TODO: Remove after finish code
+    batch_norm = slim.batch_norm
+    batch_norm_params = get_batch_norm_params(
+        decay=0.9997,
+        epsilon=1e-5,
+        scale=True,
+        is_training=(self.is_training and self.fine_tune_batch_norm),
+        # sync_batch_norm_method=model_options.sync_batch_norm_method
+        )
+    if "slim_guid_class" in self.fusions:
+      raise ValueError("Bugs Fixing")
+    with tf.variable_scope(self.scope, 'Refine_Network'):
+      with slim.arg_scope([slim.conv2d], 
+                        trainable=True,
+                        activation_fn=tf.nn.relu, 
+                        weights_initializer=tf.initializers.he_normal(), 
+                        weights_regularizer=slim.l2_regularizer(self.weight_decay),
+                        kernel_size=[3, 3], 
+                        padding='SAME',
+                        normalizer_fn=slim.batch_norm):
+        with slim.arg_scope([batch_norm], **batch_norm_params):
+          if self.add_feature:
+            y_tm1 = self.prior_seg
+          else:
+            y_tm1 = None
+          preds = {}
+          
+          # TODO: input guid in each stage?
+          # TODO: Would default vars value causes error?
+          if self.prior_seg is not None and self.prior_pred is not None:
+            if "guid" in self.fusions:
+              guid = self.prior_seg
+            elif "guid_class" in self.fusions:
+              guid = self.prior_pred
+            elif "guid_uni" in self.fusions:
+              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
+              # guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
+          out_node = self.embed_node
+
+          for i, v in enumerate(self.low_level):
+            module_order = self.num_stage-i
+            fuse_method = self.fusions[i]
+            embed = self.embed(v, out_node, scope="embed%d" %module_order)
+            tf.add_to_collection("embed", embed)
+            
+            fuse_func = self.get_fusion_method(fuse_method)
+            h, w = preprocess_utils.resolve_shape(embed, rank=4)[1:3]
+            # h, w = embed.get_shape().as_list()[1:3]
+            if y_tm1 is not None:
+              y_tm1 = resize_bilinear(y_tm1, [h, w])
+              tf.add_to_collection("feature", y_tm1)
+            else:
+              # TODO: remove
+              tf.add_to_collection("feature", tf.zeros_like(embed))  
+            
+            if fuse_method in ("concat", "sum"):
+              if y_tm1 is not None:
+                y = fuse_func(embed, y_tm1, out_node, fuse_method+str(module_order))
+              else:
+                y = tf.identity(embed, name="identity%d" %module_order)
+            elif fuse_method in ("guid", "guid_class", "guid_uni"):
+              # guid = resize_bilinear(guid, [h, w])
+              if guid is not None:
+                guid = resize_bilinear(guid, [h, w])
+              tf.add_to_collection("guid", guid)
+              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
+                            num_classes=self.num_class, apply_sram2=self.apply_sram2)
+              
+              if self.fuse_flag:
+                y = slim.conv2d(y, self.embed_node, scope='fuse'+str(i))
+                tf.add_to_collection("refining", y)
+                # if i == len(self.low_level)-1:
+                #   h, w = preprocess_utils.resolve_shape(y, rank=4)[1:3]
+                #   # h, w = y.get_shape().as_list()[1:3]
+                #   h = h * 2
+                #   w = w * 2
+                # else:
+                #   h, w = self.low_level[i+1].get_shape().as_list()[1:3]
+                # y = resize_bilinear(y, [h, w])
+                
+            if self.stage_pred_loss_name is not None:
+              
+              num_class = self.num_class
+              if self.predict_without_background:
+                num_class -= 1
+              stage_pred =  slim.conv2d(y, num_class, kernel_size=[self.ks, self.ks], activation_fn=None, 
+                                          scope="stage_pred%d" %module_order)
+              # stage_pred = []
+              # for _ in range(num_class):
+              #   stage_pred_c = slim.conv2d(y, 1, kernel_size=[3,3], activation_fn=None, 
+              #                             scope="stage_pred%d_class%d" % (module_order, _))
+              #   stage_pred.append(stage_pred_c)
+              # stage_pred = tf.concat(stage_pred, axis=3)
+              preds["guidance%d" %module_order] = stage_pred
+              
+            if fuse_method in ("guid"):
+              guid = y
+              y_tm1 = None
+            elif fuse_method in ("guid_class", "guid_uni"):
+              if "softmax" in self.stage_pred_loss_name:
+                guid = tf.nn.softmax(stage_pred, axis=3)
+              elif "sigmoid" in self.stage_pred_loss_name:
+                # guid = tf.nn.sigmoid(guid)
+                guid = tf.nn.sigmoid(stage_pred)
+                
+            #   if fuse_method == "guid_uni":
+              if remove_noise:
+                guid = tf.pow(guid, 2*tf.ones_like(guid))
+              if self.guid_fuse == "sum":
+                guid = tf.reduce_sum(guid, axis=3, keepdims=True)
+              elif self.guid_fuse == "mean":
+                guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+              elif self.guid_fuse == "entropy":
+                guid = tf.clip_by_value(guid, 1e-10, 1.0)
+                guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
+              elif self.guid_fuse == "conv":
+                if i < len(self.low_level)-1:
+                  guid = slim.conv2d(guid, out_node, kernel_size=[3,3], activation_fn=None)
+                else:
+                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)  
+              elif self.guid_fuse == "sum_dilated":
+                size = [8,6,4,2,1]
+                kernel = tf.ones((size[i], size[i], num_class))
+                guid = tf.nn.dilation2d(guid, filter=kernel, strides=(1,1,1,1), 
+                                          rates=(1,1,1,1), padding="SAME")
+                guid = guid - tf.ones_like(guid)                          
+                guid = tf.reduce_sum(guid, axis=3, keepdims=True)   
+              elif self.guid_fuse == "w_sum":
+                w = tf.nn.softmax(tf.reduce_sum(guid, axis=[1,2], keepdims=True), axis=3)
+                rev_w = tf.ones_like(w) - w
+                guid = tf.reduce_mean(tf.multiply(guid, rev_w), axis=3, keepdims=True)
+              elif self.guid_fuse == "conv_sum":
+                k_size_list = [1,1,1,3,5]
+                k_size = 2 * k_size_list[i] + 1
+                guid = slim.conv2d(guid, 1, kernel_size=[k_size,k_size], activation_fn=None,
+                                   weights_initializer=tf.ones_initializer(), trainable=False, normalizer_fn=None)
+                # guid = guid / (k_size*k_size*num_class*1)
+              elif self.guid_fuse == "w_sum_conv":
+                # TODO: make it right
+                k_size_list = [1,1,1,2,4]
+                k_size = 3 * k_size_list[i] + 1
+                w = tf.reduce_sum(guid, axis=[1,2], keepdims=True)
+                rev_w = (tf.ones_like(w)+1e-5) / (tf.sqrt(w)+1e-5)
+                rev_w = tf.tile(rev_w, [1,k_size,k_size,1])
+                rev_w = tf.expand_dims(rev_w, axis=4)
+                
+                n, h, w, channels_img = preprocess_utils.resolve_shape(guid, rank=4)
+                n, fh, fw, channels, out_channels = preprocess_utils.resolve_shape(rev_w, rank=5)
+                # F has shape (n, k_size, k_size, channels, out_channels)
+
+                rev_w = tf.transpose(rev_w, [1, 2, 0, 3, 4])
+                rev_w = tf.reshape(rev_w, [fh, fw, channels*n, out_channels])
+
+                guid = tf.transpose(guid, [1, 2, 0, 3]) # shape (H, W, MB, channels_img)
+                guid = tf.reshape(guid, [1, h, w, n*channels_img])
+
+                out = tf.nn.depthwise_conv2d(
+                          guid,
+                          filter=rev_w,
+                          strides=[1, 1, 1, 1],
+                          padding="SAME") # here no requirement about padding being 'VALID', use whatever you want. 
+                # Now out shape is (1, H-fh+1, W-fw+1, MB*channels*out_channels), because we used "VALID"
+
+                out = tf.reshape(out, [h, w, n, channels, out_channels])
+                out = tf.transpose(out, [2, 0, 1, 3, 4])
+                out = tf.reduce_sum(out, axis=3)
+                guid = out
+              
+              tf.add_to_collection("guid_avg", guid)
+                
+              y_tm1 = y
+            elif fuse_method in ("concat", "sum"):
+              y_tm1 = y
+              
+          h, w = y.get_shape().as_list()[1:3]  
+          y = resize_bilinear(y, [2*h, 2*w])
+          y = slim.conv2d(y, self.embed_node, scope="decoder_output")
+          y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits')
+    return y, preds
+  
+  def get_fusion_method(self, method):
+    if method == "concat":
+      return self.concat_convolution
+    elif method == "sum":
+      return self.sum_convolution
+    elif method in ("guid", "guid_uni"):
+      return self.guid_attention
+    elif method == "guid_class":
+      return self.guid_class_attention
+    
+  def concat_convolution(self, x1, x2, out_node, scope):
+    with tf.variable_scope(scope, "concat_conv"):
+      net = slim.conv2d(tf.concat([x1, x2], axis=3), out_node, scope="conv1")
+  #    net = slim.conv2d(net, out_node, scope=scope+"_2")
+      return net
+  
+  def sum_convolution(self, x1, x2, out_node, scope):
+    with tf.variable_scope(scope, "sum_cocnv"):
+      net = slim.conv2d(x1 + x2, out_node, scope="conv1")
+  #    net = slim.conv2d(net, out_node, scope=scope+"_2")
+      return net
+
     
     
+  def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    apply_sram2 = kwargs.pop("apply_sram2", False)
+    guid_node = guid.get_shape().as_list()[3]
+    if guid_node != out_node and guid_node != 1:
+      raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+    
+    with tf.variable_scope(scope, 'guid'):
+      net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+      tf.add_to_collection("sram1", net)
+      if x2 is not None:
+        net = net + x2
+        if apply_sram2:
+          net = slim_sram(net, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
+
+      tf.add_to_collection("sram2", net)
+      return net
+    
+  def guid_class_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    num_classes = kwargs.pop("num_classes", None)
+    guid_node = guid.get_shape().as_list()[3]
+    if guid_node != num_classes:
+      raise ValueError("Unknown guidance node number %d, should equal class number" %guid_node)
+    with tf.variable_scope(scope, "guid_class"):
+      total_att = []
+      for i in range(1, num_classes):
+        net = slim_sram(x1, guid[...,i:i+1], self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+        if x2 is not None:
+          net = net + x2
+          net = slim_sram(net, guid[...,i:i+1], self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram2")
+        total_att.append(net)
+      fuse = slim.conv2d(tf.concat(total_att, axis=3), out_node, kernel_size=[1,1], scope="fuse")
+    return fuse
+
+
+
+def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):  
+    # TODO: batch_norm parameter 
+    with tf.variable_scope(scope, 'U-net'):
+      with slim.arg_scope([slim.batch_norm],
+                        is_training=is_training):
+        with slim.arg_scope([slim.conv2d], 
+                          trainable=True,
+                          activation_fn=tf.nn.relu, 
+                          weights_initializer=tf.initializers.he_normal(), 
+                          weights_regularizer=slim.l2_regularizer(weight_decay),
+                          kernel_size=[3, 3], 
+                          padding='SAME',
+                          normalizer_fn=slim.batch_norm):
+            low_level = []
+            for s in range(1, num_stage+1):
+              channel = base_channel * root**(s-1)
+              net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+              net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+              low_level.append(net)
+              net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+              
+            net = slim.conv2d(net, channel*root, scope='bottle_neck1')
+            net = slim.conv2d(net, channel*root, scope='bottle_neck2')
+            
+            for s in range(num_stage, 0, -1):
+              h, w = low_level[s-1].get_shape().as_list()[1:3]
+              channel = base_channel * root**s
+              
+              net = resize_bilinear(net, [h, w])
+              net = tf.concat([net, low_level[s-1]], axis=3)
+              net = slim.conv2d(net, channel, scope='up_conv%d_1' %s)
+              net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
+    return net      
+            
+def get_guidance(guidance, out_node, output_stride=None, scope=None):
+    with tf.variable_scope(scope, 'guidance_embedding'):
+      net = slim.conv2d(guidance, out_node, 3, stride=2, scope='conv1_1')
+      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_2')
+      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_3')
+      blocks = [
+          resnet_v1_beta_block(
+              'block1', base_depth=out_node//2, num_units=2, stride=2),
+          resnet_v1_beta_block(
+              'block2', base_depth=out_node, num_units=2, stride=2),
+          # resnet_v1_beta_block(
+          #     'block3', base_depth=256, num_units=23, stride=2),
+          # resnet_utils.Block('block4', bottleneck, [
+          #     {'depth': 2048,
+          #     'depth_bottleneck': 512,
+          #     'stride': 1,
+          #     'unit_rate': rate} for rate in multi_grid]),
+      ]
+      net = slim.nets.resnet_utils.stack_blocks_dense(net,
+                                                      blocks,
+                                                      output_stride)
+      net = slim.conv2d(net, out_node, 1, stride=1, scope='out')
+      # num_stage = 3
+      # root = 1
+      # net = guidance
+      # for s in range(1, num_stage+1):
+      #   channel = out_node * root**(s-1)
+      #   net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+      #   net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+      #   net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+      # net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
+      # net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
+    return net
+              
+def slim_extractor(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):  
+    # TODO: batch_norm parameter 
+    with tf.variable_scope(scope, 'U-net'):
+      with slim.arg_scope([slim.batch_norm],
+                        is_training=is_training):
+        with slim.arg_scope([slim.conv2d], 
+                          trainable=True,
+                          activation_fn=tf.nn.relu, 
+                          weights_initializer=tf.initializers.he_normal(), 
+                          weights_regularizer=slim.l2_regularizer(weight_decay),
+                          kernel_size=[3, 3], 
+                          padding='SAME',
+                          normalizer_fn=slim.batch_norm):
+            for s in range(1, num_stage+1):
+              channel = base_channel * root**(s-1)
+              net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+              net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+              net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+    return net
+
+      
 def mlp(inputs, 
         output_dims, 
         num_layers=3, 
@@ -155,13 +556,54 @@ def get_batch_norm_params(decay=0.9997,
   return batch_norm_params
 
 
+def conv_block(inputs, channels=32, scope=None, is_training=True):
+    with tf.variable_scope(scope, "conv_block"):
+      in_channel = inputs.get_shape().as_list()[3]
+      conv1 = conv2d(inputs, [3,3,in_channel,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+      conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+    return conv2
+
+
+def _simple_decoder(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+    for s in range(1, stage+1):
+      h, w = inputs.get_shape().as_list()[1:3]
+      up = tf.image.resize_bilinear(inputs, [2*h, 2*w])
+      inputs = conv_block(up, channels, "up_conv_block"+str(s), is_training)
+    outputs = conv2d(inputs, [3,3,channels,out], activate=None, is_training=is_training, scope="output_conv")
+    return outputs    
+           
+           
+def _simple_unet(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+    with tf.variable_scope(scope, 'simple_unet'):
+      down_conv_list = []
+      down = inputs
+      c = channels
+      for s in range(1, stage+1):
+        conv = conv_block(down, c, "down_conv_block"+str(s), is_training)
+        down_conv_list.append(conv)
+        down = tf.nn.max_pool(conv, [1,2,2,1], [1,2,2,1], "VALID")
+        c *= 2
+        
+      conv = conv_block(down, c//2, "latent", is_training)
+      
+      for s in range(1, stage+1):
+        down = down_conv_list[stage-s]
+        h, w = down.get_shape().as_list()[1:3]
+        up = tf.image.resize_bilinear(conv, [h, w])
+        conv = conv_block(tf.concat([up,down], axis=3), c, "up_conv_block"+str(s), is_training)
+        c //= 2
+        
+      return  conv2d(conv, [1,1,channels,out], activate=None, is_training=is_training, scope="output_conv")
+        
 def __2d_unet_decoder(features, layers_dict, num_class, channels=None, scope=None, is_training=None):
     with tf.variable_scope(scope, '2d_unet'):
         i = 1
         root = 2
         for v in layers_dict.values():
             if i == 1:
-                conv = _2d_unet_block(features, v, channels, is_training, "block"+str(i))
+                with tf.variable_scope("block1"):
+                  conv = conv2d(features, [3,3,2048,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+                  conv = conv2d(conv, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
             else:
                 conv = _2d_unet_block(conv, v, channels, is_training, "block"+str(i))
             i += 1    
@@ -446,27 +888,27 @@ def batch_norm(inputs, scope=None, is_training=None):
     return output
 
     
-def upsampling_layer(inputs, n, mode, scope='upsampling'):
-    """upsampling layer
-    Args:
-    Return:
-    """
-    assert inputs.get_shape().ndims == 4
-    x_shape = tf.shape(inputs)
-    new_h = x_shape[1]*n
-    new_w = x_shape[2]*n
+# def upsampling_layer(inputs, n, mode, scope='upsampling'):
+#     """upsampling layer
+#     Args:
+#     Return:
+#     """
+#     assert inputs.get_shape().ndims == 4
+#     x_shape = tf.shape(inputs)
+#     new_h = x_shape[1]*n
+#     new_w = x_shape[2]*n
     
-    with tf.variable_scope(scope):
-        if mode is 'Nearest_Neighbor':
-            output = tf.image.resize_nearest_neighbor(inputs, [new_h, new_w], name='nearest_neighbor')
+#     with tf.variable_scope(scope):
+#         if mode is 'Nearest_Neighbor':
+#             output = tf.image.resize_nearest_neighbor(inputs, [new_h, new_w], name='nearest_neighbor')
             
-        if mode is 'Bilinear':
-            output = tf.image.resize_bilinear(inputs, [new_h, new_w], name='bilinear')
+#         if mode is 'Bilinear':
+#             output = tf.image.resize_bilinear(inputs, [new_h, new_w], name='bilinear')
         
-        if mode is 'Bicubic':
-            output = tf.image.resize_bicubic(inputs, [new_h, new_w], name='bicubic')
+#         if mode is 'Bicubic':
+#             output = tf.image.resize_bicubic(inputs, [new_h, new_w], name='bicubic')
 
-    return output
+#     return output
 
 
 # def global_avg_pool(inputs, keep_dims=False):
@@ -485,19 +927,19 @@ def upsampling_layer(inputs, n, mode, scope='upsampling'):
 #     return output
 
 
-# def resize_bilinear(images, size, output_dtype=tf.float32):
-#   """Returns resized images as output_type.
-#   Args:
-#     images: A tensor of size [batch, height_in, width_in, channels].
-#     size: A 1-D int32 Tensor of 2 elements: new_height, new_width. The new size
-#       for the images.
-#     output_dtype: The destination type.
-#   Returns:
-#     A tensor of size [batch, height_out, width_out, channels] as a dtype of
-#       output_dtype.
-#   """
-#   images = tf.image.resize_bilinear(images, size, align_corners=True)
-#   return tf.cast(images, dtype=output_dtype)
+def resize_bilinear(images, size, output_dtype=tf.float32):
+  """Returns resized images as output_type.
+  Args:
+    images: A tensor of size [batch, height_in, width_in, channels].
+    size: A 1-D int32 Tensor of 2 elements: new_height, new_width. The new size
+      for the images.
+    output_dtype: The destination type.
+  Returns:
+    A tensor of size [batch, height_out, width_out, channels] as a dtype of
+      output_dtype.
+  """
+  images = tf.image.resize_bilinear(images, size, align_corners=False)
+  return tf.cast(images, dtype=output_dtype)
 
 
 def scale_dimension(dim, scale):
@@ -514,49 +956,13 @@ def scale_dimension(dim, scale):
     return int((float(dim) - 1.0) * scale + 1.0)
 
 
-# def split_separable_conv2d(inputs,
-#                            filters,
-#                            kernel_size=3,
-#                            rate=1,
-#                            weight_decay=0.00004,
-#                            depthwise_weights_initializer_stddev=0.33,
-#                            pointwise_weights_initializer_stddev=0.06,
-#                            scope=None):
-#   """Splits a separable conv2d into depthwise and pointwise conv2d.
-#   This operation differs from `tf.layers.separable_conv2d` as this operation
-#   applies activation function between depthwise and pointwise conv2d.
-#   Args:
-#     inputs: Input tensor with shape [batch, height, width, channels].
-#     filters: Number of filters in the 1x1 pointwise convolution.
-#     kernel_size: A list of length 2: [kernel_height, kernel_width] of
-#       of the filters. Can be an int if both values are the same.
-#     rate: Atrous convolution rate for the depthwise convolution.
-#     weight_decay: The weight decay to use for regularizing the model.
-#     depthwise_weights_initializer_stddev: The standard deviation of the
-#       truncated normal weight initializer for depthwise convolution.
-#     pointwise_weights_initializer_stddev: The standard deviation of the
-#       truncated normal weight initializer for pointwise convolution.
-#     scope: Optional scope for the operation.
-#   Returns:
-#     Computed features after split separable conv2d.
-#   """
-#   outputs = slim.separable_conv2d(
-#       inputs,
-#       None,
-#       kernel_size=kernel_size,
-#       depth_multiplier=1,
-#       rate=rate,
-#       weights_initializer=tf.truncated_normal_initializer(
-#           stddev=depthwise_weights_initializer_stddev),
-#       weights_regularizer=None,
-#       scope=scope + '_depthwise')
-#   return slim.conv2d(
-#       outputs,
-#       filters,
-#       1,
-#       weights_initializer=tf.truncated_normal_initializer(
-#           stddev=pointwise_weights_initializer_stddev),
-#       weights_regularizer=slim.l2_regularizer(weight_decay),
-#       scope=scope + '_pointwise')
-
-
+def se_block(inputs, node=32, scope=None):
+  with tf.variable_scope(scope, "se_block", reuse=tf.AUTO_REUSE):
+      channel = inputs.get_shape().as_list()[3]
+      net = inputs
+      net = tf.reduce_mean(net, [1,2], keep_dims=False)
+      net = fc_layer(net, [channel, 32], _std=1, scope="fc1")
+      net = tf.nn.relu(net)
+      net = fc_layer(net, [32, channel], _std=1, scope="fc2")
+      net = tf.nn.sigmoid(net)
+  return net

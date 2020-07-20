@@ -1,3 +1,4 @@
+import functools
 import six
 import numpy as np
 import nibabel as nib
@@ -6,11 +7,51 @@ import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
 
+from utils import losses
 from core import preprocess_utils
 from core import utils
 import common
 # from utils import loss_utils
+_EPSILON = 1e-5
+losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
+              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
+              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,
+              "sigmoid_dice_loss": losses.add_sigmoid_dice_loss_for_each_scale,
+              "softmax_generaled_dice_loss": losses.add_softmax_generaled_dice_loss_for_each_scale,}
 
+def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
+    ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
+
+    # If logits are provided then convert the predictions into probabilities
+    if from_logits:
+        pred_prob = tf.sigmoid(y_pred)
+    else:
+        pred_prob = y_pred
+
+    p_t = (y_true * pred_prob) + ((1 - y_true) * (1 - pred_prob))
+    alpha_factor = 1.0
+    modulating_factor = 1.0
+
+    if alpha:
+        alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
+
+    if gamma:
+        modulating_factor = tf.pow((1.0 - p_t), gamma)
+
+    # compute the final loss and return
+    return tf.reduce_sum(alpha_factor * modulating_factor * ce)
+                         
+  # p = tf.nn.sigmoid(labels)
+  # q = 1 - p
+  
+  # p = tf.math.maximum(p, _EPSILON)
+  # q = tf.math.maximum(q, _EPSILON)
+    
+  # pos_loss = -alpha * ((1-p)**gamma) * tf.log(p)
+  # neg_loss = -alpha * ((1-q)**gamma) * tf.log(q)
+  # focal_loss = labels*pos_loss + (1-labels)*neg_loss
+  # focal_loss = tf.reduce_sum(focal_loss)
+  # return focal_loss
 
 
 def loss_utils(logits, labels, cost_name, **cost_kwargs):
@@ -22,26 +63,32 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
     regularizer: power of the L2 regularizers added to the loss function
     """
     if cost_name == "cross_entropy":
-        flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
-        flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
+        add_softmax_cross_entropy_loss_for_each_scale(logits,
+                                                    labels,
+                                                    14,
+                                                    -1,
+                                                    loss_weight=[0.04]+13*[1.0])
+        loss = tf.losses.get_losses()[0]
+        # flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
+        # flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
         
-        class_weights = cost_kwargs.pop("class_weights", None)
+        # class_weights = cost_kwargs.pop("class_weights", None)
         
-        if class_weights is not None:
-            class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
+        # if class_weights is not None:
+        #     class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
     
-            weight_map = tf.multiply(flat_labels, class_weights)
-            weight_map = tf.reduce_sum(weight_map, axis=1)
+        #     weight_map = tf.multiply(flat_labels, class_weights)
+        #     weight_map = tf.reduce_sum(weight_map, axis=1)
     
-            loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-                                                                labels=flat_labels)
-            weighted_loss = tf.multiply(loss_map, weight_map)
+        #     loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
+        #                                                         labels=flat_labels)
+        #     weighted_loss = tf.multiply(loss_map, weight_map)
     
-            loss = tf.reduce_mean(weighted_loss)
+        #     loss = tf.reduce_mean(weighted_loss)
             
-        else:
-            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, 
-                                                                            labels=flat_labels))
+        # else:
+        #     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, 
+        #                                                                     labels=flat_labels))
 
             
     elif cost_name == "KL_divergence":
@@ -99,6 +146,7 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
             
     elif cost_name == "mean_dice_coefficient":       
         eps = 1e-5
+        batch_size = cost_kwargs.pop("batch_size", None)
         # TODO: num_class variables or change in datagenerator
         is_onehot = cost_kwargs.pop("is_onehot", True)
         if is_onehot:
@@ -108,23 +156,46 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
                               off_value=0,
                               axis=-1,
                               )
-        gt = tf.reshape(labels, [-1, labels.get_shape()[-1]])
+        gt = tf.reshape(labels, [-1, labels.get_shape()[3]])
         gt = tf.cast(gt, tf.float32)
         prediction = tf.nn.softmax(logits)
-        prediction = tf.reshape(prediction, [-1, logits.get_shape()[-1]])
+        prediction = tf.reshape(prediction, [-1, logits.get_shape()[3]])
         
         intersection = tf.reduce_sum(gt*prediction, 0)
         union = tf.reduce_sum(gt, 0) + tf.reduce_sum(prediction, 0)
 
         loss = (2*intersection+eps) / (union+eps)
         loss = 1 - tf.reduce_mean(loss)
+
+        # if is_onehot:
+        #   labels = tf.one_hot(indices=labels,
+        #                       depth=14,
+        #                       on_value=1,
+        #                       off_value=0,
+        #                       axis=-1,
+        #                       )
+        # gt = tf.reshape(labels, [batch_size, -1, labels.get_shape()[-1]])
+        # gt = tf.cast(gt, tf.float32)
+        # prediction = tf.nn.softmax(logits)
+        # prediction = tf.reshape(prediction, [batch_size, -1, logits.get_shape()[-1]])
         
+        # intersection = tf.reduce_sum(gt*prediction, axis=1)
+        # union = tf.reduce_sum(gt, axis=1) + tf.reduce_sum(prediction, axis=1)
+        # loss = 1 - tf.reduce_mean((2*intersection+eps)/(union+eps), axis=1)
+        # loss = tf.reduce_mean(loss)
+
     elif cost_name == "MSE":
         loss = tf.losses.mean_squared_error(
                                         labels,
                                         logits,
                                         )
-        
+    elif cost_name == "binary_focal_sigmoid":
+      alpha = cost_kwargs.pop("alpha", 0.25)
+      gamma = cost_kwargs.pop("gamma", 2.0)
+      flat_logits = tf.reshape(logits, [-1, ])
+      flat_labels = tf.reshape(labels, [-1, ])
+      loss = binary_focal_sigmoid_loss(flat_labels, flat_logits, alpha, gamma)   
+      
     else:
         raise ValueError("Unknown cost function: "%cost_name)
 
@@ -134,101 +205,100 @@ def loss_utils(logits, labels, cost_name, **cost_kwargs):
     #     loss += (regularizer * regularizers)
     return loss
     
-    
+def get_loss_func(loss_name):
+  if loss_name not in losses_map:
+    raise ValueError('Unsupported loss %s.' % loss_name)
+  
+  func = losses_map[loss_name]
+  @functools.wraps(func)
+  def network_fn(*args, **kwargs):
+      return func(*args, **kwargs)
+  return network_fn    
+     
+     
 def get_losses(output_dict, 
                layers_dict, 
                samples, 
-               loss_dict, 
-               z_loss_decay=None, 
-               transformed_loss_decay=None, 
-               guidance_loss_decay=None,
-               transform_loss_decay=None):
-    # TODO: auxlarity loss in latent
-    losses = []
-    seg_loss = loss_utils(output_dict[common.OUTPUT_TYPE], samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
-    seg_loss = tf.identity(seg_loss, name='/'.join(['segmentation_loss', loss_dict[common.OUTPUT_TYPE]]))
-    losses.append(seg_loss)
+               loss_dict,
+               num_classes,
+               batch_size=None,
+               predict_without_background=None,
+               z_class=None):
     
-    # Calculate z loss
-    if common.OUTPUT_Z in output_dict:
-        z_loss = loss_utils(output_dict[common.OUTPUT_Z], samples[common.Z_LABEL], cost_name=loss_dict[common.OUTPUT_Z])
-        z_loss = tf.multiply(z_loss_decay, z_loss, name='/'.join(['z_loss', loss_dict[common.OUTPUT_Z]]))
-        losses.append(z_loss)
+    # TODO: layers_dict and output_dict diff, should just input one of them
 
-    # Calculate guidance loss
-    if common.GUIDANCE in output_dict:
-      guidance_loss = 0
-      
-      # Upsample logits in each stage with tf loss func
-      ny = samples[common.LABEL].get_shape()[1]
-      nx = samples[common.LABEL].get_shape()[2]
-      ys = tf.one_hot(
-          samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
-      
-      for name, value in layers_dict.items():
-          if 'guidance' in name:
-              value = tf.nn.sigmoid(value)
-              value = tf.compat.v2.image.resize(value, [ny, nx])
-              
-              guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.GUIDANCE])
-
-      
-      # # Upsample logits in each stage
-      # ny = samples[common.LABEL].get_shape()[1]
-      # nx = samples[common.LABEL].get_shape()[2]
-      # ys = tf.one_hot(
-      #     samples[common.LABEL][...,0], 14, on_value=1.0, off_value=0.0)
-      # ys = tf.reshape(ys, [-1,14])
-      # ys = tf.cast(ys, tf.float32)
-      # for name, value in layers_dict.items():
-      #     if 'guidance' in name:
-      #         value = tf.nn.sigmoid(value)
-      #         value = tf.compat.v2.image.resize(value, [ny, nx])
-              
-      #         value = tf.reshape(value, [-1,14])
-      #         loss = -tf.reduce_mean(ys * tf.log(tf.clip_by_value(value,1e-10,1.0)))
-      #         guidance_loss += loss
-              
-              
-      #         # guidance_loss += loss_utils(value, samples[common.LABEL], cost_name=loss_dict[common.OUTPUT_TYPE])
-              
-      # # Downsample Ground Truth       
-      # for name, value in layers_dict.items():
-      #     if 'guidance' in name:
-      #         ny_g = value.get_shape()[1]
-      #         nx_g = value.get_shape()[2]
-      #         ys = tf.compat.v2.image.resize(samples[common.LABEL], [ny_g, nx_g])
-      #         ys = tf.cast(ys, tf.int32)
-      #         guidance_loss += loss_utils(value, ys, cost_name=loss_dict[common.OUTPUT_TYPE])
-      
+    # Calculate segmentation loss
+    scales_to_logits = {"full": output_dict[common.OUTPUT_TYPE]}
+    get_loss_func(loss_dict[common.OUTPUT_TYPE]["loss"])(
+      scales_to_logits=scales_to_logits,
+      labels=samples[common.LABEL],
+      num_classes=num_classes,
+      ignore_label=255,
+      loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
+      scope=loss_dict[common.OUTPUT_TYPE]["scope"])
     
-      guidance_loss = tf.multiply(guidance_loss_decay, 
-                                  guidance_loss, 
-                                  name='/'.join(['guidance_loss', loss_dict[common.GUIDANCE]]))
-
-      losses.append(guidance_loss)  
+    label = samples[common.LABEL]
+    if predict_without_background:
+      label = tf.one_hot(samples[common.LABEL][...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
+      label = label[...,1:]
+      num_classes -= 1
       
-    if transform_loss_decay is not None:
-      ys2 = tf.compat.v2.image.resize(ys, [32,32])
-      transform_loss = loss_utils(output_dict[common.GUIDANCE], ys2, cost_name=loss_dict[common.GUIDANCE])
-      transform_loss = tf.multiply(transform_loss_decay, 
-                                transform_loss, 
-                                name='/'.join(['transform_loss', loss_dict[common.GUIDANCE]]))                             
-      losses.append(transform_loss)
+    # Calculate stage prediction loss
+    # TODO: the way to form guid_dict
+    # TODO: different parameters in different losses, how to deal with each losss in a generalized way
+    if "stage_pred" in loss_dict:
+        guid_dict = {}
+        # size = [2,2,2,4,4]
+        i = 0
+        
+        for name, value in layers_dict.items():
+          if "guidance" in name:
+            # kernel = tf.ones((size[i], size[i], num_classes))
+            # kernel = None
+            
+            get_loss_func(loss_dict["stage_pred"]["loss"])(
+              scales_to_logits={name: value},
+              labels=label,
+              num_classes=num_classes,
+              ignore_label=255,
+              # dilated_kernel=kernel,
+              loss_weight=loss_dict["stage_pred"]["weights"],
+              scope=loss_dict["stage_pred"]["scope"])
+            i+=1
+        # guid_dict = {}
+        # for name, value in layers_dict.items():
+        #   if "guidance" in name:
+        #     guid_dict[name] = value
+        # get_loss_func(loss_dict["stage_pred"]["loss"])(
+        #   scales_to_logits=guid_dict,
+        #   labels=samples[common.LABEL],
+        #   num_classes=num_classes,
+        #   ignore_label=255,
+        #   loss_weight=loss_dict["stage_pred"]["weights"],
+        #   scope=loss_dict["stage_pred"]["scope"])
+
+    # Calculate guidance loss  
+    if common.GUIDANCE in loss_dict:
+        # TODO: modify g
+        g = {"transform": output_dict[common.GUIDANCE]}
+        get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
+          scales_to_logits=g,
+          labels=label,
+          num_classes=num_classes,
+          ignore_label=255,
+          loss_weight=loss_dict[common.GUIDANCE]["weights"],
+          scope=loss_dict[common.GUIDANCE]["scope"])
+        
+    if common.OUTPUT_Z in loss_dict:
+        get_loss_func(loss_dict[common.OUTPUT_Z]["loss"])(
+            scales_to_logits={common.OUTPUT_Z: output_dict[common.OUTPUT_Z]},
+            labels=samples[common.Z_LABEL],
+            num_classes=z_class,
+            ignore_label=255,
+            loss_weight=loss_dict[common.OUTPUT_Z]["weights"],
+            upsample_logits=False,
+            scope=loss_dict[common.OUTPUT_Z]["scope"])
     
-    # if common.PRIOR_IMGS in loss_dict:
-    #   # TODO: do in the correct way
-    #   transformed_loss = loss_utils(samples[common.IMAGE], output_dict[common.PRIOR_IMGS], 
-    #                                 cost_name=loss_dict[common.PRIOR_IMGS])
-    #   # image_gradient  = tf.image.image_gradients(output_dict[common.PRIOR_IMGS])
-    #   # transformed_loss += image_gradient
-    #   transformed_loss = tf.multiply(transformed_loss_decay, 
-    #                               transformed_loss, 
-    #                               name='/'.join(['transformed_loss', loss_dict[common.PRIOR_IMGS]]))
-      # losses.append(transformed_loss)
-      
-    return losses
-
 def get_files_name(path, data_suffix='*.jpg'):
     subject = glob.glob(path + data_suffix)
     if not subject:
@@ -236,6 +306,11 @@ def get_files_name(path, data_suffix='*.jpg'):
     subject.sort()
     return subject
 
+def get_dice_loss_weight():
+  pass
+
+def get_cross_entropy_loss_weight():
+  pass
 
 def load_nibabel_data(path, num_of_class=None, processing_list=None, onehot_label=False):
     # get file list
@@ -358,6 +433,8 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
   if gt_is_matting_map and not labels.dtype.is_floating:
     raise ValueError('Labels must be floats if groundtruth is a matting map.')
 
+  # TODO:
+  scales_to_logits = {"1": scales_to_logits}
   for scale, logits in six.iteritems(scales_to_logits):
     loss_scope = None
     if scope:
@@ -487,10 +564,23 @@ def get_model_init_fn(train_logdir,
   exclude_list = ['global_step']
   if not initialize_last_layer:
     exclude_list.extend(last_layers)
+  # TODO: parameter
+  exclude_list.append('resnet_v1_50/conv1_1/weights:0')
 
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
-
+  
+  new_v = []
+  for v in variables_to_restore:
+    print(v.name)
+  for v in variables_to_restore:
+    if "Adam" not in v.name:
+      new_v.append(v)
+  variables_to_restore = new_v
+  print(30*"o")
+  for v in variables_to_restore:
+    print(v.name)
+      
   if variables_to_restore:
     init_op, init_feed_dict = contrib_framework.assign_from_checkpoint(
         tf_initial_checkpoint,

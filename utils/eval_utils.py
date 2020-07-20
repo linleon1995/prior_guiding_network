@@ -9,8 +9,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
-
+class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader", 
+                  5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC", 
+                  10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+
+def print_checkpoint_tensor_name(checkpoint_dir):
+    # TODO: all_tensors,  all_tensor_names for parameters
+    """Print all tensor name from graph"""
+    from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+    # List ALL tensors example output
+    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False, 
+                                    all_tensor_names=True)
+    
+  
+def eval_flol_model(dsc_in_diff_th, threshold):
+    """
+    """
+    ll = []
+    _, ax = plt.subplots(1,1)
+    num_class = len(dsc_in_diff_th)
+    for i, c in enumerate(dsc_in_diff_th):
+        if i < num_class-1:
+            label = class_to_organ[i+1]
+        else:
+            label = "mean"
+        if i+1 > 10:
+            ax.plot(threshold, c, "*-", label=label)
+        else:
+            ax.plot(threshold, c, label=label)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper right')
+    ax.set_xticks(threshold, minor=False)
+    ax.grid(True)
+    ax.set_title("Threshold to DSC for each calss")
+    ax.set_xlabel("Threshold")
+    ax.set_ylabel("Dice Score")
+    plt.show()
 
 class Build_Pyplot_Subplots(object):
     def __init__(self, saving_path, is_showfig, is_savefig, subplot_split, type_list):
@@ -18,6 +54,8 @@ class Build_Pyplot_Subplots(object):
         # TODO: figsize decided by subplot_split
         plt.tight_layout()
         # self.fig.figsize = (6,2)
+        self.x_axis = subplot_split[0]
+        self.y_axis = subplot_split[1]
         self.saving_path = saving_path
         self.is_showfig = is_showfig
         self.is_savefig = is_savefig
@@ -29,8 +67,12 @@ class Build_Pyplot_Subplots(object):
         # TODO: remove coreordinate
         # TODO: Solve subplots(2,2)--> ax is a numpy array not suitble for using for loop directly
         # TODO: Make a judgement about existence of directory
+        
     def set_title(self, title_list):
         assert self.num_plot == len(title_list)
+        # for x in range(self.x_axis):
+        #     for y in range(self.y_axis):
+        #         sub_ax.set_title(title)
         for sub_ax, title in zip(self.ax, title_list):
             sub_ax.set_title(title)
 
@@ -80,74 +122,84 @@ def plot_box_diagram(path):
     # ax1.set_title('Basic Plot')
     # ax1.boxplot(data)
     
-    # è®¾ç½®å›¾å½¢çš„æ˜¾ç¤ºé£Žæ ¼
+    # ?¸m?§Îªº?¥Ü?®æ
     # plt.style.use('ggplot')
 
-    # è®¾ç½®ä¸­æ–‡å’Œè´Ÿå·æ­£å¸¸æ˜¾ç¤º
+    # ?¸m¤¤¤å©M??¥¿±`?¥Ü
     plt.rcParams['font.sans-serif'] = 'Microsoft YaHei'
     plt.rcParams['axes.unicode_minus'] = False
 
-    # ç»˜å›¾ï¼šæ•´ä½“ä¹˜å®¢çš„å¹´é¾„ç®±çº¿å›¾
-    ax[0].boxplot(x = np.arange(2,20), # æŒ‡å®šç»˜å›¾æ•°æ®
-                patch_artist=False, # è¦æ±‚ç”¨è‡ªå®šä¹‰é¢œè‰²å¡«å……ç›’å½¢å›¾ï¼Œé»˜è®¤ç™½è‰²å¡«å……
-                showmeans=True, # ä»¥ç‚¹çš„å½¢å¼æ˜¾ç¤ºå‡å€¼
-                boxprops = {'color':'black'}, # è®¾ç½®ç®±ä½“å±žæ€§ï¼Œå¡«å……è‰²å’Œè¾¹æ¡†è‰²
-                flierprops = {'marker':'o','markerfacecolor':'red','color':'black'}, # è®¾ç½®å¼‚å¸¸å€¼å±žæ€§ï¼Œç‚¹çš„å½¢çŠ¶ã€å¡«å……è‰²å’Œè¾¹æ¡†è‰²
-                meanprops = {'marker':'D','markerfacecolor':'indianred'}, # è®¾ç½®å‡å€¼ç‚¹çš„å±žæ€§ï¼Œç‚¹çš„å½¢çŠ¶ã€å¡«å……è‰²
-                medianprops = {'linestyle':'-','color':'orange'}) # è®¾ç½®ä¸­ä½æ•°çº¿çš„å±žæ€§ï¼Œçº¿çš„ç±»åž‹å’Œé¢œè‰²
-    # è®¾ç½®yè½´çš„èŒƒå›´
+    # ??¡G¾ãÊ^­¼«Èªº¦~?½c??
+    ax[0].boxplot(x = np.arange(2,20), # «ü©w???Õu
+                patch_artist=False, # ­n¨D¥Î¦Û©w??¦â¶ñ¥R²°§Î?¡AÀq?¥Õ¦â¶ñ¥R
+                showmeans=True, # ¥H?ªº§Î¦¡?¥Ü§¡­È
+                boxprops = {'color':'black'}, # ?¸m½cÊ^?©Ê¡A¶ñ¥R¦â©M?®Ø¦â
+                flierprops = {'marker':'o','markerfacecolor':'red','color':'black'}, # ?¸mÉÝ±`­È?©Ê¡A?ªº§Î?¡B¶ñ¥R¦â©M?®Ø¦â
+                meanprops = {'marker':'D','markerfacecolor':'indianred'}, # ?¸m§¡­È?ªº?©Ê¡A?ªº§Î?¡B¶ñ¥R¦â
+                medianprops = {'linestyle':'-','color':'orange'}) # ?¸m¤¤¦ì??ªº?©Ê¡A?ªº?«¬©M?¦â
+    # ?¸my?ªº­S?
     plt.ylim(0,85)
 
-    # åŽ»é™¤ç®±çº¿å›¾çš„ä¸Šè¾¹æ¡†ä¸Žå³è¾¹æ¡†çš„åˆ»åº¦æ ‡ç­¾
+    # ¥h°£½c??ªº¤W?®ØÉO¥k?®Øªº¨è«×??
     plt.tick_params(top='off', right='off', left='off')
-    # æ˜¾ç¤ºå›¾å½¢
+    # ?¥Ü?§Î
     plt.show()
 
 
 def compute_params_and_flops(graph):
-    flops = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
-    params = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
-    print("FLOPs: {}; GFLOPs: {}".format(flops.total_float_ops, flops.total_float_ops / 1e9))
-    print("Trainable params:{} MB".format(params.total_parameters/(1024**2)))
+    flops_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
+    params_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
+    flops = flops_proto.total_float_ops
+    params = params_proto.total_parameters/(1024**2)
+    print("FLOPs: {}; GFLOPs: {}".format(flops, flops/1e9))
+    print("Trainable params:{} MB".format(params))
     return flops, params
 
 
 def save_evaluation():
     pass
 
+def display_classify_performance(label, pred):
+    """
+    label: binary mask in shape [N,H,W,C]
+    pred: corresponding shape and data_type with label
+    3: tp, 2: fp, 1: fn, 0: tn
+    """
+    return label + 2*pred
+
+    
 def compute_mean_dsc(total_cm):
-      """Compute the mean intersection-over-union via the confusion matrix."""
-      sum_over_row = np.sum(total_cm, axis=0).astype(float)
-      sum_over_col = np.sum(total_cm, axis=1).astype(float)
-      cm_diag = np.diagonal(total_cm).astype(float)
-      denominator = sum_over_row + sum_over_col
-    
-      # The mean is only computed over classes that appear in the
-      # label or prediction tensor. If the denominator is 0, we need to
-      # ignore the class.
-      num_valid_entries = np.sum((denominator != 0).astype(float))
-    
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = np.where(
-          denominator > 0,
-          denominator,
-          np.ones_like(denominator))
-    
-      dscs = 2*cm_diag / denominator
-    
-      print('Dice Score Simililarity for each class:')
-      for i, dsc in enumerate(dscs):
+    """Compute the mean intersection-over-union via the confusion matrix."""
+    sum_over_row = np.sum(total_cm, axis=0).astype(float)
+    sum_over_col = np.sum(total_cm, axis=1).astype(float)
+    cm_diag = np.diagonal(total_cm).astype(float)
+    denominator = sum_over_row + sum_over_col
+
+    # The mean is only computed over classes that appear in the
+    # label or prediction tensor. If the denominator is 0, we need to
+    # ignore the class.
+    num_valid_entries = np.sum((denominator != 0).astype(float))
+
+    # If the value of the denominator is 0, set it to 1 to avoid
+    # zero division.
+    denominator = np.where(
+        denominator > 0,
+        denominator,
+        np.ones_like(denominator))
+
+    dscs = 2*cm_diag / denominator
+
+    print('Dice Score Simililarity for each class:')
+    for i, dsc in enumerate(dscs):
         print('    class {}: {:.4f}'.format(i, dsc))
-    
-      # If the number of valid entries is 0 (no classes) we return 0.
-      m_dsc = np.where(
-          num_valid_entries > 0,
-          np.sum(dscs) / num_valid_entries,
-          0)
-      m_dsc = float(m_dsc)
-      print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
-      return m_dsc, dscs
+
+    # If the number of valid entries is 0 (no classes) we return 0.
+    m_dsc = np.where(
+        num_valid_entries > 0,
+        np.sum(dscs) / num_valid_entries,
+        0)
+    print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
+    return m_dsc, dscs
   
 def precision_and_recall(total_cm):
     """"""    
@@ -169,57 +221,55 @@ def precision_and_recall(total_cm):
     r_std = np.std(recall)
     print('    precision: mean {:.4f}  std {:.4f}'.format(p_mean, p_std))
     print('    recall: mean {:.4f}  std {:.4f}'.format(r_mean, r_std))
-    return  precision, recall
+    return  p_mean, p_std, r_mean, r_std
 
 
 def compute_mean_iou(total_cm):
-      """Compute the mean intersection-over-union via the confusion matrix."""
-      sum_over_row = np.sum(total_cm, axis=0).astype(float)
-      sum_over_col = np.sum(total_cm, axis=1).astype(float)
-      cm_diag = np.diagonal(total_cm).astype(float)
-      denominator = sum_over_row + sum_over_col - cm_diag
-    
-      # The mean is only computed over classes that appear in the
-      # label or prediction tensor. If the denominator is 0, we need to
-      # ignore the class.
-      num_valid_entries = np.sum((denominator != 0).astype(float))
-    
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = np.where(
-          denominator > 0,
-          denominator,
-          np.ones_like(denominator))
-    
-      ious = cm_diag / denominator
-    
-      print('Intersection over Union for each class:')
-      for i, iou in enumerate(ious):
+    """Compute the mean intersection-over-union via the confusion matrix."""
+    sum_over_row = np.sum(total_cm, axis=0).astype(float)
+    sum_over_col = np.sum(total_cm, axis=1).astype(float)
+    cm_diag = np.diagonal(total_cm).astype(float)
+    denominator = sum_over_row + sum_over_col - cm_diag
+
+    # The mean is only computed over classes that appear in the
+    # label or prediction tensor. If the denominator is 0, we need to
+    # ignore the class.
+    num_valid_entries = np.sum((denominator != 0).astype(float))
+
+    # If the value of the denominator is 0, set it to 1 to avoid
+    # zero division.
+    denominator = np.where(
+        denominator > 0,
+        denominator,
+        np.ones_like(denominator))
+
+    ious = cm_diag / denominator
+
+    print('Intersection over Union for each class:')
+    for i, iou in enumerate(ious):
         print('    class {}: {:.4f}'.format(i, iou))
-    
-      # If the number of valid entries is 0 (no classes) we return 0.
-      m_iou = np.where(
-          num_valid_entries > 0,
-          np.sum(ious) / num_valid_entries,
-          0)
-      m_iou = float(m_iou)
-      print('mean Intersection over Union: {:.4f}'.format(float(m_iou)))
-      return m_iou
+
+    # If the number of valid entries is 0 (no classes) we return 0.
+    m_iou = np.where(
+        num_valid_entries > 0,
+        np.sum(ious) / num_valid_entries,
+        0)
+    print('mean Intersection over Union: {:.4f}'.format(float(m_iou)))
+    return m_iou
 
 
 def compute_accuracy(total_cm):
-      """Compute the accuracy via the confusion matrix."""
-      denominator = total_cm.sum().astype(float)
-      cm_diag_sum = np.diagonal(total_cm).sum().astype(float)
+    """Compute the accuracy via the confusion matrix."""
+    denominator = total_cm.sum().astype(float)
+    cm_diag_sum = np.diagonal(total_cm).sum().astype(float)
 
-      # If the number of valid entries is 0 (no classes) we return 0.
-      accuracy = np.where(
-          denominator > 0,
-          cm_diag_sum / denominator,
-          0)
-      accuracy = float(accuracy)
-      print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
-      return accuracy
+    # If the number of valid entries is 0 (no classes) we return 0.
+    accuracy = np.where(
+        denominator > 0,
+        cm_diag_sum / denominator,
+        0)
+    print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
+    return accuracy
     
     
 def load_model(saver, sess, ckpt_path):
@@ -234,7 +284,7 @@ def load_model(saver, sess, ckpt_path):
     print("Restored model parameters from {}".format(ckpt_path))
 
 
-def plot_confusion_matrix(cm, classes,
+def plot_confusion_matrix(cm, classes, filename,
                           normalize=False,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues,
@@ -262,6 +312,42 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label')
     plt.tight_layout()  
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, "CM.png"))
+        plt.savefig(os.path.join(save_path, filename+".png"))
     else:
         plt.show()
+        
+def inference_segmentation(logits, dim):
+    prediction = tf.nn.softmax(logits, axis=dim)
+    # prediction = tf.identity(prediction, name=common.OUTPUT_TYPE)
+    prediction = tf.argmax(prediction, axis=dim)
+    prediction = tf.cast(prediction, tf.int32)
+    return prediction
+
+
+def get_label_range(label, height, width):
+    """
+    HW1, HW
+    """
+    if len(np.shape(label)) == 3:
+        label = label[...,0]
+    elif len(np.shape(label)) == 2:
+        pass
+    else:
+        raise ValueError("Unknown label shape")
+    
+    if np.sum(label) == 0:
+        return 4*[0]
+    else:
+        fg = np.where(label!=0)
+        h_min = np.min(fg[0])
+        h_max = np.max(fg[0])
+        w_min = np.min(fg[1])
+        w_max = np.max(fg[1])
+        
+        # h_min = np.min(np.min(fg, axis=0))
+        # w_min = np.min(np.min(fg, axis=1))
+        # h_max = np.max(np.max(fg, axis=0))
+        # w_max = np.max(np.max(fg, axis=1))
+        return [h_min,w_min,h_max,w_max]
+        
+    
