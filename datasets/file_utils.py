@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import SimpleITK as sitk
-
+import cv2
 
 def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_data_type="3d"):
     if not isinstance(imgs, list):
@@ -19,13 +19,14 @@ def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_da
     else:
         raise ValueError("Unknown saving_data_type")
     
-def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, num_file=None):
+def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, num_file=None, exc_key="$$"):
     # TODO: fileStr, fileExt are empty list, string, None condition
+    # TODO: make exclusive key right
     file_list = []
     for _ in os.listdir(path):
         for file_start in fileStr:
             for file_end in fileExt:
-                if _.startswith(file_start) and _.endswith(file_end):
+                if _.startswith(file_start) and _.endswith(file_end) and exc_key not in _:
                     file_list.append(os.path.join(path,_))
                     
                 
@@ -41,3 +42,16 @@ def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, num_file=None):
         file_list = file_list[0:num_file]
         
     return file_list
+
+
+def convert_label_value(data, convert_dict):
+    # TODO: optimize
+    for k, v in convert_dict.items():
+        data[data==k] = v
+    return data
+ 
+ 
+def save_in_image(data, path, file_name):
+    if not os.path.exists(path):
+        os.makedirs(path)
+    cv2.imwrite(os.path.join(path, file_name), data)

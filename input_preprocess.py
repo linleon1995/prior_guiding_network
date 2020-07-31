@@ -178,7 +178,7 @@ def preprocess_image_and_label_seq(image,
       label.set_shape([crop_height, crop_width, 1])
   if prior_segs is not None:
     prior_segs = tf.squeeze(tf.image.resize_bilinear(tf.expand_dims(prior_segs,axis=0), [crop_height,crop_width]), axis=0)
-    prior_segs.set_shape([crop_height,crop_width,num_class])
+    # prior_segs.set_shape([crop_height,crop_width,num_class])
     
   if is_training:
     # Randomly left-right flip the image and label.

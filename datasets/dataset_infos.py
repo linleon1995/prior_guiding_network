@@ -1,7 +1,9 @@
 
 import collections
 
-# TODO: gonna be a better way to do this
+# TODO: might have multiple size in single dataset
+# TODO: remove ignore_label
+# TODO: gonna be a better way to do this --> Each dataset might have different params be recorded
 DatasetDescriptor = collections.namedtuple(
     'DatasetDescriptor',
     [
@@ -14,6 +16,7 @@ DatasetDescriptor = collections.namedtuple(
         'ignore_label',  # Ignore label value.
         'height', # raw data height
         'width', # raw data width
+        'train', # training parameters
     ])
 
 
@@ -27,6 +30,11 @@ _ISBI_CHAOS_INFORMATION_CT = DatasetDescriptor(
     ignore_label=255,
     height=512,
     width=512,
+    train={
+        "train_crop_size": [256, 256],
+        "pre_crop_size": None,
+        "HU_wndow": [-125, 275],
+    }
 ) 
 
 
@@ -38,8 +46,13 @@ _ISBI_CHAOS_INFORMATION_MR_T2 = DatasetDescriptor(
     },
     num_classes=5, # liver, right kidney, left kidney, spleen and background
     ignore_label=255,
-    height=512,
-    width=512,
+    height=256,
+    width=256,
+    train={
+        "train_crop_size": [256, 256],
+        "pre_crop_size": None,
+        "HU_wndow": None,
+    }
 ) 
 
 
@@ -51,20 +64,32 @@ _ISBI_CHAOS_INFORMATION_MR_T1 = DatasetDescriptor(
     },
     num_classes=5, # liver, right kidney, left kidney, spleen and background
     ignore_label=255,
-    height=512,
-    width=512,
+    height=256,
+    width=256,
+    train={
+        "train_crop_size": [256, 256],
+        "pre_crop_size": None,
+        "HU_wndow": None,
+    }
 ) 
-
+# height, width = 256, 288, 320, 400
 
 _MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
     splits_to_sizes={
-        'train': 3111,
-        'val': 668,
+        'train': 3017,
+        'val': 762,
         'test': 2387
     },
     num_classes=14,
     ignore_label=255,
     height=512,
     width=512,
+    train={
+        "train_crop_size": [256, 256],
+        "pre_crop_size": [460, 460],
+        "HU_wndow": [-125, 275],
+    }
 ) 
-
+# 3111, 688
+# PRE_CROP_SIZE = {"train-val": [394, 440],
+#                  "train": [458, 440]}

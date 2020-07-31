@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import build_medical_data, file_utils
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
-MR_LABEL_CONVERT = {1: 63, 2: 126, 3: 189, 4: 252}
+MR_LABEL_CONVERT = {63: 1, 126: 2, 189: 3, 252: 4}
 # TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
 # TODO: neccary condition for some varaibles
 # TODO: build folder
@@ -127,6 +127,7 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
   with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
     if label_files is not None:
       assert len(image_files) == len(label_files)
+      # TODO: if ITK could accept all format, just remove the reader format option
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
@@ -148,13 +149,13 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
         seg_data = label_reader.decode_image(label_files[i])
         
         if "MR" in modality:
-          seg_data = convert_label_value(seg_data, MR_LABEL_CONVERT)
+          seg_data = file_utils.convert_label_value(seg_data, MR_LABEL_CONVERT)
           # if i %10 == 0:
           #   print(np.shape(seg_data))
           #   plt.imshow(seg_data)
           #   plt.show()
         elif "CT" in modality:
-          seg_data = convert_label_value(seg_data, {1: 255})
+          seg_data = file_utils.convert_label_value(seg_data, {255: 1})
         # seg_data = seg_data // 255
         
         seg_slice = seg_data.tostring()
@@ -236,11 +237,7 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   sys.stdout.write('\n')
   sys.stdout.flush()
 
-def convert_label_value(data, convert_dict):
-  # TODO: optimize
-  for k, v in convert_dict.items():
-    data[data==v] = k
-  return data
+
  
 def unit_test_get_files():
   total_files = {}
@@ -257,12 +254,15 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   # unit_test_get_files()
-  dataset_split = {"train": [0,16],
-                    "val": [16,20],
-                    "test": None}
-  for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
+  
+  dataset_split = {
+                  # "train": [0,16],
+                  # "val": [16,20],
+                  "test": None
+                  }
+  # for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
+  for m in ["MR_T2"]:
     for split in dataset_split:
-      # TODO: 
       modality_for_output = m
       if "MR_T1" in modality_for_output:
         modality_for_output = "MR_T1"
@@ -270,8 +270,14 @@ def main(unused_argv):
       out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split], modality_for_output)
       _convert_dataset(out_dir, split, m, dataset_split[split])
 
-  # _convert_dataset("test", FLAGS.split_indices)
 
 if __name__ == '__main__':
-  FLAGS, unparsed = parser.parse_known_args()
-  main(unparsed)
+  a = "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/Test_Sets/MR/30/T2SPIR/DICOM_anon/IMG-0001-00022.dcm" 
+  b = "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/Test_Sets/MR/25/T1DUAL/DICOM_anon/InPhase/IMG-0003-00022.dcm"
+  image_reader = build_medical_data.ImageReader("dcm", channels=1)
+  image_data = image_reader.decode_image(b)
+  print(image_data.shape)
+  plt.imshow(image_data[0])
+  plt.show()
+  # FLAGS, unparsed = parser.parse_known_args()
+  # main(unparsed)

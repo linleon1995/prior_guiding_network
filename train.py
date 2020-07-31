@@ -13,7 +13,7 @@ import common
 import eval
 import experiments
 from model import voxelmorph
-from datasets import data_generator
+from datasets import data_generator, dataset_infos
 from utils import train_utils, eval_utils
 from core import features_extractor
 import input_preprocess
@@ -31,24 +31,28 @@ PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 
-HU_WINDOW = [-125, 275]
-# HU_WINDOW = None
 
 FUSIONS = 5*["sum"]
+FUSIONS = ["concat"] + 4*["guid_uni"]
 FUSIONS = 5*["guid_uni"]
-TRAIN_SPLIT = ["train"]
+
+TRAIN_SPLIT = ["train", "val"]
 SEG_WEIGHT = 1.0
-PRE_CROP_SIZE = {"train-val": [394, 440],
-                 "train": [458, 440]}
+
 DATASET_NAME = ['2013_MICCAI_Abdominal']
-# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1']
+DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
+DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+
+# TODO: shouldn't just select the first dataset pre_crop_size
+DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
+
 # TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
 # TODO: flags.DEFINE_multi_integer
 # TODO: Solve Warning in new tensorflow version
 # TODO: tf.gather problem
-
+# TODO: num_clones=2 and image_only --> bug
 
 def create_training_path(train_logdir):
     # TODO: Check whether empty of last folder before creating new one
@@ -66,10 +70,13 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--guid_feature_only', type=bool, default=True,
+parser.add_argument('--guid_fuse', type=str, default="sum",
                     help='')
 
-parser.add_argument('--stage_pred_ks', type=int, default=3,
+parser.add_argument('--guid_feature_only', type=bool, default=False,
+                    help='')
+
+parser.add_argument('--stage_pred_ks', type=int, default=1,
                     help='')
 
 parser.add_argument('--add_feature', type=bool, default=True,
@@ -84,10 +91,10 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
-parser.add_argument('--out_node', type=int, default=32,
+parser.add_argument('--out_node', type=int, default=64,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -121,7 +128,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=240000,
+parser.add_argument('--training_number_of_steps', type=int, default=50000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -178,7 +185,7 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=20,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 parser.add_argument('--fusion_slice', type=float, default=3,
@@ -196,7 +203,7 @@ parser.add_argument('--z_loss_decay', type=float, default=None,
 parser.add_argument('--stage_pred_loss', type=bool, default=True,
                     help='')
 
-parser.add_argument('--guidance_loss', type=bool, default=False,
+parser.add_argument('--guidance_loss', type=bool, default=True,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -251,8 +258,8 @@ parser.add_argument('--output_stride', type=int, default=None,
 parser.add_argument('--num_clones', type=int, default=1,
                     help='')
 
-parser.add_argument('--crop_size', type=int, default=256,
-                    help='')
+# parser.add_argument('--crop_size', type=int, default=256,
+#                     help='')
 
 parser.add_argument('--min_scale_factor', type=float, default=0.625,
                     help='')
@@ -263,16 +270,16 @@ parser.add_argument('--max_scale_factor', type=float, default=1.25,
 parser.add_argument('--scale_factor_step_size', type=float, default=0.125,
                     help='')
 
-parser.add_argument('--min_resize_value', type=int, default=None,
+parser.add_argument('--min_resize_value', type=int, default=DATA_INFO.height,
                     help='')
 
-parser.add_argument('--max_resize_value', type=int, default=None,
+parser.add_argument('--max_resize_value', type=int, default=DATA_INFO.height,
                     help='')
 
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
-parser.add_argument('--pre_crop_flag', type=bool, default=True,
+parser.add_argument('--pre_crop_flag', type=bool, default=False,
                     help='')
 
 def check_model_conflict(model_options):
@@ -396,6 +403,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 add_feature=FLAGS.add_feature,
                 guid_feature_only=FLAGS.guid_feature_only,
                 stage_pred_ks=FLAGS.stage_pred_ks,
+                guid_fuse=FLAGS.guid_fuse,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -597,12 +605,12 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
   #   tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
   #   tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
 
-  #   guid_avg = tf.get_collection("guid_avg")
-  #   tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
-  #   # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
+    guid_avg = tf.get_collection("guid_avg")
+    tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
 
   # # if z_label is not None and z_pred is not None:
   # #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
@@ -955,8 +963,9 @@ def main(unused_argv):
                 'Training batch size not divisble by number of clones (GPUs).')
             clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
+            
             if FLAGS.pre_crop_flag:
-              pre_crop_size = PRE_CROP_SIZE["-".join(TRAIN_SPLIT)]
+              pre_crop_size = DATA_INFO.train["pre_crop_size"]
             else:
               pre_crop_size = None
 
@@ -966,13 +975,13 @@ def main(unused_argv):
                 # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
-                HU_window=HU_WINDOW,
+                HU_window=DATA_INFO.train["HU_wndow"],
                 pre_crop_size=pre_crop_size,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
-                crop_size=[FLAGS.crop_size, FLAGS.crop_size],
+                crop_size=DATA_INFO.train["train_crop_size"],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
                 resize_factor=FLAGS.resize_factor,
@@ -997,14 +1006,14 @@ def main(unused_argv):
                 # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 batch_size=1,
-                HU_window=HU_WINDOW,
+                HU_window=DATA_INFO.train["HU_wndow"],
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
-                crop_size=[512, 512],
-                # min_resize_value=FLAGS.min_resize_value,
-                # max_resize_value=FLAGS.max_resize_value,
+                crop_size=[DATA_INFO.height, DATA_INFO.width],
+                min_resize_value=FLAGS.min_resize_value,
+                max_resize_value=FLAGS.max_resize_value,
                 # resize_factor=FLAGS.resize_factor,
                 # min_scale_factor=FLAGS.min_scale_factor,
                 # max_scale_factor=FLAGS.max_scale_factor,
@@ -1022,7 +1031,7 @@ def main(unused_argv):
 
             model_options = common.ModelOptions(
               outputs_to_num_classes=train_generator.num_of_classes,
-              crop_size=[FLAGS.crop_size, FLAGS.crop_size],
+              crop_size=DATA_INFO.train["train_crop_size"],
               output_stride=FLAGS.output_stride)
             check_model_conflict(model_options)
 

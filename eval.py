@@ -27,20 +27,21 @@ import common
 import model
 from datasets import data_generator, file_utils
 from utils import eval_utils, train_utils
+from core import preprocess_utils
 import experiments
 import cv2
 import math
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-EVAL_CROP_SIZE = [256,256]
-EVAL_CROP_SIZE = [512,512]
+# EVAL_CROP_SIZE = [256,256]
+# EVAL_CROP_SIZE = [512,512]
 
 # TODO: Multi-Scale Test
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
 EVAL_SCALES = [1.0]
-HU_WINDOW = [-125, 275]
+# HU_WINDOW = [-125, 275]
 
 # TODO: train image list (optional)
 # TODO: if dir not exist. Don't build new one
@@ -49,15 +50,14 @@ IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254
 
 # TODO: do it correctly
 CT_TRAIN_SET = [1,2,5,6,8,10,14,16,18,19,21,22,23,24,25,26,27,28,29,30]
-CT_TEST_SET = [3,4,7,9,11,12,13,15,17,20,31,32,33,34,35,36,37,38,39,40]
 CT_TEST_SET = [11,12,13,15,17,20,3,31,32,33,34,35,36,37,38,39,4,40,7,9,]
 MR_TRAIN_SET = [1,2,3,5,8,10,13,15,19,20,21,22,31,32,33,34,36,37,38,39]
-MR_TEST_SET = [4,6,7,9,11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,40]
+MR_TEST_SET = [11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,4,40,6,7,9]
 
 TEST_FILE_CODE = np.arange(61,81)
 FUSIONS = 5*["sum"]
 FUSIONS = 5*["guid_uni"]
-EVAL_SPLIT = ["val"]
+EVAL_SPLIT = ["test"]
 
 SEG_LOSS = "softmax_dice_loss"
 GUID_LOSS = "softmax_dice_loss"
@@ -66,7 +66,10 @@ STAGE_PRED_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "sigmoid_cross_entropy"
 SEG_WEIGHT_FLAG = False
 DATASET_NAME = ['2013_MICCAI_Abdominal']
-# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
+DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
+DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+
+DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
 
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_000/model.ckpt-140000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-110000'
@@ -91,14 +94,22 @@ CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_tra
 # CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_026/model.ckpt-200000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000'
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_006/model.ckpt-100000'
-CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-4000'
-
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_007/model.ckpt-4000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_008/model.ckpt-200000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-80000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_009/model.ckpt-65000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_013/model.ckpt-30000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-39000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-50000'
 # CHECKPOINT = None
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--guid_fuse', type=str, default="sum",
+                    help='')
+
 parser.add_argument('--guid_feature_only', type=bool, default=False,
                     help='')
 
@@ -117,13 +128,13 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--out_node', type=int, default=32,
+parser.add_argument('--out_node', type=int, default=64,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -216,10 +227,10 @@ parser.add_argument('--vis_prior', type=bool, default=False,
 parser.add_argument('--display_box_plot', type=bool, default=False,
                     help='')
 
-parser.add_argument('--store_all_imgs', type=bool, default=False,
+parser.add_argument('--store_all_imgs', type=bool, default=True,
                     help='')
 
-parser.add_argument('--show_pred_only', type=bool, default=False,
+parser.add_argument('--show_pred_only', type=bool, default=True,
                     help='')                  
 
 # Dataset settings.
@@ -300,12 +311,12 @@ def main(unused_argv):
                 # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 batch_size=1,
-                HU_window=HU_WINDOW,
+                HU_window=DATA_INFO.train["HU_wndow"],
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
-                crop_size=EVAL_CROP_SIZE,
+                crop_size=[DATA_INFO.height, DATA_INFO.width],
                 # min_resize_value=EVAL_CROP_SIZE[0],
                 # max_resize_value=EVAL_CROP_SIZE[0],
                 # resize_factor=FLAGS.resize_factor,
@@ -338,24 +349,26 @@ def main(unused_argv):
 
     model_options = common.ModelOptions(
       outputs_to_num_classes=dataset.num_of_classes,
-      crop_size=EVAL_CROP_SIZE,
+      crop_size=[DATA_INFO.height, DATA_INFO.width],
       output_stride=FLAGS.output_stride)
 
     # Set shape in order for tf.contrib.tfprof.model_analyzer to work properly.
+    [bs, orig_height, orig_width, _] = preprocess_utils.resolve_shape(samples[common.IMAGE], rank=4)
     samples[common.IMAGE].set_shape(
         [FLAGS.eval_batch_size,
-         EVAL_CROP_SIZE[0],
-         EVAL_CROP_SIZE[1],
+         orig_height,
+         orig_width,
          1])
-
-    image_placeholder = tf.placeholder(tf.float32, shape=[1,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
     
+    # image_placeholder = tf.placeholder(tf.float32, shape=[1,DATA_INFO.height, DATA_INFO.width,1])
+    image_placeholder = tf.placeholder(tf.float32, shape=[1,None,None,1])
+
     num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
     
     placeholder_dict = {common.IMAGE: image_placeholder,
                         common.NUM_SLICES: num_slices_placeholder}
     if "train" in EVAL_SPLIT or "val" in EVAL_SPLIT:
-      label_placeholder = tf.placeholder(tf.int32, shape=[None,EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1],1])
+      label_placeholder = tf.placeholder(tf.int32, shape=[None,None, None,1])
       placeholder_dict[common.LABEL] = label_placeholder
       
 
@@ -369,16 +382,16 @@ def main(unused_argv):
     if common.PRIOR_IMGS in samples:
       samples[common.PRIOR_IMGS] = tf.identity(samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
       prior_img_placeholder = tf.placeholder(tf.float32,
-                                           shape=[None, EVAL_CROP_SIZE[0],
-                                                  EVAL_CROP_SIZE[1], None])
+                                           shape=[None, None, None, None])
       placeholder_dict[common.PRIOR_IMGS] = prior_img_placeholder
     else:
       placeholder_dict[common.PRIOR_IMGS] = None
 
     if FLAGS.guidance_type == "gt":
-      prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], 1])
+      prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1], dataset.num_of_classes, 1])
+      prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, DATA_INFO.height, DATA_INFO.width, dataset.num_of_classes, 1])
+      # prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None,None, None, 1])
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
     # if common.PRIOR_SEGS in samples:
     #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
@@ -401,7 +414,7 @@ def main(unused_argv):
       FUSIONS[0] = FLAGS.guid_method
 
     output_dict, layers_dict = model.pgb_network(
-                placeholder_dict[common.IMAGE],
+                image_placeholder,
                 model_options=model_options,
                 # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
@@ -409,6 +422,7 @@ def main(unused_argv):
                 # samples=placeholder_dict["organ_label"],
                 # prior_imgs=placeholder_dict[common.PRIOR_IMGS],
                 prior_segs=placeholder_dict[common.PRIOR_SEGS],
+                # prior_segs=samples[common.PRIOR_SEGS],
                 num_class=dataset.num_of_classes,
                 # num_slices=placeholder_dict[common.NUM_SLICES],
                 # prior_slice=prior_slices,
@@ -444,8 +458,9 @@ def main(unused_argv):
                 add_feature=FLAGS.add_feature,
                 guid_feature_only=FLAGS.guid_feature_only,
                 stage_pred_ks=FLAGS.stage_pred_ks,
+                guid_fuse=FLAGS.guid_fuse,
                 )
-    
+
     if FLAGS.vis_guidance:      
       if "softmax" in GUID_LOSS:
         guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
@@ -474,26 +489,26 @@ def main(unused_argv):
       labels_flat = tf.reshape(labels, shape=[-1,])
       # Define Confusion Maxtrix
       cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
-      
-      def cm_in_each_stage(pred):
-            cm_list = []
-            pred = tf.image.resize(pred, [EVAL_CROP_SIZE[0],EVAL_CROP_SIZE[1]], align_corners=False)
-            pred = tf.nn.sigmoid(pred)
-            pred = tf.cast(tf.round(pred), tf.int32)
-            pred_flat = tf.reshape(pred, shape=[-1,dataset.num_of_classes])
-            label_onehot_flat = tf.reshape(label_onehot, [-1,dataset.num_of_classes])
-            for i in range(dataset.num_of_classes):
-              cm = tf.confusion_matrix(label_onehot_flat[:,i], pred_flat[:,i], num_classes=2)
-              cm_list.append(cm)
-            cm_for_all_classes = tf.stack(cm_list, axis=2)
-            return cm_for_all_classes
-          
-      cm_g0 = cm_in_each_stage(output_dict[common.GUIDANCE])
-      cm_g1 = cm_in_each_stage(layers_dict["guidance1"])
-      cm_g2 = cm_in_each_stage(layers_dict["guidance2"])
-      cm_g3 = cm_in_each_stage(layers_dict["guidance3"])
-      cm_g4 = cm_in_each_stage(layers_dict["guidance4"])
-      cm_guid = [cm_g0, cm_g4, cm_g3, cm_g2, cm_g1]
+      if FLAGS.vis_guidance:
+        def cm_in_each_stage(pred):
+              cm_list = []
+              pred = tf.image.resize(pred, [DATA_INFO.height, DATA_INFO.width], align_corners=False)
+              pred = tf.nn.sigmoid(pred)
+              pred = tf.cast(tf.round(pred), tf.int32)
+              pred_flat = tf.reshape(pred, shape=[-1,dataset.num_of_classes])
+              label_onehot_flat = tf.reshape(label_onehot, [-1,dataset.num_of_classes])
+              for i in range(dataset.num_of_classes):
+                cm = tf.confusion_matrix(label_onehot_flat[:,i], pred_flat[:,i], num_classes=2)
+                cm_list.append(cm)
+              cm_for_all_classes = tf.stack(cm_list, axis=2)
+              return cm_for_all_classes
+            
+        cm_g0 = cm_in_each_stage(output_dict[common.GUIDANCE])
+        cm_g1 = cm_in_each_stage(layers_dict["guidance1"])
+        cm_g2 = cm_in_each_stage(layers_dict["guidance2"])
+        cm_g3 = cm_in_each_stage(layers_dict["guidance3"])
+        cm_g4 = cm_in_each_stage(layers_dict["guidance4"])
+        cm_guid = [cm_g0, cm_g4, cm_g3, cm_g2, cm_g1]
 
       if common.OUTPUT_Z in output_dict:
         pred_z = eval_utils.inference_segmentation(output_dict[common.OUTPUT_Z], dim=1)
@@ -574,6 +589,7 @@ def main(unused_argv):
     
     
     cm_total = 0
+    cm_g_total = 5*[0]
     _cm_g1_t, _cm_g2_t, _cm_g3_t, _cm_g4_t = 0, 0, 0, 0
     j = 0
     h_min_total = []
@@ -677,27 +693,30 @@ def main(unused_argv):
                 total_eval_z += eval_z
                 
 
-            # Save testing results in nii format
-            if split_name == "test":
-              # if data[common.DEPTH][0] == 0:
-              #   imgs = []
-              # elif data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
-              #   file_name = "img{:04d}".format(TEST_FILE_CODE[j])
-              #   file_utils.write_medical_images(imgs, out_dir=FLAGS.eval_logdir, image_format=".nii.gz", file_name=file_name)
-              #   print("Save results in {}".format(file_name))
-              #   j += 1
-              # imgs.append(pred[0,::-1])  
-              import cv2
-              pred_for_save = np.int32(pred * 255)
-              if not os.path.exists(os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results")):
-                os.makedirs(os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results"))
-              file_name = os.path.join(FLAGS.eval_logdir, "pred", str(CT_TEST_SET[j]), "Results", "result{:03d}.png".format(data[common.DEPTH][0]))
-              cv2.imwrite(file_name, pred_for_save[0])
-              if data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
-                j += 1
             if i in display_imgs:
               if FLAGS.show_pred_only:
-                pass
+                file_name = "result{:03d}.png".format(data[common.DEPTH][0])
+                if "CT" in sub_dataset:
+                  task2_path = os.path.join(FLAGS.eval_logdir, "task2_pred", str(CT_TEST_SET[j]), "Results")
+                  task2 = file_utils.convert_label_value(pred[0], {1: 255})
+                  file_utils.save_in_image(task2, task2_path, file_name)
+                elif "MR" in sub_dataset:
+                  if "T1" in sub_dataset:
+                    task3_path = os.path.join(FLAGS.eval_logdir, "task3_pred", str(MR_TEST_SET[j]), "T1DUAL", "Results")
+                    task5_path = os.path.join(FLAGS.eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T1DUAL", "Results")
+                  elif "T2" in sub_dataset:
+                    task3_path = os.path.join(FLAGS.eval_logdir, "task3_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
+                    task5_path = os.path.join(FLAGS.eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
+                  task3 = file_utils.convert_label_value(pred[0], {1: 63, 2: 126, 3: 189, 4: 252})
+                  task5 = file_utils.convert_label_value(pred[0], {1: 63, 2: 0, 3: 0, 4: 0})
+                  
+                  file_utils.save_in_image(task3, task3_path, file_name)
+                  file_utils.save_in_image(task5, task5_path, file_name)
+                # file_utils.save_in_image(pred_for_save, path, file_name)
+                if data[common.DEPTH][0] == data[common.NUM_SLICES][0]-1:
+                  j += 1   
+                if i == num_sample-1:
+                  j = 0
               else:
                 parameters = [{"cmap": "gray"}]
                 parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
@@ -737,18 +756,22 @@ def main(unused_argv):
                 #   for ii in range(5):
                 #     plt.imshow(guid_avgs[ii][0,...,0])
                 #     plt.show()
-                  
+                # plt.imshow(guid_avgs[2][0,...,0], cmap="jet")
+                # plt.show()
+                parameters = 3*[{"cmap": "jet"}]
                 show_guidance.set_title(["guid_avg0", "guid_avg1", "guid_avg2"])
                 show_guidance.display_figure(split_name+'-guid_avg012-%04d' %i,
                                               [guid_avgs[0][0,...,0],
                                               guid_avgs[1][0,...,0],
-                                              guid_avgs[2][0,...,0]])
+                                              guid_avgs[2][0,...,0]],
+                                              parameters=parameters)
 
                 show_guidance.set_title(["guid_avg3", "guid_avg4", "guid_avg5"])
                 show_guidance.display_figure(split_name+'-guid_avg345-%04d' %i,
                                               [guid_avgs[3][0,...,0],
                                               guid_avgs[4][0,...,0],
-                                              guid_avgs[4][0,...,0]])
+                                              guid_avgs[4][0,...,0]],
+                                              parameters=parameters)
 
                 # show_guidance.set_title(["pred0", "pred1", "pred2"])
                 # show_guidance.display_figure(split_name+'-pred012-%04d' %i,
@@ -940,4 +963,3 @@ if __name__ == '__main__':
     # plt.show()
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
-    

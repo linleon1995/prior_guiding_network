@@ -2,16 +2,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
-from core import resnet_v1_beta
+from core import resnet_v1_beta, preprocess_utils
 slim = contrib_slim
 resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
 
 # Quantized version of sigmoid function.
 q_sigmoid = lambda x: tf.nn.relu6(x + 3) * 0.16667
-GUID_FUSE = "sum"
-
-GUID_FEATURE_ONLY = False
 remove_noise = False
 
 def slim_sram(in_node,
@@ -37,7 +34,8 @@ def slim_sram(in_node,
         # for i in range(num_conv):
         #   net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
 
-        guidance_filters = guidance.get_shape().as_list()[3]
+        # guidance_filters = guidance.get_shape().as_list()[3]
+        guidance_filters = preprocess_utils.resolve_shape(guidance, rank=4)[3]
         if guidance_filters == 1:
             guidance_tile = tf.tile(guidance, [1,1,1,conv_node])
         elif guidance_filters == conv_node:
@@ -62,8 +60,8 @@ class Refine(object):
     guid_feature_only = kwargs.pop("guid_feature_only", False)
     if guid_feature_only:
       low_level.pop("low_level5")
-      fusions = fusions[1:]
-    self.low_level = low_level
+      # fusions = fusions[1:]
+    self.low_level = list(low_level.values())
     self.fusions = fusions
     self.fuse_flag = fuse_flag
     self.prior_seg = prior_seg
@@ -76,13 +74,14 @@ class Refine(object):
     self.num_class = num_class
     self.weight_decay = weight_decay
     self.scope = scope
-    assert len(self.low_level) == len(self.fusions)
+    # assert len(self.low_level) == len(self.fusions)
     self.num_stage = len(self.low_level)
     self.is_training = is_training
     self.fine_tune_batch_norm = True
     
     self.apply_sram2 = kwargs.pop("apply_sram2", False)
     self.add_feature = kwargs.pop("add_feature", True)
+    self.guid_fuse = kwargs.pop("guid_fuse", "sum")
     self.ks = ks
   def embed(self, x, out_node, scope):
     return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
@@ -129,40 +128,47 @@ class Refine(object):
               # guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
 
-          for i, (k, v) in enumerate(self.low_level.items()):
+          for i, v in enumerate(self.low_level):
             module_order = self.num_stage-i
             fuse_method = self.fusions[i]
             embed = self.embed(v, out_node, scope="embed%d" %module_order)
             tf.add_to_collection("embed", embed)
             
             fuse_func = self.get_fusion_method(fuse_method)
-            h, w = embed.get_shape().as_list()[1:3]
+            h, w = preprocess_utils.resolve_shape(embed, rank=4)[1:3]
+            # h, w = embed.get_shape().as_list()[1:3]
             if y_tm1 is not None:
               y_tm1 = resize_bilinear(y_tm1, [h, w])
               tf.add_to_collection("feature", y_tm1)
             else:
               # TODO: remove
               tf.add_to_collection("feature", tf.zeros_like(embed))  
-                
+            
             if fuse_method in ("concat", "sum"):
               if y_tm1 is not None:
                 y = fuse_func(embed, y_tm1, out_node, fuse_method+str(module_order))
               else:
                 y = tf.identity(embed, name="identity%d" %module_order)
             elif fuse_method in ("guid", "guid_class", "guid_uni"):
+              # guid = resize_bilinear(guid, [h, w])
               if guid is not None:
                 guid = resize_bilinear(guid, [h, w])
-                tf.add_to_collection("guid", guid)
-                y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
-                              num_classes=self.num_class, apply_sram2=self.apply_sram2)
-              
+              tf.add_to_collection("guid", guid)
+              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
+                            num_classes=self.num_class, apply_sram2=self.apply_sram2)
               
               if self.fuse_flag:
                 y = slim.conv2d(y, self.embed_node, scope='fuse'+str(i))
                 tf.add_to_collection("refining", y)
-                # y = slim.conv2d(y, self.embed_node, scope='fuse2_'+str(i))
-                # tf.add_to_collection("refining2", y)
-             
+                # if i == len(self.low_level)-1:
+                #   h, w = preprocess_utils.resolve_shape(y, rank=4)[1:3]
+                #   # h, w = y.get_shape().as_list()[1:3]
+                #   h = h * 2
+                #   w = w * 2
+                # else:
+                #   h, w = self.low_level[i+1].get_shape().as_list()[1:3]
+                # y = resize_bilinear(y, [h, w])
+                
             if self.stage_pred_loss_name is not None:
               
               num_class = self.num_class
@@ -177,7 +183,7 @@ class Refine(object):
               #   stage_pred.append(stage_pred_c)
               # stage_pred = tf.concat(stage_pred, axis=3)
               preds["guidance%d" %module_order] = stage_pred
-            
+              
             if fuse_method in ("guid"):
               guid = y
               y_tm1 = None
@@ -188,39 +194,77 @@ class Refine(object):
                 # guid = tf.nn.sigmoid(guid)
                 guid = tf.nn.sigmoid(stage_pred)
                 
-              if fuse_method == "guid_uni":
-                if remove_noise:
-                  guid = tf.pow(guid, 2*tf.ones_like(guid))
-                if GUID_FUSE == "sum":
-                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)
-                elif GUID_FUSE == "mean":
-                  guid = tf.reduce_mean(guid, axis=3, keepdims=True)
-                elif GUID_FUSE == "entropy":
-                  guid = tf.clip_by_value(guid, 1e-10, 1.0)
-                  guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
-                elif GUID_FUSE == "conv":
-                  if i < len(self.low_level)-1:
-                    guid = slim.conv2d(guid, out_node, kernel_size=[3,3], activation_fn=None)
-                  else:
-                    guid = tf.reduce_sum(guid, axis=3, keepdims=True)  
-                elif GUID_FUSE == "sum_dilated":
-                  size = [8,6,4,2,1]
-                  kernel = tf.ones((size[i], size[i], num_class))
-                  guid = tf.nn.dilation2d(guid, filter=kernel, strides=(1,1,1,1), 
-                                            rates=(1,1,1,1), padding="SAME")
-                  guid = guid - tf.ones_like(guid)                          
-                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)   
-                elif GUID_FUSE == "w_sum":
-                  w = tf.nn.softmax(tf.reduce_sum(guid, axis=[1,2], keepdims=True), axis=3)
-                  rev_w = tf.ones_like(w) - w
-                  guid = tf.reduce_sum(tf.multiply(guid, rev_w), axis=3, keepdims=True)
-                tf.add_to_collection("guid_avg", guid)
+            #   if fuse_method == "guid_uni":
+              if remove_noise:
+                guid = tf.pow(guid, 2*tf.ones_like(guid))
+              if self.guid_fuse == "sum":
+                guid = tf.reduce_sum(guid, axis=3, keepdims=True)
+              elif self.guid_fuse == "mean":
+                guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+              elif self.guid_fuse == "entropy":
+                guid = tf.clip_by_value(guid, 1e-10, 1.0)
+                guid = -tf.reduce_sum(guid * tf.log(guid), axis=3, keepdims=True)
+              elif self.guid_fuse == "conv":
+                if i < len(self.low_level)-1:
+                  guid = slim.conv2d(guid, out_node, kernel_size=[3,3], activation_fn=None)
+                else:
+                  guid = tf.reduce_sum(guid, axis=3, keepdims=True)  
+              elif self.guid_fuse == "sum_dilated":
+                size = [8,6,4,2,1]
+                kernel = tf.ones((size[i], size[i], num_class))
+                guid = tf.nn.dilation2d(guid, filter=kernel, strides=(1,1,1,1), 
+                                          rates=(1,1,1,1), padding="SAME")
+                guid = guid - tf.ones_like(guid)                          
+                guid = tf.reduce_sum(guid, axis=3, keepdims=True)   
+              elif self.guid_fuse == "w_sum":
+                w = tf.nn.softmax(tf.reduce_sum(guid, axis=[1,2], keepdims=True), axis=3)
+                rev_w = tf.ones_like(w) - w
+                guid = tf.reduce_sum(tf.multiply(guid, rev_w), axis=3, keepdims=True)
+              elif self.guid_fuse == "conv_sum":
+                k_size_list = [1,1,1,3,5]
+                k_size = 2 * k_size_list[i] + 1
+                guid = slim.conv2d(guid, 1, kernel_size=[k_size,k_size], activation_fn=None,
+                                   weights_initializer=tf.ones_initializer(), trainable=False, normalizer_fn=None)
+                guid = guid / (k_size*k_size*num_class*1)
+              elif self.guid_fuse == "w_sum_conv":
+                # TODO: make it right
+                k_size_list = [1,1,1,2,4]
+                k_size = 3 * k_size_list[i] + 1
+                w = tf.reduce_sum(guid, axis=[1,2], keepdims=True)
+                rev_w = (tf.ones_like(w)+1e-5) / (tf.sqrt(w)+1e-5)
+                rev_w = tf.tile(rev_w, [1,k_size,k_size,1])
+                rev_w = tf.expand_dims(rev_w, axis=4)
+                
+                n, h, w, channels_img = preprocess_utils.resolve_shape(guid, rank=4)
+                n, fh, fw, channels, out_channels = preprocess_utils.resolve_shape(rev_w, rank=5)
+                # F has shape (n, k_size, k_size, channels, out_channels)
+
+                rev_w = tf.transpose(rev_w, [1, 2, 0, 3, 4])
+                rev_w = tf.reshape(rev_w, [fh, fw, channels*n, out_channels])
+
+                guid = tf.transpose(guid, [1, 2, 0, 3]) # shape (H, W, MB, channels_img)
+                guid = tf.reshape(guid, [1, h, w, n*channels_img])
+
+                out = tf.nn.depthwise_conv2d(
+                          guid,
+                          filter=rev_w,
+                          strides=[1, 1, 1, 1],
+                          padding="SAME") # here no requirement about padding being 'VALID', use whatever you want. 
+                # Now out shape is (1, H-fh+1, W-fw+1, MB*channels*out_channels), because we used "VALID"
+
+                out = tf.reshape(out, [h, w, n, channels, out_channels])
+                out = tf.transpose(out, [2, 0, 1, 3, 4])
+                out = tf.reduce_sum(out, axis=3)
+                
+                guid = out
+              
+              tf.add_to_collection("guid_avg", guid)
                 
               y_tm1 = y
             elif fuse_method in ("concat", "sum"):
               y_tm1 = y
               
-          h, w = y.get_shape().as_list()[1:3]  
+          # h, w = y.get_shape().as_list()[1:3]  
           y = resize_bilinear(y, [2*h, 2*w])
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
           y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits')
@@ -252,7 +296,8 @@ class Refine(object):
     
   def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
     apply_sram2 = kwargs.pop("apply_sram2", False)
-    guid_node = guid.get_shape().as_list()[3]
+    guid_node = preprocess_utils.resolve_shape(guid, rank=4)[3]
+    
     if guid_node != out_node and guid_node != 1:
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
     

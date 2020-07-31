@@ -27,9 +27,9 @@ _DATASETS_INFORMATION = {
 #TODO: test set
 _DATASETS_STORING_PATH_MAP = {
     '2013_MICCAI_Abdominal': "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/",
-    '2019_ISBI_CHAOS_CT': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
-    '2019_ISBI_CHAOS_MR_T1': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
-    '2019_ISBI_CHAOS_MR_T2': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
+    '2019_ISBI_CHAOS_CT': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/",
+    '2019_ISBI_CHAOS_MR_T1': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T1/",
+    '2019_ISBI_CHAOS_MR_T2': "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T2/",
 }
 # Default file pattern of TFRecord of TensorFlow Example.
 _FILE_PATTERN = '%s-*'
@@ -523,8 +523,10 @@ class Dataset(object):
             sample[common.LABEL] = label
 
         if prior_segs is not None:
-            sample[common.PRIOR_SEGS] = tf.reshape(prior_segs, 
-                                                   [self.crop_size[0], self.crop_size[1], self.num_of_classes, self.seq_length])
+            sample[common.PRIOR_SEGS] = tf.reshape(
+                prior_segs, [self.crop_size[0], self.crop_size[1], 14, self.seq_length])
+            # sample[common.PRIOR_SEGS] = tf.reshape(
+            #     prior_segs, [self.crop_size[0], self.crop_size[1], self.num_of_classes, self.seq_length])
         
         # get multi-task label
         if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
@@ -553,7 +555,8 @@ class Dataset(object):
         # for split in self.split_name:
         files = []
         for sub_data_dir in self.dataset_dir.values():
-            files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True))
+            files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name, 
+                                                  fileExt=["tfrecord"], sort_files=True, exc_key="Out"))
         self.files = files
         # print(self.files, 30*"files")
         # files = self._get_all_files(self.split_name) 

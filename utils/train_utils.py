@@ -640,7 +640,7 @@ def get_model_learning_rate(learning_policy,
                             slow_start_learning_rate,
                             slow_start_burnin_type='none',
                             decay_steps=0.0,
-                            end_learning_rate=1e-5,
+                            end_learning_rate=1e-6,
                             boundaries=None,
                             boundary_learning_rates=None):
   """Gets model's learning rate.

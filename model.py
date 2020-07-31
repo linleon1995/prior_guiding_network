@@ -147,7 +147,7 @@ def pgb_network(images,
         segmentations:
     """
     output_dict = {}
-    h, w = images.get_shape().as_list()[1:3]
+    # h, w = images.get_shape().as_list()[1:3]
     weight_decay = kwargs.pop("weight_decay", None)
     fusions = kwargs.pop("fusions", None)
     out_node = kwargs.pop("out_node", None)  
