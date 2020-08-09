@@ -17,6 +17,7 @@ DatasetDescriptor = collections.namedtuple(
         'height', # raw data height
         'width', # raw data width
         'train', # training parameters
+        'prior_dir', # prior storing directory
     ])
 
 
@@ -30,6 +31,7 @@ _ISBI_CHAOS_INFORMATION_CT = DatasetDescriptor(
     ignore_label=255,
     height=512,
     width=512,
+    prior_dir="/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/2019_ISBI_CHAOS/CT/",
     train={
         "train_crop_size": [256, 256],
         "pre_crop_size": None,
@@ -48,6 +50,7 @@ _ISBI_CHAOS_INFORMATION_MR_T2 = DatasetDescriptor(
     ignore_label=255,
     height=256,
     width=256,
+    prior_dir="/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/2019_ISBI_CHAOS/MR_T2/",
     train={
         "train_crop_size": [256, 256],
         "pre_crop_size": None,
@@ -66,6 +69,7 @@ _ISBI_CHAOS_INFORMATION_MR_T1 = DatasetDescriptor(
     ignore_label=255,
     height=256,
     width=256,
+    prior_dir="/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/2019_ISBI_CHAOS/MR_T1/",
     train={
         "train_crop_size": [256, 256],
         "pre_crop_size": None,
@@ -84,6 +88,7 @@ _MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
     ignore_label=255,
     height=512,
     width=512,
+    prior_dir="/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/2013_MICCAI_BTCV/",
     train={
         "train_crop_size": [256, 256],
         "pre_crop_size": [460, 460],

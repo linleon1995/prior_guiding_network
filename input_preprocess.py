@@ -6,7 +6,7 @@ from core import preprocess_utils
 
 # The probability of flipping the images and labels
 # left-right during training
-_PROB_OF_FLIP = 0.5
+_PROB_OF_FLIP = 0.0
 _PROB_OF_ROT = 0.5
 
 def preprocess_image_and_label_seq(image,

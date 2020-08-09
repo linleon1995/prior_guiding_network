@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
@@ -40,8 +40,8 @@ TRAIN_SPLIT = ["train", "val"]
 SEG_WEIGHT = 1.0
 
 DATASET_NAME = ['2013_MICCAI_Abdominal']
-DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
-DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
+# DATASET_NAME = ['2019_ISBI_CHAOS_CT']
 
 # TODO: shouldn't just select the first dataset pre_crop_size
 DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
@@ -70,6 +70,9 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--seq_length', type=int, default=1,
+                    help='')
+
 parser.add_argument('--guid_fuse', type=str, default="sum",
                     help='')
 
@@ -91,10 +94,10 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="image_only",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
-parser.add_argument('--out_node', type=int, default=64,
+parser.add_argument('--out_node', type=int, default=32,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -113,13 +116,13 @@ parser.add_argument('--weight_decay', type=float, default=1e-3,
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
                     help='')
 
-parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
-                    help='')
+# parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
+#                     help='')
 
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=16,
+parser.add_argument('--batch_size', type=int, default=18,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -128,7 +131,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=50000,
+parser.add_argument('--training_number_of_steps', type=int, default=60000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -185,16 +188,10 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=None,
+parser.add_argument('--prior_num_subject', type=int, default=24,
                     help='')
 
 parser.add_argument('--fusion_slice', type=float, default=3,
-                    help='')
-
-parser.add_argument('--affine_transform', type=bool, default=False,
-                    help='')
-
-parser.add_argument('--deformable_transform', type=bool, default=False,
                     help='')
 
 parser.add_argument('--z_loss_decay', type=float, default=None,
@@ -285,13 +282,7 @@ parser.add_argument('--pre_crop_flag', type=bool, default=False,
 def check_model_conflict(model_options):
   pass
 #     if not model_options.decoder_type == "refinement_network":
-#         assert FLAGS.guidance_type is None
-
-    # if FLAGS.affine_transform:
-    #     assert FLAGS.transform_loss_decay is not None
-
-    # if FLAGS.affine_transform:
-    #     assert common.PRIOR_SEGS in dataset
+#         assert FLAGS.guida
 
     # if FLAGS.deformable_transform:
     #     assert common.PRIOR_SEGS in dataset and common.PRIOR_IMGS in dataset
@@ -325,6 +316,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
   samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
 
+  samples[common.IMAGE] = tf.reshape(samples[common.IMAGE], [-1,DATA_INFO.train["train_crop_size"][0],DATA_INFO.train["train_crop_size"][1],1])
   if 'prior_slices' in samples:
     prior_slices = samples['prior_slices']
   else:
@@ -364,8 +356,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
                 model_options=model_options,
-                # affine_transform=FLAGS.affine_transform,
-                # deformable_transform=FLAGS.deformable_transform,
                 # labels=samples[common.LABEL],
                 # samples=samples["organ_label"],
                 # prior_imgs=samples[common.PRIOR_IMGS],
@@ -376,7 +366,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 batch_size=clone_batch_size,
                 guidance_type=FLAGS.guidance_type,
                 fusion_slice=FLAGS.fusion_slice,
-                prior_dir=FLAGS.prior_dir,
+                # prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
                 stn_in_each_class=True,
                 # prior_num_slice=FLAGS.prior_num_slice,
@@ -404,6 +394,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 guid_feature_only=FLAGS.guid_feature_only,
                 stage_pred_ks=FLAGS.stage_pred_ks,
                 guid_fuse=FLAGS.guid_fuse,
+                seq_length=FLAGS.seq_length,
                 )
 
   # Add name to graph node so we can add to summary.
@@ -585,10 +576,6 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
   # if guidance is not None:
   #   # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
   #   # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
-
-  #   if FLAGS.affine_transform:
-  #     tf.summary.image('guidance/%s' % 'guidance_original0_6', colorize(guidance_original[...,6:7], cmap='viridis'))
-  #     tf.summary.image('guidance/%s' % 'guidance_original0_7', colorize(guidance_original[...,7:8], cmap='viridis'))
 
   #   tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
   #   tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
@@ -973,7 +960,6 @@ def main(unused_argv):
                 dataset_name=DATASET_NAME,
                 split_name=TRAIN_SPLIT,
                 # dataset_dir=FLAGS.dataset_dir,
-                # affine_transform=FLAGS.affine_transform,
                 batch_size=clone_batch_size,
                 HU_window=DATA_INFO.train["HU_wndow"],
                 pre_crop_size=pre_crop_size,
@@ -995,16 +981,15 @@ def main(unused_argv):
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir,
-                seq_length=1,
-                seq_type="forward")
+                # prior_dir=FLAGS.prior_dir,
+                seq_length=FLAGS.seq_length,
+                seq_type="bidirection")
 
             # TODO: no validation option
             val_generator = data_generator.Dataset(
                 dataset_name=DATASET_NAME,
                 split_name=["val"],
                 # dataset_dir=FLAGS.dataset_dir,
-                # affine_transform=FLAGS.affine_transform,
                 batch_size=1,
                 HU_window=DATA_INFO.train["HU_wndow"],
                 mt_label_method=FLAGS.z_label_method,
@@ -1025,9 +1010,9 @@ def main(unused_argv):
                 repeat_data=True,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir,
-                seq_length=1,
-                seq_type="forward")
+                # prior_dir=FLAGS.prior_dir,
+                seq_length=FLAGS.seq_length,
+                seq_type="bidirection")
 
             model_options = common.ModelOptions(
               outputs_to_num_classes=train_generator.num_of_classes,

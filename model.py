@@ -130,7 +130,7 @@ def pgb_network(images,
                 z_class=None,
                 guidance_type=None,
                 fusion_slice=None,
-                prior_dir=None,
+                # prior_dir=None,
                 drop_prob=None,
                 stn_in_each_class=None,
                 reuse=None,
@@ -162,12 +162,12 @@ def pgb_network(images,
     fuse_flag = kwargs.pop("fuse_flag", None)
     predict_without_background = kwargs.pop("predict_without_background", False)
     ks = kwargs.pop("stage_pred_ks", None)
-
+    seq_length = kwargs.pop("seq_length", None)
 
     # Produce Prior
     if prior_segs is not None:
         prior_from_data = get_prior(prior_segs, guidance_type, num_class)
-                
+    print(60*"O", prior_from_data)            
     if guid_encoder in ("early", "p_embed_prior"):
         in_node = tf.concat([images, prior_from_data], axis=3)
     elif guid_encoder in ("late", "image_only", "p_embed"):
@@ -255,15 +255,18 @@ def pgb_network(images,
                                 weight_decay=weight_decay, is_training=is_training,num_class=num_class, ks=ks,
                                 **kwargs)  
     logits, preds = refine_model.model()    
-    # logits, preds = refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, 
-    #                                   out_node=out_node, weight_decay=weight_decay, reuse=reuse, 
-    #                                   is_training=is_training)
-    layers_dict.update(preds)
     
+    if seq_length is not None:
+        if seq_length > 1:
+            assert batch_size%seq_length == 0
+            logits.set_shape([batch_size, 256, 256, 14])
+            logits = tf.split(value=logits, num_or_size_splits=seq_length, axis=0)
+            # logits = tf.stack(logits, axis=1)
+            logits = utils.seq_model(logits, num_class, weight_decay, is_training)
+    layers_dict.update(preds)
     if drop_prob is not None:
         logits = tf.nn.dropout(logits, rate=drop_prob)
     
-    # logits = tf.identity(logits, "output")    
     output_dict[common.OUTPUT_TYPE] = logits    
     
     trainable_vars = tf.trainable_variables()

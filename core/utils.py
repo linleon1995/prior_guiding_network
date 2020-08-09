@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
-from core import resnet_v1_beta, preprocess_utils
+from core import resnet_v1_beta, preprocess_utils, cell
 slim = contrib_slim
 resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
@@ -968,3 +968,49 @@ def se_block(inputs, node=32, scope=None):
       net = fc_layer(net, [32, channel], _std=1, scope="fc2")
       net = tf.nn.sigmoid(net)
   return net
+
+
+def seq_model(inputs, n_class, weight_decay, is_training, cell_type='ConvGRU'):
+  print(inputs, 60*"C")
+  with slim.arg_scope([slim.batch_norm],
+                        is_training=is_training):
+    with slim.arg_scope([slim.conv2d],
+                      weights_initializer=tf.initializers.he_normal(), 
+                      weights_regularizer=slim.l2_regularizer(weight_decay),
+                      normalizer_fn=slim.batch_norm):
+      if cell_type =='ConvGRU':
+        in_shape = inputs[0].get_shape().as_list()
+        batch_size = in_shape[0]
+        # seq_length = in_shape[1]    
+        nx = in_shape[1]
+        ny = in_shape[2]
+        with tf.variable_scope("forward_cell") as scope:
+            cell_forward = cell.ConvGRUCell(shape=[ny, nx], 
+                                        filters=n_class, 
+                                        kernel=[3, 3], 
+    #                                               activation=tf.nn.softmax, 
+    #                                               pred_information=None,
+                                        )
+        
+            outputs_forward, state_forward = tf.nn.static_rnn(
+                                        cell=cell_forward,
+                                        inputs=inputs,
+                                        initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32),
+                                        )
+    #     with tf.variable_scope("backward_cell") as scope:
+    #         cell_backward = cell.ConvGRUCell(shape=[ny, nx], 
+    #                                     filters=n_class, kernel=[3, 3], 
+    # #                                                activation=tf.nn.softmax, 
+    # #                                                pred_information=None,
+    #                                     )
+    #         outputs_backward, state_backward = tf.nn.static_rnn(
+    #                                     cell=cell_backward ,
+    #                                     inputs=x_b,
+    #                                     initial_state=cell_backward.zero_state(batch_size, dtype=tf.float32),
+    #                                     )
+    #     output_map = tf.concat([state_forward, state_backward], axis=4)
+    #     y = slim.conv2d(output_map, n_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='fuse')
+        y = slim.conv2d(state_forward, n_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='fuse')
+    print(60*"X", inputs, y, state_forward)
+    return y
+    

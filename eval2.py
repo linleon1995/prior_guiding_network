@@ -81,7 +81,7 @@ parser.add_argument('--predict_without_background', type=bool, default=True,
 parser.add_argument('--fuse_flag', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="early",
+parser.add_argument('--guid_encoder', type=str, default="image_only",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
@@ -134,7 +134,7 @@ parser.add_argument('--output_stride', type=int, default=8,
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=20,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 parser.add_argument('--fusion_slice', type=int, default=3,
@@ -242,11 +242,11 @@ def main(unused_argv):
               outputs_to_num_classes=14,
               crop_size=EVAL_CROP_SIZE,
               output_stride=FLAGS.output_stride)
-
+  
   dataset = data_generator.Dataset(
-                dataset_name=FLAGS.dataset,
-                split_name=FLAGS.eval_split,
-                dataset_dir=FLAGS.dataset_dir,
+                dataset_name=['2013_MICCAI_Abdominal'],
+                split_name=["train","val"],
+                # dataset_dir=FLAGS.dataset_dir,
                 # affine_transform=FLAGS.affine_transform,
                 # deformable_transform=FLAGS.deformable_transform,
                 batch_size=1,
@@ -312,7 +312,7 @@ def main(unused_argv):
     #                     common.LABEL: label_placeholder,
     #                     common.NUM_SLICES: num_slices_placeholder}
 
-    for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
+    for i in range(dataset.splits_to_sizes['2013_MICCAI_Abdominal'][FLAGS.eval_split]):
         data = sess.run(samples)
         print(i)
         # if i == 0:
@@ -912,7 +912,7 @@ def main(unused_argv):
     total_z_label = []
     total_z_pred = []
     
-    for i in range(dataset.splits_to_sizes[FLAGS.eval_split]):
+    for i in range(dataset.splits_to_sizes['2013_MICCAI_Abdominal'][FLAGS.eval_split]):
         data = sess.run(samples)
         _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
         print('Sample {} Slice {}'.format(i, data[common.DEPTH][0]))
@@ -1088,7 +1088,7 @@ def main(unused_argv):
                                         title='Confusion matrix, without normalization', save_path=FLAGS.eval_logdir)
     
     if common.Z_LABEL in samples:
-      total_eval_z /= dataset.splits_to_sizes[FLAGS.eval_split]
+      total_eval_z /= dataset.splits_to_sizes['2013_MICCAI_Abdominal'][FLAGS.eval_split]
       print("MSE of z prediction {}".format(total_eval_z))
       plt.plot(total_z_label, total_z_pred, ".")
       plt.hold(True)

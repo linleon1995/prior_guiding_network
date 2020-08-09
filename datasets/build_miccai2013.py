@@ -264,7 +264,7 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   data_dir = "/home/acm528_02/Jing_Siang/data/Synpase_raw/"
-  output_dir = "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/Train_Sets/tfrecord/"
+  output_dir = "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Train_Sets/"
   dataset_split = {"train": [0,24],
                    "val": [24,30]}
   for extract_fg_exist_slice in [True, False]:
@@ -272,20 +272,9 @@ def main(unused_argv):
       _convert_dataset(split, data_dir, output_dir, extract_fg_exist_slice, indices)
       
   data_dir = "/home/acm528_02/Jing_Siang/data/Synpase_raw/testing/"
-  output_dir = "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/Test_Sets/tfrecord/"
+  output_dir = "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Test_Sets/"
   _convert_dataset("test", data_dir, output_dir, False, None)
   
 if __name__ == '__main__':
-  # image_reader = build_medical_data.ImageReader('dcm', channels=1)
-  # path = "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/Train_Sets/MR/38/T2SPIR/Ground/"
-  # for f in os.listdir(path):
-  #   image_data = image_reader.decode_image(
-  #     os.path.abspath(path+f)
-  #     )
-  #   print(np.shape(image_data))
-  #   print(image_data)
-  #   plt.imshow(image_data)
-  #   plt.show()
-    
   FLAGS, unparsed = parser.parse_known_args()
   main(unparsed)
