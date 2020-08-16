@@ -37,40 +37,27 @@ def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
         fileExt = [fileExt]
         
     for f in os.listdir(path):
-        candidate = None
+        # candidate = None
+        Str, Ext = False, False
         if fileStr is not None:
             if len(fileStr) > 0:
                 for file_start in fileStr:
                     if f.startswith(file_start):
-                        candidate = f
+                        Str = True
                         break
-            else:
-                candidate = f
-        else:
-            candidate = f
         
         if fileExt is not None:
             if len(fileExt) > 0:   
                 for file_end in fileExt:
                     if f.endswith(file_end):
-                        candidate = f
+                        Ext = True
                         break
-            else:
-                candidate = f        
-        else:
-            candidate = f
         
-        if candidate is not None:
-            file_list.append(os.path.join(path,candidate))    
-            
-        # for file_start in fileStr:
-        #     for file_end in fileExt:
-        #         if _.startswith(file_start) and _.endswith(file_end):
-        #             file_list.append(os.path.join(path,_))
-                    
+        if (Str and Ext) or (not Str and not Ext):
+            file_list.append(os.path.join(path,f))
                 
     if len(file_list) == 0:
-        raise ValueError("No file exist")  
+        raise ValueError("No file exist in %s" %path)  
     
     # Determine the number of files to load
     if sort_files:

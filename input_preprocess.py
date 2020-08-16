@@ -172,10 +172,11 @@ def preprocess_image_and_label_seq(image,
     
   processed_image.set_shape([crop_height, crop_width, seq_length*channel])
   if label is not None:
-    if label_for_each_frame:
-      label.set_shape([crop_height, crop_width, seq_length*channel])
-    else:
-      label.set_shape([crop_height, crop_width, 1])
+    label.set_shape([crop_height, crop_width, seq_length*channel])
+    # if label_for_each_frame:
+    #   label.set_shape([crop_height, crop_width, seq_length*channel])
+    # else:
+    #   label.set_shape([crop_height, crop_width, 1])
   if prior_segs is not None:
     prior_segs = tf.squeeze(tf.image.resize_bilinear(tf.expand_dims(prior_segs,axis=0), [crop_height,crop_width]), axis=0)
     # prior_segs.set_shape([crop_height,crop_width,num_class])

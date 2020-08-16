@@ -13,6 +13,7 @@ import re
 import sys
 import argparse
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 
 import build_medical_data, file_utils
@@ -52,7 +53,7 @@ _NUM_SHARDS = 24
 _NUM_SLICES = 3779
 _NUM_VOXELS = 30
 _DATA_TYPE = "2D"
-_DATA_NAME = "miccai_2013"
+_DATA_NAME = "2013_MICCAI_Abdominal"
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
     'image': 'raw',
@@ -139,7 +140,7 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir):
 
     for shard_id in range(num_shard):
         shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
-            dataset_split, "seq", shard_id, _NUM_SHARDS)
+            dataset_split, "seq", shard_id, num_shard)
         output_filename = os.path.join(output_dir, shard_filename)
         with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
             sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
@@ -149,6 +150,7 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir):
             image_data = image_reader.decode_image(image_files[shard_id])
             image_data = image_data[:,::-1]
             height, width, num_slices = image_reader.read_image_dims(image_data)
+            # print(height, width, num_slices)
             
             # Read the semantic segmentation annotation.
             if dataset_split in ("train", "val"):
@@ -182,7 +184,9 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir):
                     image_slice = image_data[slice_idx].tostring()
                     if dataset_split in ("train", "val"):
                         seg_slice = seg_data[slice_idx].tostring()
-                    
+                    # if slice_idx > 50:
+                    #     plt.imshow(image_data[slice_idx])
+                    #     plt.show()
                     image_encoded = features['image/encoded'].feature.add()
                     image_encoded.bytes_list.value.append(image_slice)
                     if dataset_split in ("train", "val"):
@@ -216,3 +220,14 @@ def main(unused_argv):
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   main(unparsed)
+    # import SimpleITK as sitk
+    # image = sitk.ReadImage("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/label0001.nii.gz")
+
+    # # Access the numpy array:
+    # image_arr = sitk.GetArrayFromImage(image)
+
+    # image_arr = np.int32(image_arr)
+    # for i in range(0,240,20):
+    #     plt.imshow(image_arr[i])
+    #     plt.show()
+    # print(np.shape(image_arr))

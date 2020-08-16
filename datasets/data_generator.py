@@ -24,14 +24,19 @@ _DATASETS_INFORMATION = {
     '2019_ISBI_CHAOS_MR_T2': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T2,
 }
 
+# BASE_DATA_DIR = dataset_infos.BASE_DATA_DIR
+SPLIT_FOLDER_MAP = {"train": "Train_Sets",
+                    "val": "Train_Sets",
+                    "test": "Test_Sets"}
+
 # TODO: MR_T1 in and out
 _DATASETS_STORING_PATH_MAP = {
-    # '2013_MICCAI_Abdominal': {"train": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Train_Sets/",
-    #　                          "val":  "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Train_Sets/",
-    #                           "test": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Test_Sets/"},
-    '2013_MICCAI_Abdominal': {"train": "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
-                              "val":  "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
+    '2013_MICCAI_Abdominal': {"train": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Train_Sets/",
+                              "val":  "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Train_Sets/",
                               "test": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Test_Sets/"},
+    # '2013_MICCAI_Abdominal': {"train": "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
+    #                           "val":  "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
+    #                           "test": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Test_Sets/"},
     '2019_ISBI_CHAOS_CT': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
                            "val":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
                            "test":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/"},
@@ -44,6 +49,23 @@ _DATASETS_STORING_PATH_MAP = {
 }
 # Default file pattern of TFRecord of TensorFlow Example.
 _FILE_PATTERN = '%s-*'
+
+
+# def get_data_dir(name, split, seq_length):
+#     if seq_length is not None:
+#         if seq_length > 1:
+#             img_or_seq = "seq" + str(seq_length)
+#         else:
+#             img_or_seq = "img"
+#     else:
+#         img_or_seq = "img"
+#     if name == "2013_MICCAI_Abdominal":
+#         return os.path.join(BASE_DATA_DIR, "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split])
+#     elif "2019_ISBI_CHAOS" in name:
+#         modality = name.split("CHAOS_")[1]
+#         return os.path.join(BASE_DATA_DIR, "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split], modality)
+#     else:
+#         raise ValueError("Unknown Dataset Name")
 
 
 def get_z_label(z_label_method, num_slices, depth, z_class=None):
@@ -60,6 +82,7 @@ def get_z_label(z_label_method, num_slices, depth, z_class=None):
     else:
         raise ValueError("Unknown z label method")
 
+
 class Dataset(object):
     """"Represents input data for prior-guided based network"""
     def __init__(self,
@@ -68,7 +91,7 @@ class Dataset(object):
                  batch_size,
                  crop_size,
                  HU_window,
-                 pre_crop_size=None,
+                 pre_crop_flag=None,
                  guidance_type=None,
                  min_resize_value=None,
                  max_resize_value=None,
@@ -92,6 +115,7 @@ class Dataset(object):
                  ):
         """Initializes the dataset."""
         # TODO: make sure num_class in all datasets are same
+
         self.dataset_dir = {}
         self.splits_to_sizes = {}
         for sub_dataset in dataset_name:
@@ -99,6 +123,7 @@ class Dataset(object):
                 raise ValueError('The specified dataset is not supported.')
             # TODO: Only consider the first split dir --> split_name[0]
             self.dataset_dir[sub_dataset] = _DATASETS_STORING_PATH_MAP[sub_dataset][split_name[0]]
+            # self.dataset_dir[sub_dataset] = get_data_dir(sub_dataset, split_name, seq_length)
             self.splits_to_sizes[sub_dataset] = _DATASETS_INFORMATION[sub_dataset].splits_to_sizes
         self.dataset_name = dataset_name
 
@@ -117,7 +142,10 @@ class Dataset(object):
         # self.dataset_dir = dataset_dir
         self.batch_size = batch_size
         self.crop_size = crop_size
-        self.pre_crop_size = pre_crop_size
+        if pre_crop_flag:
+            self.pre_crop_size = _DATASETS_INFORMATION[sub_dataset].train["pre_crop_size"]
+        else:
+            self.pre_crop_size = [None, None]
         self.min_resize_value = min_resize_value
         self.max_resize_value = max_resize_value
         self.resize_factor = resize_factor
@@ -136,15 +164,14 @@ class Dataset(object):
         self.prior_num_slice = prior_num_slice
         self.prior_num_subject = prior_num_subject
         self.guidance_type = guidance_type
-        # self.raw_data_height = _DATASETS_INFORMATION[self.dataset_name].height
-        # self.raw_data_width = _DATASETS_INFORMATION[self.dataset_name].width
         self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name[0]].num_classes
         self.ignore_label = _DATASETS_INFORMATION[self.dataset_name[0]].ignore_label
         self.seq_length = seq_length
         self.seq_type = seq_type
         self.label_for_each_frame = label_for_each_frame
 
-    def _parse_function(self, example_proto):
+
+    def _parse_image(self, example_proto):
         """Function to parse the example"""
         features = {
         'image/encoded':
@@ -161,14 +188,11 @@ class Dataset(object):
             tf.FixedLenFeature((), tf.int64, default_value=0),
         'image/num_slices':
             tf.FixedLenFeature((), tf.int64, default_value=0),
-        # 'image/segmentation/class/format':
-        #     tf.FixedLenFeature((), tf.string, default_value=''),
         }
 
         if "train" in self.split_name or "val" in self.split_name:
             features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
-
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
@@ -178,22 +202,6 @@ class Dataset(object):
             organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
-
-        # image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
-        # image = tf.reshape(image, [self.raw_data_height,self.raw_data_width,1])
-
-        # if "train" in self.split_name or "val" in self.split_name:
-        #     label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-        #     label = tf.reshape(label, [self.raw_data_height,self.raw_data_width,1])
-        #     # label = tf.reshape(label, [parsed_features['image/height'], parsed_features['image/width']])
-
-        #     organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
-        # elif "test" in self.split_name:
-        #     label = None
-
-        # import prior
-        # TODO: paramarize subject selection
-        # TODO: 'priors' --> common.PRIORS
 
         sample = {
             common.IMAGE: image,
@@ -205,21 +213,11 @@ class Dataset(object):
             # "split": self.split_name
         }
 
-
         if label is not None:
-        #   if label.get_shape().ndims == 2:
-        #     label = tf.expand_dims(label, 2)
-        #   elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
-        #     pass
-        #   else:
-        #     raise ValueError('Input label shape must be [height, width], or '
-        #                      '[height, width, 1].')
-
-        #   label.set_shape([None, None, 1])
-
           sample[common.LABEL] = label
 
         return sample
+
 
     def _parse_sequence(self, serialized_example):
         """Function to parse the example"""
@@ -235,7 +233,7 @@ class Dataset(object):
 
         # TODO
         # label_name = 'class' if dataset_name == 'davis_2016' else 'object'
-        label_name = 'miccai_2013'
+        # label_name = 'miccai_2013'
         keys_to_sequence_features = {
             'image/encoded': tf.FixedLenSequenceFeature((), dtype=tf.string),
             'segmentation/encoded':
@@ -249,41 +247,13 @@ class Dataset(object):
             keys_to_sequence_features)
 
         image = tf.decode_raw(feature_list["image/encoded"], tf.int32)
-        # image = tf.reshape(image, [-1,512,512,1])
-
-        label = tf.decode_raw(feature_list["segmentation/encoded"], tf.int32)
-        # label = tf.reshape(label, [-1,512,512,1])
-
+        if "train" in self.split_name or "val" in self.split_name:
+            label = tf.decode_raw(feature_list["segmentation/encoded"], tf.int32)
+        print(feature_list, 60*"a")
         depth = feature_list["image/depth"]
-        # depth = tf.reshape(depth, [-1,1])
 
         num_slices = context["dataset/num_frames"]
         num_slices = tf.cast(num_slices, tf.int32)
-
-        # frame_index = tf.random_uniform([], maxval=num_slices, dtype=tf.int32)
-        # if self.seq_type == "forward":
-        #     start = frame_index - self.seq_length
-        #     end = frame_index
-        # elif self.seq_type == "bidirection":
-        #     r = tf.cast(((frame_index-1) / 2), tf.float32)
-        #     start = tf.cast(tf.cast(frame_index, tf.float32)-r, tf.int32)
-        #     end = tf.cast(tf.cast(frame_index, tf.float32)+r, tf.int32)
-        # else:
-        #     raise ValueError("Unknow Sequence type")
-
-        # # get sequence indices
-        # sel_indices = tf.range(start, end, dtype=tf.int32)
-
-        # # replace negative with first or last slice index
-        # sel_indices = tf.clip_by_value(sel_indices, clip_value_min=0, clip_value_max=num_slices-1)
-
-        # image = tf.gather(image, indices=sel_indices, axis=0)
-        # depth = tf.gather(depth, indices=sel_indices, axis=0)
-
-        # if self.label_for_each_frame:
-        #     label = tf.gather(label, indices=sel_indices, axis=0)
-        # else:
-        #     label = tf.gather(label, indices=frame_index, axis=0)
 
         sample = {
             common.HEIGHT: context['image/height'],
@@ -293,7 +263,7 @@ class Dataset(object):
             common.NUM_SLICES: num_slices,
             common.DEPTH: depth,
         }
-
+        
         # get multi-task label
         if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
             if self.mt_label_method == "reg" and self.mt_label_type == "class_label":
@@ -309,27 +279,16 @@ class Dataset(object):
 
 
     def load_prior_from_dir(self, height, width):
-        # Load numpy array as prior
+        """
+        1. load prior
+        2. check spatial dimension among all priors
+        3. if different raise error
+        4 if all prior's spatial dimension are same concat all prior example: CHAOS task1 + MICCAI --> [512,512,16]
+        """
         if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
             print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
                 self.prior_num_slice, self.prior_num_subject))
             # # TODO: get prior name properly
-            # # prior_name = build_prior.get_prior_name(
-            # #     self.prior_num_slice, self.prior_num_subject)
-            # prior_name = "train-slice%03d-subject%03d" %(self.prior_num_slice, self.prior_num_subject)
-            # prior_dir = _DATASETS_INFORMATION[dataset_name[0]].prior_dir
-            # prior_segs = np.load(os.path.join(prior_dir, prior_name+".npy"))
-            # prior_segs = np.float32(prior_segs)
-            # if self.guidance_type == "training_data_fusion_h":
-            #    prior_segs = np.float32(prior_segs>0)
-
-            # prior_segs = tf.convert_to_tensor(prior_segs)
-
-            # prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=3)
-            # prior_segs = tf.concat(prior_segs, axis=2)
-            # prior_segs = tf.squeeze(prior_segs, axis=3)
-
-            # prior shape [H,W,K,C], K=number of class, C=number of prior slice
             def load_prior(prior_dir):
                 prior_name = "train-slice%03d-subject%03d" %(self.prior_num_slice, self.prior_num_subject)
                 prior = np.load(os.path.join(prior_dir, prior_name+".npy"))
@@ -342,14 +301,8 @@ class Dataset(object):
                 # Consider prior in shape [H,W,K,1]
                 prior = tf.image.resize_bilinear(tf.expand_dims(prior,axis=0)[...,0], [height,width])
                 prior_list.append(prior)
-            prior_segs = tf.concat(prior_list, axis=3)[0]
-
-
             # TODO: only consider first dataset prior
-            # should do process below
-            # 1. load prior 2. check dim 3. if dim not match with input raise error
-            # 4. check dim between prior 5. if more than one prior go back to 1
-            # if pass the process, concat all prior example: CHAOS task1 + MICCAI --> [512,512,16]
+            prior_segs = tf.concat(prior_list, axis=3)[0]
         else:
             prior_segs = None
         return prior_segs
@@ -363,62 +316,30 @@ class Dataset(object):
         """
         height = sample[common.HEIGHT]
         width = sample[common.WIDTH]
-        image = tf.reshape(sample[common.IMAGE], [height, width,-1])
 
+        # image = tf.reshape(sample[common.IMAGE], [height, width, self.seq_length])
+        image = tf.reshape(sample[common.IMAGE], [self.seq_length, height, width])
+        image = tf.transpose(image, [1,2,0])
         if common.LABEL in sample:
-          sample[common.LABEL] = tf.reshape(sample[common.LABEL], [height, width,-1])
-          label = sample[common.LABEL]
-        #   if label.get_shape().ndims == 2:
-        #     label = tf.expand_dims(label, 2)
-        #   elif label.get_shape().ndims == 3 and label.shape.dims[2] == 1:
-        #     pass
-        #   else:
-        #     raise ValueError('Input label shape must be [height, width], or '
-        #                      '[height, width, 1].')
+        #   label = tf.reshape(sample[common.LABEL], [height, width, self.seq_length])
+          label = tf.reshape(sample[common.LABEL], [self.seq_length, height, width])
+          label = tf.transpose(label, [1,2,0])
+        else:
+          label = None
 
-        #   label.set_shape([None, None, 1])
-          sample[common.LABEL] = label
-
-        # if "train" in self.split_name or "val" in self.split_name:
-        #   sample[common.LABEL] = tf.reshape(sample[common.LABEL], [height, width,1])
-
-
-
-        # if sample[common.IMAGE].get_shape().ndims == 4:
-        #     height, width = sample[common.IMAGE].get_shape().as_list()[1:3]
-        # elif sample[common.IMAGE].get_shape().ndims == 3:
-        #     height, width = sample[common.IMAGE].get_shape().as_list()[0:2]
-        # image = tf.reshape(sample[common.IMAGE], [height, width, -1])
-        # if "train" in self.split_name or "val" in self.split_name:
-        #     label = tf.reshape(sample[common.LABEL], [height, width, -1])
-        # elif "test" in self.split_name:
-        #     label = None
-
-        # prior_segs = sample[common.PRIOR_SEGS]
         depth = sample[common.DEPTH]
         num_slices = sample[common.NUM_SLICES]
-
 
         # get prior
         if None not in (self.prior_num_slice, self.prior_num_subject):
             prior_segs = self.load_prior_from_dir(height, width)
             [_, _, prior_channel] = preprocess_utils.resolve_shape(prior_segs, rank=3)
-            # if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-            #     prior_segs = tf.split(prior_segs, num_or_size_splits=self.prior_num_slice, axis=2)
-            #     prior_segs = tf.stack(prior_segs, axis=3)
-
-            # sample[common.PRIOR_SEGS] = prior_segs
         else:
             prior_segs = None
 
-
-        if self.pre_crop_size is not None:
-            pre_crop_height, pre_crop_width = self.pre_crop_size
-        else:
-            pre_crop_height, pre_crop_width = None, None
-
         # TODO: input prior shape should be [NHWC] but [HWKC]
         # TODO: prior_segs and prior_seg_3d
+
         # Preprocessing for images, label and z_label
         original_image, image, label, original_label, pp, prior_segs = input_preprocess.preprocess_image_and_label_seq(
             image=image,
@@ -429,8 +350,8 @@ class Dataset(object):
             channel=1,
             seq_length=self.seq_length,
             label_for_each_frame=self.label_for_each_frame,
-            pre_crop_height=pre_crop_height,
-            pre_crop_width=pre_crop_width,
+            pre_crop_height=self.pre_crop_size[0],
+            pre_crop_width=self.pre_crop_size[1],
             num_class=self.num_of_classes,
             HU_window=self.HU_window,
             min_resize_value=self.min_resize_value,
@@ -443,11 +364,17 @@ class Dataset(object):
             is_training=self.is_training,
             model_variant=self.model_variant)
 
-        if self.seq_length != 1:
-            image = tf.reshape(image, [self.seq_length, self.crop_size[0], self.crop_size[1], -1])
-            if self.label_for_each_frame and  label is not None:
-                label = tf.reshape(label, [self.seq_length, self.crop_size[0], self.crop_size[1], -1])
 
+        # TODO: image channel from 1 --> data_infos.channel
+        # if self.seq_length != 1:
+        #     image = tf.reshape(image, [self.seq_length, self.crop_size[0], self.crop_size[1], 1])
+        #     if label is not None:
+        #         label = tf.reshape(label, [self.seq_length, self.crop_size[0], self.crop_size[1], 1])
+        if self.seq_length > 1:
+            image = tf.expand_dims(tf.transpose(image, [2, 0, 1]), axis=3)
+            if label is not None:
+                label = tf.expand_dims(tf.transpose(label, [2, 0, 1]), axis=3)
+                
         sample[common.IMAGE] = image
         if not self.is_training:
             # Original image is only used during visualization.
@@ -459,8 +386,6 @@ class Dataset(object):
         if prior_segs is not None:
             sample[common.PRIOR_SEGS] = tf.reshape(
                 prior_segs, [self.crop_size[0], self.crop_size[1], prior_channel, 1])
-            # sample[common.PRIOR_SEGS] = tf.reshape(
-            #     prior_segs, [self.crop_size[0], self.crop_size[1], self.num_of_classes, self.seq_length])
 
         # get multi-task label
         if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
@@ -481,24 +406,22 @@ class Dataset(object):
           An iterator of type tf.data.Iterator.
         """
         # TODO: string case
-        # if isinstance(self.split_name, str):
-        #     files = file_utils.get_file_list(self.dataset_dir, fileExt=["tfrecord"])
-        # elif isinstance(self.split_name, list):
-        # files = []
-        # for split in self.split_name:
         files = []
+        print(60*"F", self.dataset_dir, self.split_name)
         for sub_data_dir in self.dataset_dir.values():
             files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
                                                   fileExt=["tfrecord"], sort_files=True))
+            # files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
+            #                                       fileExt=["tfrecord"], sort_files=True))
         self.files = files
-        
+        print(60*"F", self.files)
         if self.seq_length == 1:
             dataset = (
                 tf.data.TFRecordDataset(files)
-                .map(self._parse_function, num_parallel_calls=self.num_readers)
+                .map(self._parse_image, num_parallel_calls=self.num_readers)
                 .map(self._preprocessing_seq, num_parallel_calls=self.num_readers)
                 )
-        elif self.seq_length > 1:     
+        elif self.seq_length > 1:
             dataset = (
                 tf.data.TFRecordDataset(files)
                 .map(self._parse_sequence, num_parallel_calls=self.num_readers)
@@ -516,12 +439,3 @@ class Dataset(object):
         dataset = dataset.batch(self.batch_size).prefetch(self.batch_size)
         return dataset
 
-    # def _get_all_files(self, split_name):
-    #     """Gets all the files to read data from.
-    #     Returns:
-    #       A list of input files.
-    #     """
-    #     file_pattern = _FILE_PATTERN
-    #     file_pattern = os.path.join(self.dataset_dir,
-    #                                 file_pattern % split_name)
-    #     return tf.gfile.Glob(file_pattern)

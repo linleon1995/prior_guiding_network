@@ -66,18 +66,25 @@ STAGE_PRED_LOSS = "softmax_dice_loss"
 STAGE_PRED_LOSS = "sigmoid_cross_entropy"
 SEG_WEIGHT_FLAG = False
 DATASET_NAME = ['2013_MICCAI_Abdominal']
-# DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
-# DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
+DATASET_NAME = ['2019_ISBI_CHAOS_CT']
 
 DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
 CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/118_run_013/model.ckpt-160000'
-
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-60000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_002/model.ckpt-60000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_010/model.ckpt-25000'
+CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_011/model.ckpt-25000'
+# CHECKPOINT = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_012/model.ckpt-25000'
 # CHECKPOINT = None
 
-PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
+# PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--seq_length', type=int, default=1,
+                    help='')
+
 parser.add_argument('--guid_fuse', type=str, default="sum",
                     help='')
 
@@ -99,13 +106,13 @@ parser.add_argument('--fuse_flag', type=bool, default=True,
 parser.add_argument('--predict_without_background', type=bool, default=False,
                     help='')
 
-parser.add_argument('--guid_encoder', type=str, default="image_only",
+parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
 parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
-parser.add_argument('--out_node', type=int, default=64,
+parser.add_argument('--out_node', type=int, default=32,
                     help='')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
@@ -124,8 +131,8 @@ parser.add_argument('--master', type=str, default='',
 parser.add_argument('--eval_logdir', type=str, default=CHECKPOINT+'-eval/',
                     help='')
 
-parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
-                    help='')
+# parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
+#                     help='')
 
 parser.add_argument('--checkpoint_dir', type=str, default=CHECKPOINT,
                     help='')
@@ -149,7 +156,7 @@ parser.add_argument('--output_stride', type=int, default=8,
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=None,
+parser.add_argument('--prior_num_subject', type=int, default=20,
                     help='')
 
 parser.add_argument('--fusion_slice', type=int, default=3,
@@ -274,7 +281,7 @@ def main(unused_argv):
                 split_name=EVAL_SPLIT,
                 # dataset_dir=FLAGS.dataset_dir,
                 batch_size=1,
-                HU_window=DATA_INFO.train["HU_wndow"],
+                HU_window=DATA_INFO.HU_window,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
@@ -293,8 +300,8 @@ def main(unused_argv):
                 repeat_data=False,
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
-                prior_dir=FLAGS.prior_dir,
-                seq_length=1,
+                # prior_dir=FLAGS.prior_dir,
+                seq_length=FLAGS.seq_length,
                 seq_type="forward")            
   # TODO: make dirs?
   # TODO: Add model name in dir to distinguish
@@ -353,6 +360,7 @@ def main(unused_argv):
     if FLAGS.guidance_type == "gt":
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+      # TODO: CHAOS MR case
       prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None, DATA_INFO.height, DATA_INFO.width, dataset.num_of_classes, 1])
       # prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None,None, None, 1])
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
@@ -391,7 +399,7 @@ def main(unused_argv):
                 guidance_type=FLAGS.guidance_type,
                 
                 fusion_slice=FLAGS.fusion_slice,
-                prior_dir=FLAGS.prior_dir,
+                # prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
                 guid_weight=FLAGS.guid_weight,
                 stn_in_each_class=True,
@@ -420,6 +428,7 @@ def main(unused_argv):
                 guid_feature_only=FLAGS.guid_feature_only,
                 stage_pred_ks=FLAGS.stage_pred_ks,
                 guid_fuse=FLAGS.guid_fuse,
+                seq_length=FLAGS.seq_length,
                 )
 
     if FLAGS.vis_guidance:      

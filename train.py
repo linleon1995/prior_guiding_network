@@ -1,12 +1,12 @@
 import os
+import math
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import glob
-import nibabel as nib
 import argparse
 import six
 import time
+from tensorflow.python.ops import math_ops
 
 import model
 import common
@@ -17,14 +17,12 @@ from datasets import data_generator, dataset_infos
 from utils import train_utils, eval_utils
 from core import features_extractor
 import input_preprocess
-from tensorflow.python.ops import math_ops
-import math
+
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-PRIOR_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/'
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
@@ -41,12 +39,11 @@ SEG_WEIGHT = 1.0
 
 DATASET_NAME = ['2013_MICCAI_Abdominal']
 # DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
-# DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+DATASET_NAME = ['2019_ISBI_CHAOS_CT']
 
 # TODO: shouldn't just select the first dataset pre_crop_size
 DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
 
-# TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
 # TODO: flags.DEFINE_multi_integer
@@ -70,10 +67,19 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+# parser.add_argument('--dataset_name', nargs='+', required=True,
+#                     help='')
+
+# parser.add_argument('--train_split', nargs='+', required=True,
+#                     help='')
+
 parser.add_argument('--seq_length', type=int, default=1,
                     help='')
 
-parser.add_argument('--guid_fuse', type=str, default="sum",
+parser.add_argument('--cell_type', type=str, default="ConvGRU",
+                    help='')
+
+parser.add_argument('--guid_fuse', type=str, default="sum_wo_back",
                     help='')
 
 parser.add_argument('--guid_feature_only', type=bool, default=False,
@@ -116,13 +122,10 @@ parser.add_argument('--weight_decay', type=float, default=1e-3,
 parser.add_argument('--train_logdir', type=str, default=create_training_path(LOGGING_PATH),
                     help='')
 
-# parser.add_argument('--prior_dir', type=str, default=PRIOR_PATH,
-#                     help='')
-
 parser.add_argument('--train_split', type=str, default='train',
                     help='')
 
-parser.add_argument('--batch_size', type=int, default=18,
+parser.add_argument('--batch_size', type=int, default=16,
                     help='')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
@@ -131,7 +134,7 @@ parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
                     help='')
 
-parser.add_argument('--training_number_of_steps', type=int, default=60000,
+parser.add_argument('--training_number_of_steps', type=int, default=30000,
                     help='')
 
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -188,7 +191,7 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=24,
+parser.add_argument('--prior_num_subject', type=int, default=16,
                     help='')
 
 parser.add_argument('--fusion_slice', type=float, default=3,
@@ -276,7 +279,7 @@ parser.add_argument('--max_resize_value', type=int, default=DATA_INFO.height,
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
-parser.add_argument('--pre_crop_flag', type=bool, default=False,
+parser.add_argument('--pre_crop_flag', type=bool, default=True,
                     help='')
 
 def check_model_conflict(model_options):
@@ -313,10 +316,27 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   """
 
   # Add name to input and label nodes so we can add to summary.
+  print(60*"SAMPLES", samples)
   samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
   samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
 
-  samples[common.IMAGE] = tf.reshape(samples[common.IMAGE], [-1,DATA_INFO.train["train_crop_size"][0],DATA_INFO.train["train_crop_size"][1],1])
+  summary_img = samples[common.IMAGE]
+  summary_label = samples[common.LABEL]
+  if FLAGS.seq_length > 1:
+    summary_img = summary_img[:,1]
+    summary_label = summary_label[:,1]
+
+  # if is_training:
+  #   samples[common.IMAGE] = tf.reshape(
+  #     samples[common.IMAGE], [-1,DATA_INFO.train["train_crop_size"][0],DATA_INFO.train["train_crop_size"][1],1])
+  #   samples[common.LABEL] = tf.reshape(
+  #     samples[common.LABEL], [-1,DATA_INFO.train["train_crop_size"][0],DATA_INFO.train["train_crop_size"][1],1])
+  # else:
+  #   samples[common.IMAGE] = tf.reshape(
+  #     samples[common.IMAGE], [-1,DATA_INFO.height,DATA_INFO.width,1])
+  #   samples[common.LABEL] = tf.reshape(
+  #     samples[common.LABEL], [-1,DATA_INFO.height,DATA_INFO.width,1])
+
   if 'prior_slices' in samples:
     prior_slices = samples['prior_slices']
   else:
@@ -395,6 +415,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 stage_pred_ks=FLAGS.stage_pred_ks,
                 guid_fuse=FLAGS.guid_fuse,
                 seq_length=FLAGS.seq_length,
+                cell_type=FLAGS.cell_type
                 )
 
   # Add name to graph node so we can add to summary.
@@ -432,8 +453,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
 
   # TODO validation phase can use log_summaries?
   # Log the summary
-  _log_summaries(samples[common.IMAGE],
-                 samples[common.LABEL],
+  _log_summaries(summary_img,
+                 summary_label,
                  outputs_to_num_classes['semantic'],
                  output_dict[common.OUTPUT_TYPE],
                  z_label=z_label,
@@ -505,6 +526,8 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                            samples,
                            loss_dict,
                            num_of_classes,
+                           FLAGS.seq_length,
+                           FLAGS.batch_size,
                            predict_without_background=FLAGS.predict_without_background,
                            z_class=z_class)
 
@@ -862,67 +885,20 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
   prediction = eval_utils.inference_segmentation(logits, dim=3)
   pred_flat = tf.reshape(prediction, shape=[-1,])
   
-  labels = tf.squeeze(samples[common.LABEL], axis=3)
-  labels_flat = tf.reshape(labels, shape=[-1,])
+  # labels = tf.squeeze(samples[common.LABEL], axis=3)
+
+  if FLAGS.seq_length > 1:
+      label = samples[common.LABEL][:,FLAGS.seq_length//2]
+  else:
+      label = samples[common.LABEL]
+  labels_flat = tf.reshape(label, shape=[-1,])
+
   # print(samples, predictions, logits, 30*"s")
   # Define Confusion Maxtrix
   cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=num_of_classes)
 
   summary_op = 0
   return cm, summary_op
-
-
-# def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, steps, reuse=None):
-#   """Trains the deeplab model.
-#   Args:
-#     iterator: An iterator of type tf.data.Iterator for images and labels.
-#     num_of_classes: Number of classes for the dataset.
-#     ignore_label: Ignore label for the dataset.
-#   Returns:
-#     train_tensor: A tensor to update the model variables.
-#     summary_op: An operation to log the summaries.
-#   """
-#   # global_step = tf.train.get_global_step()
-#   # summaries = []
-
-#   total_loss, total_seg_loss = 0, 0
-#   tower_summaries = None
-#   for i in range(FLAGS.num_clones):
-#     with tf.device('/gpu:%d' % i):
-#       with tf.name_scope('clone_%d' % i) as scope:
-#         loss, seg_loss = _tower_loss(
-#             iterator=iterator,
-#             num_of_classes=num_of_classes,
-#             model_options=model_options,
-#             ignore_label=ignore_label,
-#             scope=scope,
-#             reuse_variable=True
-#             # reuse_variable=reuse
-#             )
-#         total_loss += loss
-#         total_seg_loss += seg_loss
-
-#   # tower_summaries = tf.summary.merge_all()
-#           # tower_summaries = tf.summary.merge_all(scope=scope)
-
-#   with tf.device('/cpu:0'):
-#     # if tower_summaries is not None:
-#     #   summaries.append(tower_summaries)
-
-#     # Print total loss to the terminal.
-#     # This implementation is mirrored from tf.slim.summaries.
-#     should_log = tf.equal(math_ops.mod(steps, 100), 0)
-#     total_loss = tf.cond(
-#         should_log,
-#         lambda: tf.Print(total_loss, [total_loss, total_seg_loss, steps], '----Validation loss, Segmentation loss and Validation step:'),
-#         lambda: total_loss)
-
-#     # summaries.append(tf.summary.scalar('total_loss', total_loss))
-
-#     val_tensor = tf.identity(total_seg_loss, name='val_op')
-#     # summary_op = tf.summary.merge(summaries)
-#     summary_op = 0
-#   return val_tensor, summary_op
 
 
 def main(unused_argv):
@@ -950,7 +926,7 @@ def main(unused_argv):
                 'Training batch size not divisble by number of clones (GPUs).')
             clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-            
+
             if FLAGS.pre_crop_flag:
               pre_crop_size = DATA_INFO.train["pre_crop_size"]
             else:
@@ -961,8 +937,8 @@ def main(unused_argv):
                 split_name=TRAIN_SPLIT,
                 # dataset_dir=FLAGS.dataset_dir,
                 batch_size=clone_batch_size,
-                HU_window=DATA_INFO.train["HU_wndow"],
-                pre_crop_size=pre_crop_size,
+                HU_window=DATA_INFO.HU_window,
+                pre_crop_flag=FLAGS.pre_crop_flag,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
@@ -991,7 +967,7 @@ def main(unused_argv):
                 split_name=["val"],
                 # dataset_dir=FLAGS.dataset_dir,
                 batch_size=1,
-                HU_window=DATA_INFO.train["HU_wndow"],
+                HU_window=DATA_INFO.HU_window,
                 mt_label_method=FLAGS.z_label_method,
                 guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
@@ -1109,6 +1085,8 @@ def main(unused_argv):
                       plt.plot(total_val_steps, total_val_loss, "bo-")
                       plt.grid(True)
                       plt.savefig(FLAGS.train_logdir+"/losses.png")
+
+
 
                       # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})
                       # total_steps.append(steps)
