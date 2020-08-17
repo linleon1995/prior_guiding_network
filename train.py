@@ -21,7 +21,7 @@ import input_preprocess
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 LOGGING_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/'
 PRETRAINED_PATH = None
@@ -34,7 +34,7 @@ FUSIONS = 5*["sum"]
 FUSIONS = ["concat"] + 4*["guid_uni"]
 FUSIONS = 5*["guid_uni"]
 
-TRAIN_SPLIT = ["train", "val"]
+TRAIN_SPLIT = ["train"]
 SEG_WEIGHT = 1.0
 
 DATASET_NAME = ['2013_MICCAI_Abdominal']
@@ -73,7 +73,7 @@ parser = argparse.ArgumentParser()
 # parser.add_argument('--train_split', nargs='+', required=True,
 #                     help='')
 
-parser.add_argument('--seq_length', type=int, default=1,
+parser.add_argument('--seq_length', type=int, default=3,
                     help='')
 
 parser.add_argument('--cell_type', type=str, default="ConvGRU",
@@ -892,7 +892,7 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
   else:
       label = samples[common.LABEL]
   labels_flat = tf.reshape(label, shape=[-1,])
-
+  print(60*"Q", samples)
   # print(samples, predictions, logits, 30*"s")
   # Define Confusion Maxtrix
   cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=num_of_classes)

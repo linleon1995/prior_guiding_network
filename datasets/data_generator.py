@@ -37,15 +37,15 @@ _DATASETS_STORING_PATH_MAP = {
     # '2013_MICCAI_Abdominal': {"train": "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
     #                           "val":  "/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/",
     #                           "test": "/home/acm528_02/Jing_Siang/data/2013_MICCAI_BTCV_Challenges/tfrecord/Test_Sets/"},
-    '2019_ISBI_CHAOS_CT': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
-                           "val":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
-                           "test":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/"},
-    '2019_ISBI_CHAOS_MR_T1': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
-                              "val": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
-                              "test": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T1/"},
-    '2019_ISBI_CHAOS_MR_T2': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
-                              "val": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
-                              "test": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T2/"}
+    '2019_ISBI_CHAOS_CT': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/CT/",
+                           "val":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/CT/",
+                           "test":  "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Test_Sets/CT/"},
+    '2019_ISBI_CHAOS_MR_T1': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/MR_T1/",
+                              "val": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/MR_T1/",
+                              "test": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Test_Sets/MR_T1/"},
+    '2019_ISBI_CHAOS_MR_T2': {"train": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/MR_T2/",
+                              "val": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Train_Sets/MR_T2/",
+                              "test": "/home/acm528_02/Jing_Siang/data/2019_ISBI_CHAOS/tfrecord/img/Test_Sets/MR_T2/"}
 }
 # Default file pattern of TFRecord of TensorFlow Example.
 _FILE_PATTERN = '%s-*'
@@ -191,15 +191,16 @@ class Dataset(object):
         }
 
         if "train" in self.split_name or "val" in self.split_name:
-            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
-            features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
+            features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            # features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         if "train" in self.split_name or "val" in self.split_name:
-            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
+            # label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
+            # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
 
@@ -407,14 +408,13 @@ class Dataset(object):
         """
         # TODO: string case
         files = []
-        print(60*"F", self.dataset_dir, self.split_name)
         for sub_data_dir in self.dataset_dir.values():
             files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
                                                   fileExt=["tfrecord"], sort_files=True))
             # files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
             #                                       fileExt=["tfrecord"], sort_files=True))
         self.files = files
-        print(60*"F", self.files)
+        print(60*"SF", self.files)
         if self.seq_length == 1:
             dataset = (
                 tf.data.TFRecordDataset(files)

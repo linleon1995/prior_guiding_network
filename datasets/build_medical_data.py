@@ -115,7 +115,8 @@ def _bytes_list_feature(values):
       bytes_list=tf.train.BytesList(value=[norm2bytes(values)]))
 
 
-def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slices, seg_data=None, organ_label=None):
+def image_seg_to_tfexample(
+  image_data, filename, height, width, depth, num_slices, dataset_name, image_format=None, seg_data=None, organ_label=None):
   """Converts one image/segmentation pair to tf example.
   Args:
     image_data: string of image data.
@@ -129,34 +130,19 @@ def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slice
   feature={
       'image/encoded': _bytes_list_feature(image_data),
       'image/filename': _bytes_list_feature(filename),
-      'image/format': _bytes_list_feature(_IMAGE_FORMAT_MAP[FLAGS.image_format]),
       'image/height': _int64_list_feature(height),
       'image/width': _int64_list_feature(width),
       'image/depth': _int64_list_feature(depth),
       'image/num_slices': _int64_list_feature(num_slices),
-      # 'image/segmentation/class/format': _bytes_list_feature(FLAGS.label_format),
+      'dataset': _bytes_list_feature(dataset_name),
   }
   if seg_data is not None:
-    feature['image/segmentation/class/encoded'] = _bytes_list_feature(seg_data)
-    
+    feature['segmentation/encoded'] = _bytes_list_feature(seg_data)
+
   if organ_label is not None:
     feature['image/segmentation/class/organ_label'] = _bytes_list_feature(organ_label)
   
+  if image_format is not None:
+    feature['image/format'] = _bytes_list_feature(_IMAGE_FORMAT_MAP[image_format])
   return tf.train.Example(features=tf.train.Features(feature=feature))
   
-# def priors_to_tfexample(priors, parse_name, num_slices, prior_id):
-#   """Converts one image/segmentation pair to tf example.
-#   Args:
-#     image_data: string of image data.
-#     filename: image filename.
-#     height: image height.
-#     width: image width.
-#     seg_data: string of semantic segmentation data.
-#   Returns:
-#     tf example of one image/segmentation pair.
-#   """
-#   return tf.train.Example(features=tf.train.Features(feature={
-#       'prior/num_slices': _int64_list_feature(num_slices),
-#       'prior/prior_id': _int64_list_feature(prior_id),
-#       'prior/'+parse_name: _bytes_list_feature(priors)
-#   }))
