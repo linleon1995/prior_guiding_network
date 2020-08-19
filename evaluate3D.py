@@ -18,7 +18,8 @@ from CHAOSmetrics import png_series_reader
 from CHAOSmetrics import evaluate
 
 # ======= Directories =======
-cwd = os.path.normpath(os.getcwd() + os.sep + os.pardir)
+# cwd = os.path.normpath(os.getcwd() + os.sep + os.pardir)
+cwd = os.path.normpath(os.getcwd() + os.sep)
 ground_dir = os.path.normpath(cwd + '/Data_3D/Ground')
 seg_dir = os.path.normpath(cwd + '/Data_3D/Segmentation')
 dicom_dir = os.path.normpath(cwd + '/Data_3D/DICOM_anon')
@@ -29,8 +30,5 @@ Vseg = png_series_reader(seg_dir)
 print('Volumes imported.')
 # ======= Evaluation =======
 print('Calculating...')
-# [dice, ravd, assd ,mssd]=evaluate(Vref,Vseg,dicom_dir)
-# print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(dice, ravd, assd ,mssd))
-
-dice, ravd=evaluate(Vref,Vseg,dicom_dir)
-print('DICE=%.3f RAVD=%.3f' %(dice, ravd))
+[dice, ravd, assd ,mssd]=evaluate(Vref,Vseg,dicom_dir)
+print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(dice, ravd, assd ,mssd))

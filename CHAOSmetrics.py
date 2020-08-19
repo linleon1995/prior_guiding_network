@@ -11,7 +11,7 @@ import cv2
 import SimpleITK as sitk
 from scipy import ndimage
 from sklearn.neighbors import KDTree
-
+"""
 def evaluate(Vref,Vseg,dicom_dir):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
@@ -22,7 +22,7 @@ def evaluate(Vref,Vseg,dicom_dir):
     ravd=RAVD(Vref,Vseg)
     [assd, mssd]=SSD(Vref,Vseg,dicom_dir)
     return dice, ravd, assd ,mssd
-"""
+
 def DICE(Vref,Vseg):
     dice=2*(Vref & Vseg).sum()/(Vref.sum() + Vseg.sum())
     return dice
