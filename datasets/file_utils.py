@@ -3,6 +3,14 @@ import numpy as np
 import SimpleITK as sitk
 import cv2
 
+
+def read_medical_images(file):
+    image = sitk.ReadImage(file)
+    image_arr = sitk.GetArrayFromImage(image)
+    image_arr = np.int32(image_arr)
+    return image_arr
+
+
 def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_data_type="3d"):
     if not isinstance(imgs, list):
         raise ValueError("imgs should be a list")
@@ -19,27 +27,43 @@ def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_da
     else:
         raise ValueError("Unknown saving_data_type")
     
-def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, num_file=None, exc_key="$$"):
-    # TODO: fileStr, fileExt are empty list, string, None condition
-    # TODO: make exclusive key right
+    
+def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
+    # TODO: fileStr, fileExt are empty list, None condition
     file_list = []
-    for _ in os.listdir(path):
-        for file_start in fileStr:
-            for file_end in fileExt:
-                if _.startswith(file_start) and _.endswith(file_end) and exc_key not in _:
-                    file_list.append(os.path.join(path,_))
-                    
+    if isinstance(fileStr, str):
+        fileStr = [fileStr]
+    if isinstance(fileExt, str):
+        fileExt = [fileExt]
+        
+    for f in os.listdir(path):
+        # candidate = None
+        Str, Ext = False, False
+        if fileStr is not None:
+            if len(fileStr) > 0:
+                for file_start in fileStr:
+                    if f.startswith(file_start):
+                        Str = True
+                        break
+
+        if fileExt is not None:
+            if len(fileExt) > 0:   
+                for file_end in fileExt:
+                    if f.endswith(file_end):
+                        Ext = True
+                        break
+
+        if (Str and Ext) or (not Str and not Ext):
+            file_list.append(os.path.join(path,f))
                 
     if len(file_list) == 0:
-        raise ValueError("No file exist")  
+        raise ValueError("No file exist in %s" %path)  
     
     # Determine the number of files to load
     if sort_files:
         file_list.sort()
-    if num_file is not None:
-        if num_file > len(file_list):
-            raise ValueError("Out of Range Error") 
-        file_list = file_list[0:num_file]
+    if file_idx is not None:
+        file_list = file_list[file_idx[0], file_idx[1]]
         
     return file_list
 

@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
-from core import resnet_v1_beta, preprocess_utils, cell
+from core import resnet_v1_beta, preprocess_utils, cell, attentions
 slim = contrib_slim
 resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
@@ -121,7 +121,8 @@ class Refine(object):
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions:
-              # guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
+              guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
+            elif "context_att" in self.fusions:
               guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
 
@@ -147,7 +148,7 @@ class Refine(object):
                 y = fuse_func(embed, y_tm1, out_node, fuse_method+str(module_order))
               else:
                 y = tf.identity(embed, name="identity%d" %module_order)
-            elif fuse_method in ("guid", "guid_class", "guid_uni"):
+            elif fuse_method in ("guid", "guid_class", "guid_uni", "context_att"):
               # guid = resize_bilinear(guid, [h, w])
               if guid is not None:
                 guid = resize_bilinear(guid, [h, w])
@@ -185,7 +186,7 @@ class Refine(object):
             if fuse_method in ("guid"):
               guid = y
               y_tm1 = None
-            elif fuse_method in ("guid_class", "guid_uni"):
+            elif fuse_method in ("guid_class", "guid_uni", "context_att"):
               if "softmax" in self.stage_pred_loss_name:
                 guid = tf.nn.softmax(stage_pred, axis=3)
               elif "sigmoid" in self.stage_pred_loss_name:
@@ -281,7 +282,9 @@ class Refine(object):
       return self.guid_attention
     elif method == "guid_class":
       return self.guid_class_attention
-
+    elif method == "context_att":
+      return self.context_attention
+     
   def concat_convolution(self, x1, x2, out_node, scope):
     with tf.variable_scope(scope, "concat_conv"):
       net = slim.conv2d(tf.concat([x1, x2], axis=3), out_node, scope="conv1")
@@ -293,8 +296,6 @@ class Refine(object):
       net = slim.conv2d(x1 + x2, out_node, scope="conv1")
   #    net = slim.conv2d(net, out_node, scope=scope+"_2")
       return net
-
-
 
   def guid_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
     apply_sram2 = kwargs.pop("apply_sram2", False)
@@ -330,7 +331,20 @@ class Refine(object):
       fuse = slim.conv2d(tf.concat(total_att, axis=3), out_node, kernel_size=[1,1], scope="fuse")
     return fuse
 
+  def context_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    guid_node = preprocess_utils.resolve_shape(guid, rank=4)[3]
 
+    if guid_node != out_node and guid_node != 1:
+      raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+
+    with tf.variable_scope(scope, 'guid'):
+      net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+      tf.add_to_collection("sram1", net)
+      if x2 is not None:
+        ca_layer = attentions.context_attention()
+        net = ca_layer.attention(net, x2, guid_node, "context_att1")
+        tf.add_to_collection("context_att1", net)
+      return net
 
 def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
     # TODO: batch_norm parameter
@@ -807,12 +821,13 @@ def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, cell_type='Con
             outputs_forward, state_forward = tf.nn.dynamic_rnn(
               cell=cell_forward, dtype=tf.float32, inputs=inputs,
               initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
+              
+        inputs_b = inputs[:,::-1]
         with tf.variable_scope("backward_cell") as scope:
             cell_backward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
             outputs_backward, state_backward = tf.nn.dynamic_rnn(
-              cell=cell_backward, dtype=tf.float32, inputs=inputs,
+              cell=cell_backward, dtype=tf.float32, inputs=inputs_b,
               initial_state=cell_backward.zero_state(batch_size, dtype=tf.float32))
-
         feats = tf.concat([state_forward, state_backward], axis=3)
 
       y = slim.conv2d(feats, n_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='fuse')

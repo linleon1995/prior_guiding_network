@@ -28,14 +28,26 @@
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
 
 # python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --weight_decay=0.001 \
+#     --training_number_of_steps=50000 \
+#     --prior_num_subject=16 \
+#     --cell_type=BiConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256
+
+# python train.py \
 #     --dataset_name 2013_MICCAI_Abdominal \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --train_split train \
 #     --weight_decay=0.001 \
-#     --training_number_of_steps=250000 \
+#     --training_number_of_steps=180000 \
 #     --prior_num_subject=24 \
-#     --cell_type=BiConvGRU
+#     --cell_type=BiConvGRU \
 
 # TODO: checkpoint_dir should select the latest one automatically
 # TODO: test empty img list
@@ -48,13 +60,22 @@
 #     --store_all_imgs=False
 
 python eval.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_073/model.ckpt-50000 \
+    --dataset_name 2013_MICCAI_Abdominal \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_032/model.ckpt-182000 \
     --seq_length=3 \
-    --eval_split val \
-    --prior_num_subject=16 \
-    --store_all_imgs=True \
-    --show_pred_only=True
+    --prior_num_subject=24 \
+    --store_all_imgs False \
+    --show_pred_only False \
+    --eval_split val 
+
+# python eval.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_073/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --eval_split val \
+#     --prior_num_subject=16 \
+#     --store_all_imgs=True \
+#     --show_pred_only=True
 
 # python train.py --weight_decay=0.1
 # python train.py --weight_decay=0.001

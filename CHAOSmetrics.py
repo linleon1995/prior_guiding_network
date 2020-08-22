@@ -74,7 +74,7 @@ def transformToRealCoordinates(indexPoints,dicom_dir):
     #Read position info from first image from last image
     ds_last = pydicom.dcmread(dicom_file_list[-1])
     img_pos_last=list( map(float, list(ds_last.ImagePositionPatient)))
-
+    print(img_pos_first, img_or, pix_space, img_pos_last)
     T1=img_pos_first
     TN=img_pos_last
     X=img_or[:3]

@@ -221,6 +221,7 @@ def get_losses(output_dict,
                samples, 
                loss_dict,
                num_classes,
+               seq_length,
                batch_size=None,
                predict_without_background=None,
                z_class=None):
@@ -228,20 +229,33 @@ def get_losses(output_dict,
     # TODO: layers_dict and output_dict diff, should just input one of them
 
     # Calculate segmentation loss
+    label = samples[common.LABEL]
+    
+    if seq_length > 1:
+      _, t, h, w, c = label.shape.as_list()
+      frame_label = tf.reshape(label, [-1, h, w, c])
+      # TODO: should be done in input_process
+      label = label[:,seq_length//2]
+      # sel_indices = tf.range(seq_length//2, batch_size*seq_length, delta=seq_length, dtype=tf.int32)
+      # label = tf.gather(label, indices=sel_indices, axis=0)  
+    else:
+      frame_label = label
+       
     scales_to_logits = {"full": output_dict[common.OUTPUT_TYPE]}
     get_loss_func(loss_dict[common.OUTPUT_TYPE]["loss"])(
       scales_to_logits=scales_to_logits,
-      labels=samples[common.LABEL],
+      labels=label,
       num_classes=num_classes,
       ignore_label=255,
       loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
       scope=loss_dict[common.OUTPUT_TYPE]["scope"])
     
-    label = samples[common.LABEL]
     if predict_without_background:
-      label = tf.one_hot(samples[common.LABEL][...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
-      label = label[...,1:]
+      original_label = tf.one_hot(original_label[...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
+      original_label = original_label[...,1:]
       num_classes -= 1
+      
+    
       
     # Calculate stage prediction loss
     # TODO: the way to form guid_dict
@@ -258,7 +272,7 @@ def get_losses(output_dict,
             
             get_loss_func(loss_dict["stage_pred"]["loss"])(
               scales_to_logits={name: value},
-              labels=label,
+              labels=frame_label,
               num_classes=num_classes,
               ignore_label=255,
               # dilated_kernel=kernel,
@@ -283,7 +297,7 @@ def get_losses(output_dict,
         g = {"transform": output_dict[common.GUIDANCE]}
         get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
           scales_to_logits=g,
-          labels=label,
+          labels=frame_label,
           num_classes=num_classes,
           ignore_label=255,
           loss_weight=loss_dict[common.GUIDANCE]["weights"],
@@ -640,7 +654,7 @@ def get_model_learning_rate(learning_policy,
                             slow_start_learning_rate,
                             slow_start_burnin_type='none',
                             decay_steps=0.0,
-                            end_learning_rate=1e-5,
+                            end_learning_rate=1e-6,
                             boundaries=None,
                             boundary_learning_rates=None):
   """Gets model's learning rate.

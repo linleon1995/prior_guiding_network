@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 PRIOR_PATH = '/home/user/DISK/data/Jing/model/Thesis/priors/'
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
@@ -292,6 +292,12 @@ def check_model_conflict(model_options):
     # if FLAGS.deformable_transform:
     #     assert common.PRIOR_SEGS in dataset and common.PRIOR_IMGS in dataset
 
+def get_session(sess):
+    session = sess
+    while type(session).__name__ != 'Session':
+        #pylint: disable=W0212
+        session = session._sess
+    return session
 
 class DSHandleHook(tf.train.SessionRunHook):
     def __init__(self, train_str, valid_str):
@@ -964,34 +970,35 @@ def main(unused_argv):
                 seq_length=FLAGS.seq_length,
                 seq_type="bidirection")
 
-            # TODO: no validation option
-            val_generator = data_generator.Dataset(
-                dataset_name=FLAGS.dataset_name,
-                split_name=["val"],
-                # dataset_dir=FLAGS.dataset_dir,
-                batch_size=1,
-                # HU_window=DATA_INFO.HU_window,
-                mt_label_method=FLAGS.z_label_method,
-                guidance_type=FLAGS.guidance_type,
-                mt_class=FLAGS.z_class,
-                mt_label_type="z_label",
-                crop_size=[data_inforamtion.height, data_inforamtion.width],
-                min_resize_value=FLAGS.min_resize_value,
-                max_resize_value=FLAGS.max_resize_value,
-                # resize_factor=FLAGS.resize_factor,
-                # min_scale_factor=FLAGS.min_scale_factor,
-                # max_scale_factor=FLAGS.max_scale_factor,
-                # scale_factor_step_size=FLAGS.scale_factor_step_size,
-                # model_variant=FLAGS.model_variant,
-                num_readers=2,
-                is_training=False,
-                shuffle_data=False,
-                repeat_data=True,
-                prior_num_slice=FLAGS.prior_num_slice,
-                prior_num_subject=FLAGS.prior_num_subject,
-                # prior_dir=FLAGS.prior_dir,
-                seq_length=FLAGS.seq_length,
-                seq_type="bidirection")
+            if "val" not in FLAGS.train_split:
+              # TODO: no validation option
+              val_generator = data_generator.Dataset(
+                  dataset_name=FLAGS.dataset_name,
+                  split_name=["val"],
+                  # dataset_dir=FLAGS.dataset_dir,
+                  batch_size=1,
+                  # HU_window=DATA_INFO.HU_window,
+                  mt_label_method=FLAGS.z_label_method,
+                  guidance_type=FLAGS.guidance_type,
+                  mt_class=FLAGS.z_class,
+                  mt_label_type="z_label",
+                  crop_size=[data_inforamtion.height, data_inforamtion.width],
+                  min_resize_value=FLAGS.min_resize_value,
+                  max_resize_value=FLAGS.max_resize_value,
+                  # resize_factor=FLAGS.resize_factor,
+                  # min_scale_factor=FLAGS.min_scale_factor,
+                  # max_scale_factor=FLAGS.max_scale_factor,
+                  # scale_factor_step_size=FLAGS.scale_factor_step_size,
+                  # model_variant=FLAGS.model_variant,
+                  num_readers=2,
+                  is_training=False,
+                  shuffle_data=False,
+                  repeat_data=True,
+                  prior_num_slice=FLAGS.prior_num_slice,
+                  prior_num_subject=FLAGS.prior_num_subject,
+                  # prior_dir=FLAGS.prior_dir,
+                  seq_length=FLAGS.seq_length,
+                  seq_type="bidirection")
 
             model_options = common.ModelOptions(
               outputs_to_num_classes=train_generator.num_of_classes,
@@ -999,26 +1006,25 @@ def main(unused_argv):
               output_stride=FLAGS.output_stride)
             check_model_conflict(model_options)
 
-            dataset1 = train_generator.get_one_shot_iterator()
-            dataset2 = val_generator.get_one_shot_iterator()
-            iter1 = dataset1.make_one_shot_iterator()
-            iter2 = dataset2.make_one_shot_iterator()
-
-            train_samples = iter1.get_next()
-            val_samples = iter2.get_next()
             steps = tf.compat.v1.placeholder(tf.int32, shape=[])
-            # handle = tf.compat.v1.placeholder(tf.string, shape=[])
-            # iterator = tf.data.Iterator.from_string_handle(
-            #   handle, iter1.output_types, iter1.output_shapes)
-            # samples = iterator.get_next()
+
+            dataset1 = train_generator.get_one_shot_iterator()
+            iter1 = dataset1.make_one_shot_iterator()
+            train_samples = iter1.get_next()
 
             train_tensor, summary_op = _train_deeplab_model(
                 train_samples, train_generator.num_of_classes, model_options,
                 train_generator.ignore_label)
 
-            val_tensor, _ = _val_deeplab_model(
+            if "val" not in FLAGS.train_split:
+              dataset2 = val_generator.get_one_shot_iterator()
+              iter2 = dataset2.make_one_shot_iterator()
+              val_samples = iter2.get_next()
+
+              val_tensor, _ = _val_deeplab_model(
                 val_samples, val_generator.num_of_classes, model_options,
                 val_generator.ignore_label, steps)
+
 
             # Soft placement allows placing on CPU ops without GPU implementation.
             session_config = tf.ConfigProto(
@@ -1055,6 +1061,7 @@ def main(unused_argv):
             #                                 graph=tf.get_default_graph())
             # writer.add_summary(t_summaries, step)
             saver = tf.train.Saver()
+            best_dice = 0
             with tf.train.MonitoredTrainingSession(
                 master=FLAGS.master,
                 is_chief=(FLAGS.task == 0),
@@ -1071,44 +1078,51 @@ def main(unused_argv):
                 best_model_performance = 0.0
                 while not sess.should_stop():
                     _, global_step = sess.run([train_tensor, tf.train.get_global_step()])
-                    if global_step%FLAGS.validation_steps == 0:
-                      cm_total = 0
-                      for sub_split in val_generator.splits_to_sizes.values():
-                        for j in range(sub_split["val"]):
-                          cm_total += sess.run(val_tensor, feed_dict={steps: j})
+                    if "val" not in FLAGS.train_split:
+                      if global_step%FLAGS.validation_steps == 0:
+                        cm_total = 0
+                        for sub_split in val_generator.splits_to_sizes.values():
+                          for j in range(sub_split["val"]):
+                            cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
-                      mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)
-
-
-                      total_val_loss.append(mean_dice_score)
-                      total_val_steps.append(global_step)
-                      plt.legend(["validation loss"])
-                      plt.xlabel("global step")
-                      plt.ylabel("loss")
-                      plt.plot(total_val_steps, total_val_loss, "bo-")
-                      plt.grid(True)
-                      plt.savefig(FLAGS.train_logdir+"/losses.png")
+                        mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)
 
 
+                        total_val_loss.append(mean_dice_score)
+                        total_val_steps.append(global_step)
+                        plt.legend(["validation loss"])
+                        plt.xlabel("global step")
+                        plt.ylabel("loss")
+                        plt.plot(total_val_steps, total_val_loss, "bo-")
+                        plt.grid(True)
+                        plt.savefig(FLAGS.train_logdir+"/losses.png")
 
-                      # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})
-                      # total_steps.append(steps)
+                        if mean_dice_score > best_dice:
+                          best_dice = mean_dice_score
+                          saver.save(get_session(sess), os.path.join(FLAGS.train_logdir, 'model.ckpt-best'))
+                          # saver.save(get_session(sess), os.path.join(FLAGS.train_logdir, 'model.ckpt-best-%d' %global_step))
+                          print(20*">", " saving best mdoel model.ckpt-best-%d with DSC: %f" %(global_step,best_dice))
 
-                      # loss, t_summaries, steps = sess.run([train_tensor, summary_op, tf.train.get_or_create_global_step()],
-                      #                              feed_dict={handle: ds_handle_hook.train_handle})
-                      # print(30*"-", steps)
+                        # saver.save(sess, "/home/user/DISK/data/Jing/model/Thesis/thesis_trained/")
 
-                      # if steps%2  == 0:
-                      #   train_loss.append(loss)
-                      #   loss, v_summaries = sess.run([train_tensor, summary_op],
-                      #                                feed_dict={handle: ds_handle_hook.valid_handle})
-                      #   valid_loss.append(loss)
+                        # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})
+                        # total_steps.append(steps)
 
-                      # if steps%200 == 0:
-                      #   plt.plot(train_loss)
-                      #   plt.hold(True)
-                      #   plt.plot(valid_loss)
-                      #   plt.savefig(FLAGS.train_logdir+"/losses.png")
+                        # loss, t_summaries, steps = sess.run([train_tensor, summary_op, tf.train.get_or_create_global_step()],
+                        #                              feed_dict={handle: ds_handle_hook.train_handle})
+                        # print(30*"-", steps)
+
+                        # if steps%2  == 0:
+                        #   train_loss.append(loss)
+                        #   loss, v_summaries = sess.run([train_tensor, summary_op],
+                        #                                feed_dict={handle: ds_handle_hook.valid_handle})
+                        #   valid_loss.append(loss)
+
+                        # if steps%200 == 0:
+                        #   plt.plot(train_loss)
+                        #   plt.hold(True)
+                        #   plt.plot(valid_loss)
+                        #   plt.savefig(FLAGS.train_logdir+"/losses.png")
             with open(os.path.join(path, 'logging.txt'), 'a') as f:
               f.write("\nEnd time: {}".format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
               f.write("\n")

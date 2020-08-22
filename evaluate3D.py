@@ -32,3 +32,6 @@ print('Volumes imported.')
 print('Calculating...')
 [dice, ravd, assd ,mssd]=evaluate(Vref,Vseg,dicom_dir)
 print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(dice, ravd, assd ,mssd))
+
+import nibabel as nib
+print(nib.load('/home/user/DISK/data/Jing/data/Training/raw/img0001.nii.gz').affine)
