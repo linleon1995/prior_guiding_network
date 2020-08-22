@@ -39,30 +39,15 @@
 #     --min_resize_value=256 \
 #     --max_resize_value=256
 
-    
-python train.py \
-    --dataset_name 2013_MICCAI_Abdominal \
-    --batch_size=4 \
-    --seq_length=3 \
-    --train_split train \
-    --weight_decay=0.001 \
-    --training_number_of_steps=180000 \
-    --validation_steps=1000 \
-    --prior_num_subject=24 \
-    --cell_type=ConvGRU \
-    
-    
-python train.py \
-    --dataset_name 2013_MICCAI_Abdominal \
-    --batch_size=4 \
-    --seq_length=3 \
-    --train_split train \
-    --weight_decay=0.001 \
-    --training_number_of_steps=180000 \
-    --validation_steps=1000 \
-    --prior_num_subject=24 \
-    --cell_type=BiConvGRU \
-
+# python train.py \
+#     --dataset_name 2013_MICCAI_Abdominal \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --weight_decay=0.001 \
+#     --training_number_of_steps=180000 \
+#     --prior_num_subject=24 \
+#     --cell_type=BiConvGRU \
 
 # TODO: checkpoint_dir should select the latest one automatically
 # TODO: test empty img list
@@ -74,10 +59,15 @@ python train.py \
 #     --prior_num_subject=24 \
 #     --store_all_imgs=False
 
-# python eval.py \
-#     --dataset_name 2013_MICCAI_Abdominal \
-#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_032/model.ckpt-182000 \
-#     --seq_length=3 --eval_split val --prior_num_subject=24
+python eval.py \
+    --dataset_name 2013_MICCAI_Abdominal \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_082/model.ckpt-best-5960 \
+    --seq_length=3 \
+    --prior_num_subject=24 \
+    --store_all_imgs False \
+    --show_pred_only False \
+    --eval_split val \
+    --_3d_metrics False \
 
 # python eval.py \
 #     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \

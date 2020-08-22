@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/user/DISK/data/Jing/model/Thesis/priors/'
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
