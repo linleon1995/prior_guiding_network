@@ -711,7 +711,7 @@ def main(unused_argv):
               if common.OUTPUT_Z in output_dict:
                 eval_z = sess.run(cm_z, feed_dict=_feed_dict)
                 total_eval_z += eval_z
-              """
+              
               if FLAGS._3d_metrics:
                 if depth == 0:
                   Vref = []
@@ -738,7 +738,6 @@ def main(unused_argv):
             else:
               # TODO: optimize
               if sub_dataset == "2013_MICCAI_Abdominal":
-                print(60*"x")
                 if depth == 0:
                   Vseg = []
                 elif depth == num_slice-1:
@@ -756,7 +755,7 @@ def main(unused_argv):
                   file_idx += 1
                 else:
                   Vseg.append(pred[0])
-            """
+            
             if i in display_imgs:
               if FLAGS.show_pred_only:
                 file_name = "result{:03d}.png".format(depth)
@@ -776,7 +775,7 @@ def main(unused_argv):
                   
                   file_utils.save_in_image(task3, task3_path, file_name)
                   file_utils.save_in_image(task5, task5_path, file_name)
-
+                  print(pred.shape, pred.dtype, task3.shape, task3.dtype)
                 if depth == data[common.NUM_SLICES][0]-1:
                   j += 1
                 if i == num_sample-1:

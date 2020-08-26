@@ -217,7 +217,7 @@ def pgb_network(images,
                           weights_initializer=tf.initializers.he_normal(),
                           weights_regularizer=slim.l2_regularizer(weight_decay),
                           normalizer_fn=slim.batch_norm):
-            if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions:
+            if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions or "self_att" in fusions:
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
                     prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[ks,ks], scope="guidance_embedding")

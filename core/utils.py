@@ -115,16 +115,14 @@ class Refine(object):
 
           # TODO: input guid in each stage?
           # TODO: Would default vars value causes error?
-          
+
           if self.prior_seg is not None and self.prior_pred is not None:
             if "guid" in self.fusions:
               guid = self.prior_seg
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
-            elif "guid_uni" in self.fusions:
-              guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
-            elif "context_att" in self.fusions:
-              guid = tf.reduce_sum(self.prior_pred, axis=3, keepdims=True)
+            elif "guid_uni" in self.fusions or "context_att" in self.fusions or "self_att" in self.fusions:
+              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
 
           for i, v in enumerate(self.low_level):
@@ -149,7 +147,7 @@ class Refine(object):
                 y = fuse_func(embed, y_tm1, out_node, fuse_method+str(module_order))
               else:
                 y = tf.identity(embed, name="identity%d" %module_order)
-            elif fuse_method in ("guid", "guid_class", "guid_uni", "context_att"):
+            elif fuse_method in ("guid", "guid_class", "guid_uni", "context_att", "self_att"):
               # guid = resize_bilinear(guid, [h, w])
               if guid is not None:
                 guid = resize_bilinear(guid, [h, w])
@@ -187,7 +185,7 @@ class Refine(object):
             if fuse_method in ("guid"):
               guid = y
               y_tm1 = None
-            elif fuse_method in ("guid_class", "guid_uni", "context_att"):
+            elif fuse_method in ("guid_class", "guid_uni", "context_att", "self_att"):
               if "softmax" in self.stage_pred_loss_name:
                 guid = tf.nn.softmax(stage_pred, axis=3)
               elif "sigmoid" in self.stage_pred_loss_name:
@@ -261,7 +259,10 @@ class Refine(object):
                 flag = tf.concat([tf.zeros([1,1,1,1]), tf.ones([1,1,1,num_class-1])], axis=3)
                 guid = tf.multiply(guid, flag)
                 guid = tf.reduce_sum(guid, axis=3, keepdims=True)
-
+              elif self.guid_fuse == "mean_wo_back":
+                flag = tf.concat([tf.zeros([1,1,1,1]), tf.ones([1,1,1,num_class-1])], axis=3)
+                guid = tf.multiply(guid, flag)
+                guid = tf.reduce_mean(guid, axis=3, keepdims=True)
               tf.add_to_collection("guid_avg", guid)
 
               y_tm1 = y
@@ -285,7 +286,9 @@ class Refine(object):
       return self.guid_class_attention
     elif method == "context_att":
       return self.context_attention
-     
+    elif method == "self_att":
+      return self.self_attention
+
   def concat_convolution(self, x1, x2, out_node, scope):
     with tf.variable_scope(scope, "concat_conv"):
       net = slim.conv2d(tf.concat([x1, x2], axis=3), out_node, scope="conv1")
@@ -339,12 +342,28 @@ class Refine(object):
       raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
 
     with tf.variable_scope(scope, 'guid'):
+      context = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
+      tf.add_to_collection("sram1", context)
+      if x2 is not None:
+        ca_layer = attentions.self_attention()
+        net = ca_layer.attention(x2, context, x2, out_node, "context_att1")
+        tf.add_to_collection("context_att1", net)
+      return net
+
+  def self_attention(self, x1, x2, guid, out_node, scope, *args, **kwargs):
+    guid_node = preprocess_utils.resolve_shape(guid, rank=4)[3]
+
+    if guid_node != out_node and guid_node != 1:
+      raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
+
+    with tf.variable_scope(scope, 'guid'):
       net = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
       tf.add_to_collection("sram1", net)
       if x2 is not None:
-        ca_layer = attentions.context_attention()
-        net = ca_layer.attention(net, x2, out_node, "context_att1")
-        tf.add_to_collection("context_att1", net)
+        net = net + x2
+        sa_layer = attentions.self_attention()
+        net = sa_layer.attention(net, net, net, out_node, "self_att1")
+        tf.add_to_collection("self_att1", net)
       return net
 
 def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
@@ -808,7 +827,7 @@ def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, cell_type='Con
       # seq_length = in_shape[1]
       nx = in_shape[2]
       ny = in_shape[3]
-      
+
       if cell_type =='ConvGRU':
         with tf.variable_scope("forward_cell") as scope:
             cell_forward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
@@ -822,7 +841,7 @@ def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, cell_type='Con
             outputs_forward, state_forward = tf.nn.dynamic_rnn(
               cell=cell_forward, dtype=tf.float32, inputs=inputs,
               initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
-              
+
         inputs_b = inputs[:,::-1]
         with tf.variable_scope("backward_cell") as scope:
             cell_backward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])

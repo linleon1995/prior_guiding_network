@@ -22,7 +22,7 @@ import math
 colorize = train_utils.colorize
 # spatial_transfom_exp = experiments.spatial_transfom_exp
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/user/DISK/data/Jing/model/Thesis/priors/'
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
@@ -158,7 +158,7 @@ parser.add_argument('--log_steps', type=int, default=10,
 parser.add_argument('--save_summaries_secs', type=int, default=None,
                     help='')
 
-parser.add_argument('--save_summaries_images', type=bool, default=True,
+parser.add_argument('--save_summaries_images', type=bool, default=False,
                     help='')
 
 parser.add_argument('--save_checkpoint_steps', type=int, default=1000,
@@ -1105,8 +1105,11 @@ def main(unused_argv):
                           best_dice = mean_dice_score
                           saver.save(get_session(sess), os.path.join(FLAGS.train_logdir, 'model.ckpt-best'))
                           # saver.save(get_session(sess), os.path.join(FLAGS.train_logdir, 'model.ckpt-best-%d' %global_step))
-                          print(20*">", " saving best mdoel model.ckpt-best-%d with DSC: %f" %(global_step,best_dice))
-
+                          txt = 20*">" + " saving best mdoel model.ckpt-best-%d with DSC: %f" %(global_step,best_dice)
+                          print(txt)
+                          with open(os.path.join(path, 'logging.txt'), 'a') as f:
+                            f.write(txt)
+                            f.write("\n")
                         # saver.save(sess, "/home/user/DISK/data/Jing/model/Thesis/thesis_trained/")
 
                         # _, steps = sess.run([train_tensor, tf.train.get_or_create_global_step()], feed_dict={handle: ds_handle_hook.train_handle})
