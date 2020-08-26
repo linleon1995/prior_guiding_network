@@ -3,11 +3,11 @@ import tensorflow as tf
 import numpy as np
 # from tensorflow.python.ops import math_ops
 from core import features_extractor, stn, voxelmorph, crn_network, utils, resnet_v1_beta, preprocess_utils
-from test_flownet import build_flow_model, FlowNetS
+# from test_flownet import build_flow_model, FlowNetS
 import common
-import experiments
+# import experiments
 import math
-spatial_transfom_exp = experiments.spatial_transfom_exp
+# spatial_transfom_exp = experiments.spatial_transfom_exp
 
 slim = tf.contrib.slim
 spatial_transformer_network = stn.spatial_transformer_network
@@ -217,7 +217,7 @@ def pgb_network(images,
                           weights_initializer=tf.initializers.he_normal(),
                           weights_regularizer=slim.l2_regularizer(weight_decay),
                           normalizer_fn=slim.batch_norm):
-            if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions:
+            if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions:
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
                     prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[ks,ks], scope="guidance_embedding")

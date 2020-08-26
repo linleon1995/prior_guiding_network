@@ -29,15 +29,16 @@ import CHAOSmetrics
 from datasets import data_generator, file_utils
 from utils import eval_utils, train_utils
 from core import preprocess_utils
-import experiments
+# import experiments
 import cv2
 import math
-spatial_transfom_exp = experiments.spatial_transfom_exp
+import nibabel as nib
+# spatial_transfom_exp = experiments.spatial_transfom_exp
 SSD = CHAOSmetrics.SSD
 DICE = CHAOSmetrics.DICE
 RAVD = CHAOSmetrics.RAVD
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 # TODO: if dir not exist. Don't build new one
@@ -51,8 +52,8 @@ CT_TEST_SET = [11,12,13,15,17,20,3,31,32,33,34,35,36,37,38,39,4,40,7,9,]
 MR_TRAIN_SET = [1,2,3,5,8,10,13,15,19,20,21,22,31,32,33,34,36,37,38,39]
 MR_TEST_SET = [11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,4,40,6,7,9]
 
-FUSIONS = 5*["sum"]
-FUSIONS = 5*["guid_uni"]
+# FUSIONS = 5*["sum"]
+# FUSIONS = 5*["guid_uni"]
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -61,9 +62,12 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Unsupported value encountered.')
-      
-     
+
+
 parser = argparse.ArgumentParser()
+parser.add_argument('--fusions', nargs='+', required=True,
+                    help='')
+
 parser.add_argument('--dataset_name', nargs='+', required=True,
                     help='')
 
@@ -201,7 +205,7 @@ parser.add_argument('--display_box_plot', type=bool, default=False,
 #                     help='')
 
 # parser.add_argument('--show_pred_only', type=bool, default=True,
-#                     help='')    
+#                     help='')
 
 parser.add_argument('--store_all_imgs', type=str2bool, nargs='?', const=True,
                     help='')
@@ -242,7 +246,7 @@ parser.add_argument('--_3d_metrics', type=str2bool, nargs='?', const=True,
 # TODO: add run_xxx in  feature, guidance folder name
 
 
- 
+
 def load_model(saver, sess, ckpt_path):
     '''Load trained weights.
 
@@ -381,7 +385,7 @@ def main(unused_argv):
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
       # TODO: CHAOS MR case --> general way
-      if "2019_ISBI_CHAOS_MR_T1" in FLAGS.dataset_name and " 2019_ISBI_CHAOS_MR_T2" in FLAGS.dataset_name:
+      if "2019_ISBI_CHAOS_MR_T1" in FLAGS.dataset_name and "2019_ISBI_CHAOS_MR_T2" in FLAGS.dataset_name:
         prior_seg_placeholder = tf.placeholder(
           tf.float32,shape=[None, data_information.height, data_information.width, 10, 1])
       else:
@@ -408,7 +412,7 @@ def main(unused_argv):
 
 
     if FLAGS.guid_method is not None:
-      FUSIONS[0] = FLAGS.guid_method
+      FLAGS.fusions[0] = FLAGS.guid_method
 
     output_dict, layers_dict = model.pgb_network(
                 image_placeholder,
@@ -436,7 +440,7 @@ def main(unused_argv):
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 # guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
-                fusions=FUSIONS,
+                fusions=FLAGS.fusions,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
                 z_label_method=FLAGS.z_label_method,
@@ -607,6 +611,8 @@ def main(unused_argv):
     total_resnet_activate = {}
     total_z_label = []
     total_z_pred = []
+    total_dice_mean, total_ravd_mean =[], []
+    file_idx = 0
 
     # TODO: Determine saving path while display? remove the dependency then show_guidance and show_seg_results could be the same one
     if FLAGS.vis_guidance:
@@ -665,6 +671,8 @@ def main(unused_argv):
       num_class -= 1
 
     # TODO:
+    print(dataset.files)
+    print(FLAGS.dataset_name)
     for sub_dataset in FLAGS.dataset_name:
       for split_name in FLAGS.eval_split:
         num_sample = dataset.splits_to_sizes[sub_dataset][split_name]
@@ -678,10 +686,13 @@ def main(unused_argv):
             _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
             if FLAGS.seq_length > 1:
               depth = data[common.DEPTH][0,FLAGS.seq_length//2]
+              data[common.IMAGE] = data[common.IMAGE][:,FLAGS.seq_length//2]
+              if split_name in ("train", "val"):
+                data[common.LABEL] = data[common.LABEL][:,FLAGS.seq_length//2]
             else:
               depth = data[common.DEPTH][0]
             num_slice = data[common.NUM_SLICES][0]
-            print('Sample {} Slice {}/{}'.format(i, depth, num_slice))
+            print(sub_dataset, 'Sample {} Slice {}/{}'.format(i, depth, num_slice))
 
             # Segmentation Evaluation
             pred = sess.run(prediction, feed_dict=_feed_dict)
@@ -700,21 +711,52 @@ def main(unused_argv):
               if common.OUTPUT_Z in output_dict:
                 eval_z = sess.run(cm_z, feed_dict=_feed_dict)
                 total_eval_z += eval_z
-
+              """
               if FLAGS._3d_metrics:
                 if depth == 0:
                   Vref = []
                   Vseg = []
                 elif depth == num_slice-1:
-                  V = np.array(V,order='A')
-                  V = V.astype(bool)
-                  dice=DICE(Vref,Vseg)
-                  ravd=RAVD(Vref,Vseg)
-                  print("dice: {}, ravd: {}".format(dice, ravd))
+                  dice_mean, ravd_mean, attend_class = 0, 0, 0
+                  # TODO: optimize
+                  for i in range(1, num_class):
+                    Vref_c = np.array(Vref,order='A')
+                    Vseg_c = np.array(Vseg,order='A')
+                    if np.sum(Vref_c==i) > 0:
+                      dice = DICE(Vref_c==i,Vseg_c==i)
+                      ravd = RAVD(Vref_c==i,Vseg_c==i)
+                      print("class {}   dice: {}, ravd: {}".format(i, dice, ravd))
+                      dice_mean += dice
+                      ravd_mean += ravd
+                      attend_class += 1
+                  print("dice_mean: {}, ravd_mean: {}".format(dice_mean/attend_class, ravd_mean/attend_class))
+                  total_dice_mean.append(dice_mean/attend_class)
+                  total_ravd_mean.append(ravd_mean/attend_class)
                 else:
                   Vref.append(data[common.LABEL][0,...,0])
                   Vseg.append(pred[0])
-                  
+            else:
+              # TODO: optimize
+              if sub_dataset == "2013_MICCAI_Abdominal":
+                print(60*"x")
+                if depth == 0:
+                  Vseg = []
+                elif depth == num_slice-1:
+                  Vseg = np.array(Vseg,order='A')
+                  file_list = os.listdir("/home/user/DISK/data/Jing/data/Testing/raw/")
+                  file_list.sort()
+                  nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Testing/raw/", file_list[file_idx]))
+                  affine = nii_img.affine.copy()
+                  hdr = nii_img.header.copy()
+                  new_nii = nib.Nifti1Image(Vseg, np.eye(4), hdr)
+                  out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files")
+                  if not os.path.exists(out_dir):
+                    os.makedirs(out_dir, exist_ok=True)
+                  nib.save(new_nii, os.path.join(out_dir, 'img%04d.nii.gz' %(file_idx+61)))
+                  file_idx += 1
+                else:
+                  Vseg.append(pred[0])
+            """
             if i in display_imgs:
               if FLAGS.show_pred_only:
                 file_name = "result{:03d}.png".format(depth)
@@ -729,13 +771,13 @@ def main(unused_argv):
                   elif "T2" in sub_dataset:
                     task3_path = os.path.join(eval_logdir, "task3_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
                     task5_path = os.path.join(eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
-                  task3 = file_utils.convert_label_value(pred[0], {1: 63, 2: 126, 3: 189, 4: 252})
-                  task5 = file_utils.convert_label_value(pred[0], {1: 63, 2: 0, 3: 0, 4: 0})
-
+                  task3 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 0, 3: 0, 4: 0})
+                  task5 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 126, 3: 189, 4: 252})
+                  
                   file_utils.save_in_image(task3, task3_path, file_name)
                   file_utils.save_in_image(task5, task5_path, file_name)
-                # file_utils.save_in_image(pred_for_save, path, file_name)
-                if depth == depth-1:
+
+                if depth == data[common.NUM_SLICES][0]-1:
                   j += 1
                 if i == num_sample-1:
                   j = 0
@@ -883,6 +925,12 @@ def main(unused_argv):
     # print("Width Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_max_total)))
 
     if split_name in ("train", "val"):
+      print(10*"=", "Volume DSC", 10*"=")
+      for i, d in enumerate(total_dice_mean):
+        print("Subject {} DICE {}".format(i+1, d))
+      for i, d in enumerate(total_ravd_mean):
+        print("Subject {} RAVD {}".format(i+1, d))
+      print("Volume DICE {}, Volume RAVD {}".format(sum(total_dice_mean)/len(total_dice_mean), sum(total_ravd_mean)/len(total_ravd_mean)))
       print(10*"=", "Segmentation Evaluation", 10*"=")
       mean_iou = eval_utils.compute_mean_iou(cm_total)
       mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
@@ -974,14 +1022,5 @@ def main(unused_argv):
     # return mean_dice_score
 
 if __name__ == '__main__':
-    # guidance = np.load("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/priors/training_seg_merge_001.npy")
-    # for i in range(14):
-    #   plt.imshow(guidance[...,i])
-    #   plt.show()
-    # import cv2
-    # a = cv2.imread("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000-eval/Results/11/result016.png", 0)
-    # b = cv2.imread("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_004/model.ckpt-100000-eval/Results2/11/result016.png", 0)
-    # plt.imshow(a)
-    # plt.show()
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)

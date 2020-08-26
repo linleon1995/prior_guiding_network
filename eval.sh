@@ -59,15 +59,123 @@
 #     --prior_num_subject=24 \
 #     --store_all_imgs=False
 
+
+
+
+# # prior bi train val
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_072/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_encoder early \
+#     --prior_num_subject 16 \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+# # image bi train
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_081/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_encoder image_only \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+# # image forward train
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_086/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --cell_type ConvGRU \
+#     --guid_encoder image_only \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+
+# # prior bi train
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_035/model.ckpt-42000 \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_encoder early \
+#     --prior_num_subject 16 \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+
+# # image bi train val
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_087/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_encoder image_only \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+# # image forward train val
+# python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_038/model.ckpt-50000 \
+#     --seq_length=3 \
+#     --cell_type ConvGRU \
+#     --guid_encoder image_only \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
+
+# # prior forward train val
+# # prior forward train
+
+# prior att bi train
 python eval.py \
-    --dataset_name 2013_MICCAI_Abdominal \
-    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_082/model.ckpt-best-5960 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_078/model.ckpt-50000 \
     --seq_length=3 \
-    --prior_num_subject=24 \
-    --store_all_imgs False \
-    --show_pred_only False \
-    --eval_split val \
+    --cell_type BiConvGRU \
+    --guid_encoder early \
+    --prior_num_subject 16 \
+    --store_all_imgs True \
+    --show_pred_only True \
+    --eval_split test \
     --_3d_metrics False \
+
+
+
+# python eval.py \
+#     --dataset_name 2013_MICCAI_Abdominal \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_083/model.ckpt-best \
+#     --seq_length=3 \
+#     --cell_type ConvGRU \
+#     --guid_encoder early \
+#     --prior_num_subject 24 \
+#     --store_all_imgs False \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics True \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni
+
 
 # python eval.py \
 #     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
@@ -77,8 +185,3 @@ python eval.py \
 #     --prior_num_subject=16 \
 #     --store_all_imgs=True \
 #     --show_pred_only=True
-
-# python train.py --weight_decay=0.1
-# python train.py --weight_decay=0.001
-
-# python train.py --batch_size=8 --crop-size=513 --min_scale_factor=0.75 --max_scale_factor=1.25 scale_factor_step_size=0.125

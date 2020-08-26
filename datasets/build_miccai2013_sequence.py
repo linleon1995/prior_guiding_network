@@ -36,7 +36,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', type=str, default='/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Test_Sets/',
                     help='MICCAI 2013 dataset root folder.')
 
-parser.add_argument('--output-dir', type=str, default='/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Test_Sets/tfrecord_seq/',
+parser.add_argument('--output-dir', type=str, default='/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/',
                     help='Path to save converted SSTable of TensorFlow examples.')                    
 
 parser.add_argument('--prior_id', type=int, default=0,
@@ -214,7 +214,7 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir):
 def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   for dataset_split in ['test']:
-    _convert_dataset(dataset_split, FLAGS.data_dir, FLAGS.seq_length, FLAGS.output_dir+"tfrecord/"+"seq3/")
+    _convert_dataset(dataset_split, FLAGS.data_dir, FLAGS.seq_length, os.path.join(FLAGS.output_dir, "tfrecord", "seq3", "Test_Sets"))
 
 
 if __name__ == '__main__':

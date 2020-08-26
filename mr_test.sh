@@ -28,6 +28,9 @@
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
 
 
+
+
+
 # # prior bi train
 # python train.py \
 #     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
@@ -41,39 +44,10 @@
 #     --prior_num_subject=16 \
 #     --cell_type=BiConvGRU \
 #     --min_resize_value=256 \
-#     --max_resize_value=256
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
-# # prior forward train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=2000 \
-#     --training_number_of_steps=50000 \
-#     --save_checkpoint_steps=2000 \
-#     --prior_num_subject=16 \
-#     --cell_type=ConvGRU \
-#     --min_resize_value=256 \
-#     --max_resize_value=256
-
-# # image bi train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --guid_encoder=image_only \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=2000 \
-#     --training_number_of_steps=50000 \
-#     --save_checkpoint_steps=2000 \
-#     --cell_type=BiConvGRU \
-#     --min_resize_value=256 \
-#     --max_resize_value=256
-
-# image forward train
+# image bi train
 python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=4 \
@@ -84,39 +58,26 @@ python train.py \
     --validation_steps=2000 \
     --training_number_of_steps=50000 \
     --save_checkpoint_steps=2000 \
-    --cell_type=ConvGRU \
+    --cell_type=BiConvGRU \
     --min_resize_value=256 \
-    --max_resize_value=256
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
 
-# # prior bi train val
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train val \
-#     --weight_decay=0.001 \
-#     --validation_steps=2000 \
-#     --training_number_of_steps=50000 \
-#     --save_checkpoint_steps=2000 \
-#     --prior_num_subject=20 \
-#     --cell_type=BiConvGRU \
-#     --min_resize_value=256 \
-#     --max_resize_value=256
-
-# # prior forward train val
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train val \
-#     --weight_decay=0.001 \
-#     --validation_steps=2000 \
-#     --training_number_of_steps=50000 \
-#     --save_checkpoint_steps=2000 \
-#     --prior_num_subject=20 \
-#     --cell_type=ConvGRU \
-#     --min_resize_value=256 \
-#     --max_resize_value=256
+# prior bi train val
+python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=4 \
+    --seq_length=3 \
+    --train_split train val \
+    --weight_decay=0.001 \
+    --validation_steps=2000 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=2000 \
+    --prior_num_subject=20 \
+    --cell_type=BiConvGRU \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
 
 # image bi train val
 python train.py \
@@ -131,7 +92,24 @@ python train.py \
     --save_checkpoint_steps=2000 \
     --cell_type=BiConvGRU \
     --min_resize_value=256 \
-    --max_resize_value=256
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
+
+# prior forward train val
+python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=4 \
+    --seq_length=3 \
+    --train_split train val \
+    --weight_decay=0.001 \
+    --validation_steps=2000 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=2000 \
+    --prior_num_subject=20 \
+    --cell_type=ConvGRU \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
 
 # image forward train val
 python train.py \
@@ -146,5 +124,38 @@ python train.py \
     --save_checkpoint_steps=2000 \
     --cell_type=ConvGRU \
     --min_resize_value=256 \
-    --max_resize_value=256
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
 
+
+# prior forward train
+python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=4 \
+    --seq_length=3 \
+    --train_split train \
+    --weight_decay=0.001 \
+    --validation_steps=2000 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=2000 \
+    --prior_num_subject=16 \
+    --cell_type=ConvGRU \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
+
+# image forward train
+python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=4 \
+    --seq_length=3 \
+    --guid_encoder=image_only \
+    --train_split train \
+    --weight_decay=0.001 \
+    --validation_steps=2000 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=2000 \
+    --cell_type=ConvGRU \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \

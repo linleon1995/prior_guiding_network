@@ -11,7 +11,7 @@ import time
 import model
 import common
 import eval
-import experiments
+# import experiments
 from model import voxelmorph
 from datasets import data_generator
 from utils import train_utils, eval_utils
@@ -20,23 +20,24 @@ import input_preprocess
 from tensorflow.python.ops import math_ops
 import math
 colorize = train_utils.colorize
-spatial_transfom_exp = experiments.spatial_transfom_exp
+# spatial_transfom_exp = experiments.spatial_transfom_exp
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 PRIOR_PATH = '/home/user/DISK/data/Jing/model/Thesis/priors/'
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
-PRETRAINED_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000'
-PRETRAINED_PATH = None
+# PRETRAINED_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000'
+# PRETRAINED_PATH = None
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/pretrained_weight/resnet/resnet_v1_50/model.ckpt'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_042/model.ckpt-40000'
 # PRETRAINED_PATH = '/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/thesis_trained/run_001/model.ckpt-50000'
 # DATASET_DIR = '/home/user/DISK/data/Jing/data/Training/tfrecord/'
 # DATASET_DIR = '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord_seq/'
 
-FUSIONS = 5*["sum"]
-FUSIONS = ["concat"] + 4*["guid_uni"]
-FUSIONS = 5*["guid_uni"]
+# FUSIONS = 5*["sum"]
+# FUSIONS = ["concat"] + 4*["guid_uni"]
+# FUSIONS = 5*["guid_uni"]
+# FUSIONS = 3*["context_att"] + 2*["guid_uni"]
 
 #TRAIN_SPLIT = ["train"]
 #SEG_WEIGHT = 1.0
@@ -72,6 +73,9 @@ def create_training_path(train_logdir):
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--fusions', nargs='+', required=True,
+                    help='')
+
 parser.add_argument('--dataset_name', nargs='+', required=True,
                     help='')
 
@@ -130,7 +134,7 @@ parser.add_argument('--train_logdir', type=str, default=create_training_path(LOG
 parser.add_argument('--batch_size', type=int, default=16,
                     help='')
 
-parser.add_argument('--tf_initial_checkpoint', type=str, default=PRETRAINED_PATH,
+parser.add_argument('--tf_initial_checkpoint', type=str, default=None,
                     help='')
 
 parser.add_argument('--initialize_last_layer', type=bool, default=True,
@@ -394,7 +398,7 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 weight_decay=FLAGS.weight_decay,
                 # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                 share=FLAGS.share,
-                fusions=FUSIONS,
+                fusions=FLAGS.fusions,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
                 z_label_method=FLAGS.z_label_method,

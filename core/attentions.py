@@ -1,6 +1,6 @@
 import tensorflow as  tf
-
-
+from tensorflow.contrib import slim
+from core import preprocess_utils
 # a = self_attention()
 # a.attention(x, 32, "x1")
 class self_attention(object):
@@ -22,11 +22,13 @@ class self_attention(object):
         return o
     
     def flatten(self, x):
-        return tf.reshape(x, [self.n, self.h*self.w, self.c])
+        print(self.n, self.h, self.w, self.c)
+        return tf.reshape(x, [-1, self.h*self.w, self.c])
         
     def attention(self, x, emb_c, scope):
         with tf.variable_scope(scope, 'self_attention'):
-            self.n, self.h, self.w, self.c = x.get_shape.as_list()
+            self.n, self.h, self.w, self.c = preprocess_utils.resolve_shape(x, rank=4)
+            
             f = self.embedding(x, emb_c, "f") # [bs, h, w, emb_c]
             g = self.embedding(x, emb_c, "g")
             h = self.embedding(x, emb_c, "h")
@@ -54,7 +56,7 @@ class self_attention(object):
 class context_attention(self_attention):
     def attention(self, feat, context, emb_c, scope):
         with tf.variable_scope(scope, 'context_attention'):
-            self.n, self.h, self.w, self.c = feat.get_shape.as_list()
+            self.n, self.h, self.w, self.c = feat.get_shape().as_list()
             f = self.embedding(feat, emb_c, "f") # [bs, h, w, emb_c]
             g = self.embedding(context, emb_c, "g")
             h = self.embedding(feat, emb_c, "h")
@@ -64,7 +66,7 @@ class context_attention(self_attention):
             
             # shape = x.shape.as_list()[:3].append(emb_c)
             # o = tf.reshape(o, shape=shape) # [bs, h, w, emb_c]
-            o = tf.reshape(o, shape=f.shape) # [bs, h, w, emb_c]
+            o = tf.reshape(o, shape=tf.shape(f)) # [bs, h, w, emb_c]
             y = self.embedding(o, emb_c, "y")
             return y
             

@@ -39,29 +39,35 @@
 #     --min_resize_value=256 \
 #     --max_resize_value=256
 
-    
+
 python train.py \
     --dataset_name 2013_MICCAI_Abdominal \
     --batch_size=4 \
     --seq_length=3 \
     --train_split train \
     --weight_decay=0.001 \
-    --training_number_of_steps=180000 \
-    --validation_steps=1000 \
-    --prior_num_subject=24 \
-    --cell_type=ConvGRU \
-    
-    
-python train.py \
-    --dataset_name 2013_MICCAI_Abdominal \
-    --batch_size=4 \
-    --seq_length=3 \
-    --train_split train \
-    --weight_decay=0.001 \
-    --training_number_of_steps=180000 \
-    --validation_steps=1000 \
+    --training_number_of_steps=200000 \
+    --validation_steps=500 \
+    --save_checkpoint_steps=500 \
     --prior_num_subject=24 \
     --cell_type=BiConvGRU \
+    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000 \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+
+python train.py \
+    --dataset_name 2013_MICCAI_Abdominal \
+    --batch_size=4 \
+    --seq_length=3 \
+    --train_split train \
+    --weight_decay=0.001 \
+    --training_number_of_steps=200000 \
+    --validation_steps=500 \
+    --save_checkpoint_steps=500 \
+    --prior_num_subject=24 \
+    --cell_type=ConvGRU \
+    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000 \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
 
 # TODO: checkpoint_dir should select the latest one automatically

@@ -137,7 +137,7 @@ def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slice
       # 'image/segmentation/class/format': _bytes_list_feature(FLAGS.label_format),
   }
   if seg_data is not None:
-    feature['image/segmentation/class/encoded'] = _bytes_list_feature(seg_data)
+    feature['segmentation/encoded'] = _bytes_list_feature(seg_data)
     
   if organ_label is not None:
     feature['image/segmentation/class/organ_label'] = _bytes_list_feature(organ_label)

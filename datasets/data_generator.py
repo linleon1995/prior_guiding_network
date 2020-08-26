@@ -33,7 +33,7 @@ _DATASETS_STORING_PATH_MAP = {
     #                           "test": None},
     '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
                               "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
-                              "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Test_Sets/tfrecord_seq/"},
+                              "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/seq3/Test_Sets/"},
                               
     '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
                            "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
@@ -233,8 +233,8 @@ class Dataset(object):
             'image/format': tf.FixedLenFeature((), tf.string, default_value=''),
             'image/height': tf.FixedLenFeature((), tf.int64, default_value=0),
             'image/width': tf.FixedLenFeature((), tf.int64, default_value=0),
-            'segmentation/format': tf.FixedLenFeature(
-                (), tf.string, default_value='png'),
+            # 'segmentation/format': tf.FixedLenFeature(
+            #     (), tf.string, default_value='png'),
             'video_id': tf.FixedLenFeature((), tf.string, default_value=''),
             'dataset/num_frames': tf.FixedLenFeature((), tf.int64, default_value=0),
         }
@@ -244,12 +244,15 @@ class Dataset(object):
         # label_name = 'miccai_2013'
         keys_to_sequence_features = {
             'image/encoded': tf.FixedLenSequenceFeature((), dtype=tf.string),
-            'segmentation/encoded':
-                tf.FixedLenSequenceFeature((), tf.string),
+            # 'segmentation/encoded':
+            #     tf.FixedLenSequenceFeature((), tf.string),
             'image/depth':
                 tf.FixedLenSequenceFeature((), tf.int64),
         }
-
+        if "train" in self.split_name or "val" in self.split_name:
+          # keys_to_context_features['segmentation/format'] = tf.FixedLenFeature((), tf.string, default_value='png')
+          keys_to_sequence_features['segmentation/encoded'] = tf.FixedLenSequenceFeature((), tf.string)
+          
         context, feature_list = tf.parse_single_sequence_example(
             serialized_example, keys_to_context_features,
             keys_to_sequence_features)
@@ -420,11 +423,29 @@ class Dataset(object):
         files = []
         for sub_data_dir in self.dataset_dir.values():
             files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
-                                                  fileExt=["tfrecord"], sort_files=True))
-            # files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
-            #                                       fileExt=["tfrecord"], sort_files=True))
+                                                fileExt=["tfrecord"], sort_files=True))
+   
+        if "2019_ISBI_CHAOS_MR_T1" in self.dataset_name:
+            new_files = [f for f in files if "MR_T1_Out" not in f]
+            files = new_files
+            # new_files = []
+            # mr_t1_in, mr_t1_out, remain = [], [], []
+            
+            # for ele in files:
+            #     if "MR_T1_In" in ele:
+            #         mr_t1_in.append(ele)
+            #     elif "MR_T1_Out" in ele:
+            #         mr_t1_out.append(ele)
+            #     else:
+            #         remain.append(ele)
+            # assert len(mr_t1_in) == len(mr_t1_out)
+            
+            # for idx, ele in enumerate(mr_t1_in):
+            #     new_files.append(ele)
+            #     new_files.append(mr_t1_out[idx])    
+            # new_files.extend(remain)
+            
         self.files = files
-        print(60*"SF", self.files)
         if self.seq_length == 1:
             dataset = (
                 tf.data.TFRecordDataset(files)

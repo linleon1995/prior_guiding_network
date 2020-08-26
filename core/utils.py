@@ -115,6 +115,7 @@ class Refine(object):
 
           # TODO: input guid in each stage?
           # TODO: Would default vars value causes error?
+          
           if self.prior_seg is not None and self.prior_pred is not None:
             if "guid" in self.fusions:
               guid = self.prior_seg
@@ -342,7 +343,7 @@ class Refine(object):
       tf.add_to_collection("sram1", net)
       if x2 is not None:
         ca_layer = attentions.context_attention()
-        net = ca_layer.attention(net, x2, guid_node, "context_att1")
+        net = ca_layer.attention(net, x2, out_node, "context_att1")
         tf.add_to_collection("context_att1", net)
       return net
 
