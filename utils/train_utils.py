@@ -580,20 +580,16 @@ def get_model_init_fn(train_logdir,
     exclude_list.extend(last_layers)
   # TODO: parameter
   exclude_list.append('resnet_v1_50/conv1_1/weights:0')
-
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
   
+  # Restore without Adam parameters
   new_v = []
-  for v in variables_to_restore:
-    print(v.name)
   for v in variables_to_restore:
     if "Adam" not in v.name:
       new_v.append(v)
+    
   variables_to_restore = new_v
-  print(30*"o")
-  for v in variables_to_restore:
-    print(v.name)
       
   if variables_to_restore:
     init_op, init_feed_dict = contrib_framework.assign_from_checkpoint(

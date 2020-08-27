@@ -173,13 +173,8 @@ class Refine(object):
               if self.predict_without_background:
                 num_class -= 1
               stage_pred =  slim.conv2d(y, num_class, kernel_size=[self.ks, self.ks], activation_fn=None,
-                                          scope="stage_pred%d" %module_order)
-              # stage_pred = []
-              # for _ in range(num_class):
-              #   stage_pred_c = slim.conv2d(y, 1, kernel_size=[3,3], activation_fn=None,
-              #                             scope="stage_pred%d_class%d" % (module_order, _))
-              #   stage_pred.append(stage_pred_c)
-              # stage_pred = tf.concat(stage_pred, axis=3)
+                                          scope="stage_pred%d_pred_class%d" %(module_order,num_class))
+              
               preds["guidance%d" %module_order] = stage_pred
 
             if fuse_method in ("guid"):
@@ -272,7 +267,7 @@ class Refine(object):
           # h, w = y.get_shape().as_list()[1:3]
           y = resize_bilinear(y, [2*h, 2*w])
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
-          y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits')
+          y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits_pred_class%d' %self.num_class)
     return y, preds
 
   def get_fusion_method(self, method):
