@@ -12,7 +12,6 @@ import os
 class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader", 
                   5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC", 
                   10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 def print_checkpoint_tensor_name(checkpoint_dir):

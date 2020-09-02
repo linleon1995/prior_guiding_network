@@ -27,24 +27,38 @@ _DATASETS_INFORMATION = {
 # TODO: MR_T1 in and out
 #TODO: test set
 # /home/user/DISK/data/Jing/data/Training/tfrecord/
+# Single image path
 _DATASETS_STORING_PATH_MAP = {
-    # '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
-    #                           "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
-    #                           "test": None},
-    '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
-                              "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
-                              "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/seq3/Test_Sets/"},
-                              
-    '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
-                           "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
-                           "test":  None},
-    '2019_ISBI_CHAOS_MR_T1': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
-                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
-                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T1/"},
-    '2019_ISBI_CHAOS_MR_T2': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
-                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
-                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T2/"},
+    '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
+                              "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
+                              "test": None},
+    '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
+                           "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
+                           "test":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/"},
+    '2019_ISBI_CHAOS_MR_T1': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
+                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
+                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T1/"},
+    '2019_ISBI_CHAOS_MR_T2': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
+                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
+                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T2/"},
     }
+
+# Ssquence data path
+# _DATASETS_STORING_PATH_MAP = {
+#     '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
+#                               "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
+#                               "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/seq3/Test_Sets/"},
+
+#     '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
+#                            "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
+#                            "test":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/CT/"},
+#     '2019_ISBI_CHAOS_MR_T1': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
+#                               "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
+#                               "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T1/"},
+#     '2019_ISBI_CHAOS_MR_T2': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
+#                               "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
+#                               "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T2/"},
+#     }
 
 # BASE_DATA_DIR = dataset_infos.BASE_DATA_DIR
 SPLIT_FOLDER_MAP = {"train": "Train_Sets",
@@ -134,7 +148,7 @@ class Dataset(object):
         self.dataset_name = dataset_name
         # TODO: dataset information for each dataset
         self.dataset_infos = _DATASETS_INFORMATION[dataset_name[0]]
-        
+
         for split in split_name:
             for sub_dataset_split in self.splits_to_sizes.values():
                 if split not in sub_dataset_split:
@@ -198,15 +212,15 @@ class Dataset(object):
         }
 
         if "train" in self.split_name or "val" in self.split_name:
-            features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             # features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         if "train" in self.split_name or "val" in self.split_name:
-            # label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
+            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            # label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
             # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
@@ -252,7 +266,7 @@ class Dataset(object):
         if "train" in self.split_name or "val" in self.split_name:
           # keys_to_context_features['segmentation/format'] = tf.FixedLenFeature((), tf.string, default_value='png')
           keys_to_sequence_features['segmentation/encoded'] = tf.FixedLenSequenceFeature((), tf.string)
-          
+
         context, feature_list = tf.parse_single_sequence_example(
             serialized_example, keys_to_context_features,
             keys_to_sequence_features)
@@ -262,7 +276,7 @@ class Dataset(object):
             label = tf.decode_raw(feature_list["segmentation/encoded"], tf.int32)
         elif "test" in self.split_name:
             label = None
-            
+
         depth = feature_list["image/depth"]
 
         num_slices = context["dataset/num_frames"]
@@ -277,7 +291,7 @@ class Dataset(object):
         }
         if label is not None:
           sample[common.LABEL] = label
-          
+
         # get multi-task label
         if self.mt_label_method in ("reg", "cls") and self.mt_label_type in ("class_label", "z_label"):
             if self.mt_label_method == "reg" and self.mt_label_type == "class_label":
@@ -388,7 +402,7 @@ class Dataset(object):
             image = tf.expand_dims(tf.transpose(image, [2, 0, 1]), axis=3)
             if label is not None:
                 label = tf.expand_dims(tf.transpose(label, [2, 0, 1]), axis=3)
-                
+
         sample[common.IMAGE] = image
         if not self.is_training:
             # Original image is only used during visualization.
@@ -424,27 +438,11 @@ class Dataset(object):
         for sub_data_dir in self.dataset_dir.values():
             files.extend(file_utils.get_file_list(sub_data_dir, fileStr=self.split_name,
                                                 fileExt=["tfrecord"], sort_files=True))
-   
+
         if "2019_ISBI_CHAOS_MR_T1" in self.dataset_name:
             new_files = [f for f in files if "MR_T1_Out" not in f]
             files = new_files
-            # new_files = []
-            # mr_t1_in, mr_t1_out, remain = [], [], []
-            
-            # for ele in files:
-            #     if "MR_T1_In" in ele:
-            #         mr_t1_in.append(ele)
-            #     elif "MR_T1_Out" in ele:
-            #         mr_t1_out.append(ele)
-            #     else:
-            #         remain.append(ele)
-            # assert len(mr_t1_in) == len(mr_t1_out)
-            
-            # for idx, ele in enumerate(mr_t1_in):
-            #     new_files.append(ele)
-            #     new_files.append(mr_t1_out[idx])    
-            # new_files.extend(remain)
-            
+
         self.files = files
         if self.seq_length == 1:
             dataset = (

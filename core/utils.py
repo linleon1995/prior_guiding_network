@@ -98,8 +98,6 @@ class Refine(object):
         is_training=(self.is_training and self.fine_tune_batch_norm),
         # sync_batch_norm_method=model_options.sync_batch_norm_method
         )
-    if "slim_guid_class" in self.fusions:
-      raise ValueError("Bugs Fixing")
     with tf.variable_scope(self.scope, 'Refine_Network'):
       with slim.arg_scope([slim.conv2d],
                         trainable=True,
@@ -113,7 +111,6 @@ class Refine(object):
           y_tm1 = self.prior_seg
           preds = {}
 
-          # TODO: input guid in each stage?
           # TODO: Would default vars value causes error?
 
           if self.prior_seg is not None and self.prior_pred is not None:
@@ -131,10 +128,8 @@ class Refine(object):
             embed = self.embed(v, out_node, scope="embed%d" %module_order)
             tf.add_to_collection("embed", embed)
 
-
             fuse_func = self.get_fusion_method(fuse_method)
             h, w = preprocess_utils.resolve_shape(embed, rank=4)[1:3]
-            # h, w = embed.get_shape().as_list()[1:3]
             if y_tm1 is not None:
               y_tm1 = resize_bilinear(y_tm1, [h, w])
               tf.add_to_collection("feature", y_tm1)
@@ -152,29 +147,20 @@ class Refine(object):
               if guid is not None:
                 guid = resize_bilinear(guid, [h, w])
               tf.add_to_collection("guid", guid)
-              y = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
+              fuse = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
                             num_classes=self.num_class, apply_sram2=self.apply_sram2)
 
-              if self.fuse_flag:
-                y = slim.conv2d(y, self.embed_node, scope='fuse'+str(i))
-                tf.add_to_collection("refining", y)
-                # if i == len(self.low_level)-1:
-                #   h, w = preprocess_utils.resolve_shape(y, rank=4)[1:3]
-                #   # h, w = y.get_shape().as_list()[1:3]
-                #   h = h * 2
-                #   w = w * 2
-                # else:
-                #   h, w = self.low_level[i+1].get_shape().as_list()[1:3]
-                # y = resize_bilinear(y, [h, w])
+              y = slim.conv2d(fuse, self.embed_node, scope='fuse'+str(i))
+              tf.add_to_collection("refining", y)
 
             if self.stage_pred_loss_name is not None:
 
               num_class = self.num_class
               if self.predict_without_background:
                 num_class -= 1
-              stage_pred =  slim.conv2d(y, num_class, kernel_size=[self.ks, self.ks], activation_fn=None,
+              stage_pred =  slim.conv2d(fuse, num_class, kernel_size=[self.ks, self.ks], activation_fn=None,
                                           scope="stage_pred%d_pred_class%d" %(module_order,num_class))
-              
+
               preds["guidance%d" %module_order] = stage_pred
 
             if fuse_method in ("guid"):
@@ -182,9 +168,9 @@ class Refine(object):
               y_tm1 = None
             elif fuse_method in ("guid_class", "guid_uni", "context_att", "self_att"):
               if "softmax" in self.stage_pred_loss_name:
-                guid = tf.nn.softmax(stage_pred, axis=3)
+                # guid = tf.nn.softmax(stage_pred, axis=3)
+                guid = tf.nn.softmax(y, axis=3)
               elif "sigmoid" in self.stage_pred_loss_name:
-                # guid = tf.nn.sigmoid(guid)
                 guid = tf.nn.sigmoid(stage_pred)
 
             #   if fuse_method == "guid_uni":
@@ -258,6 +244,10 @@ class Refine(object):
                 flag = tf.concat([tf.zeros([1,1,1,1]), tf.ones([1,1,1,num_class-1])], axis=3)
                 guid = tf.multiply(guid, flag)
                 guid = tf.reduce_mean(guid, axis=3, keepdims=True)
+              elif self.guid_fuse == "same":
+                pass
+              else:
+                raise ValueError("Unknown guid fuse")
               tf.add_to_collection("guid_avg", guid)
 
               y_tm1 = y
@@ -361,93 +351,93 @@ class Refine(object):
         tf.add_to_collection("self_att1", net)
       return net
 
-def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
-    # TODO: batch_norm parameter
-    with tf.variable_scope(scope, 'U-net'):
-      with slim.arg_scope([slim.batch_norm],
-                        is_training=is_training):
-        with slim.arg_scope([slim.conv2d],
-                          trainable=True,
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.initializers.he_normal(),
-                          weights_regularizer=slim.l2_regularizer(weight_decay),
-                          kernel_size=[3, 3],
-                          padding='SAME',
-                          normalizer_fn=slim.batch_norm):
-            low_level = []
-            for s in range(1, num_stage+1):
-              channel = base_channel * root**(s-1)
-              net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
-              net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
-              low_level.append(net)
-              net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+# def slim_unet(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
+#     # TODO: batch_norm parameter
+#     with tf.variable_scope(scope, 'U-net'):
+#       with slim.arg_scope([slim.batch_norm],
+#                         is_training=is_training):
+#         with slim.arg_scope([slim.conv2d],
+#                           trainable=True,
+#                           activation_fn=tf.nn.relu,
+#                           weights_initializer=tf.initializers.he_normal(),
+#                           weights_regularizer=slim.l2_regularizer(weight_decay),
+#                           kernel_size=[3, 3],
+#                           padding='SAME',
+#                           normalizer_fn=slim.batch_norm):
+#             low_level = []
+#             for s in range(1, num_stage+1):
+#               channel = base_channel * root**(s-1)
+#               net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+#               net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+#               low_level.append(net)
+#               net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
 
-            net = slim.conv2d(net, channel*root, scope='bottle_neck1')
-            net = slim.conv2d(net, channel*root, scope='bottle_neck2')
+#             net = slim.conv2d(net, channel*root, scope='bottle_neck1')
+#             net = slim.conv2d(net, channel*root, scope='bottle_neck2')
 
-            for s in range(num_stage, 0, -1):
-              h, w = low_level[s-1].get_shape().as_list()[1:3]
-              channel = base_channel * root**s
+#             for s in range(num_stage, 0, -1):
+#               h, w = low_level[s-1].get_shape().as_list()[1:3]
+#               channel = base_channel * root**s
 
-              net = resize_bilinear(net, [h, w])
-              net = tf.concat([net, low_level[s-1]], axis=3)
-              net = slim.conv2d(net, channel, scope='up_conv%d_1' %s)
-              net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
-    return net
+#               net = resize_bilinear(net, [h, w])
+#               net = tf.concat([net, low_level[s-1]], axis=3)
+#               net = slim.conv2d(net, channel, scope='up_conv%d_1' %s)
+#               net = slim.conv2d(net, channel//root, scope='up_conv%d_2' %s)
+#     return net
 
-def get_guidance(guidance, out_node, output_stride=None, scope=None):
-    with tf.variable_scope(scope, 'guidance_embedding'):
-      net = slim.conv2d(guidance, out_node, 3, stride=2, scope='conv1_1')
-      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_2')
-      net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_3')
-      blocks = [
-          resnet_v1_beta_block(
-              'block1', base_depth=out_node//2, num_units=2, stride=2),
-          resnet_v1_beta_block(
-              'block2', base_depth=out_node, num_units=2, stride=2),
-          # resnet_v1_beta_block(
-          #     'block3', base_depth=256, num_units=23, stride=2),
-          # resnet_utils.Block('block4', bottleneck, [
-          #     {'depth': 2048,
-          #     'depth_bottleneck': 512,
-          #     'stride': 1,
-          #     'unit_rate': rate} for rate in multi_grid]),
-      ]
-      net = slim.nets.resnet_utils.stack_blocks_dense(net,
-                                                      blocks,
-                                                      output_stride)
-      net = slim.conv2d(net, out_node, 1, stride=1, scope='out')
-      # num_stage = 3
-      # root = 1
-      # net = guidance
-      # for s in range(1, num_stage+1):
-      #   channel = out_node * root**(s-1)
-      #   net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
-      #   net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
-      #   net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
-      # net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
-      # net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
-    return net
+# def get_guidance(guidance, out_node, output_stride=None, scope=None):
+#     with tf.variable_scope(scope, 'guidance_embedding'):
+#       net = slim.conv2d(guidance, out_node, 3, stride=2, scope='conv1_1')
+#       net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_2')
+#       net = slim.conv2d(net, out_node, 3, stride=1, scope='conv1_3')
+#       blocks = [
+#           resnet_v1_beta_block(
+#               'block1', base_depth=out_node//2, num_units=2, stride=2),
+#           resnet_v1_beta_block(
+#               'block2', base_depth=out_node, num_units=2, stride=2),
+#           # resnet_v1_beta_block(
+#           #     'block3', base_depth=256, num_units=23, stride=2),
+#           # resnet_utils.Block('block4', bottleneck, [
+#           #     {'depth': 2048,
+#           #     'depth_bottleneck': 512,
+#           #     'stride': 1,
+#           #     'unit_rate': rate} for rate in multi_grid]),
+#       ]
+#       net = slim.nets.resnet_utils.stack_blocks_dense(net,
+#                                                       blocks,
+#                                                       output_stride)
+#       net = slim.conv2d(net, out_node, 1, stride=1, scope='out')
+#       # num_stage = 3
+#       # root = 1
+#       # net = guidance
+#       # for s in range(1, num_stage+1):
+#       #   channel = out_node * root**(s-1)
+#       #   net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+#       #   net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+#       #   net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+#       # net = slim.conv2d(net, channel, scope='down_conv%d_1' %(num_stage+1))
+#       # net = slim.conv2d(net, channel, scope='down_conv%d_2' %(num_stage+1))
+#     return net
 
-def slim_extractor(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
-    # TODO: batch_norm parameter
-    with tf.variable_scope(scope, 'U-net'):
-      with slim.arg_scope([slim.batch_norm],
-                        is_training=is_training):
-        with slim.arg_scope([slim.conv2d],
-                          trainable=True,
-                          activation_fn=tf.nn.relu,
-                          weights_initializer=tf.initializers.he_normal(),
-                          weights_regularizer=slim.l2_regularizer(weight_decay),
-                          kernel_size=[3, 3],
-                          padding='SAME',
-                          normalizer_fn=slim.batch_norm):
-            for s in range(1, num_stage+1):
-              channel = base_channel * root**(s-1)
-              net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
-              net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
-              net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
-    return net
+# def slim_extractor(net, num_stage, base_channel=32, root=2, weight_decay=1e-3, scope=None, is_training=None):
+#     # TODO: batch_norm parameter
+#     with tf.variable_scope(scope, 'U-net'):
+#       with slim.arg_scope([slim.batch_norm],
+#                         is_training=is_training):
+#         with slim.arg_scope([slim.conv2d],
+#                           trainable=True,
+#                           activation_fn=tf.nn.relu,
+#                           weights_initializer=tf.initializers.he_normal(),
+#                           weights_regularizer=slim.l2_regularizer(weight_decay),
+#                           kernel_size=[3, 3],
+#                           padding='SAME',
+#                           normalizer_fn=slim.batch_norm):
+#             for s in range(1, num_stage+1):
+#               channel = base_channel * root**(s-1)
+#               net = slim.conv2d(net, channel, scope='down_conv%d_1' %s)
+#               net = slim.conv2d(net, channel, scope='down_conv%d_2' %s)
+#               net = tf.nn.max_pool(net, [1,2,2,1], [1,2,2,1], "VALID")
+#     return net
 
 
 def mlp(inputs,
@@ -589,80 +579,80 @@ def get_batch_norm_params(decay=0.9997,
   return batch_norm_params
 
 
-def conv_block(inputs, channels=32, scope=None, is_training=True):
-    with tf.variable_scope(scope, "conv_block"):
-      in_channel = inputs.get_shape().as_list()[3]
-      conv1 = conv2d(inputs, [3,3,in_channel,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
-      conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
-    return conv2
+# def conv_block(inputs, channels=32, scope=None, is_training=True):
+#     with tf.variable_scope(scope, "conv_block"):
+#       in_channel = inputs.get_shape().as_list()[3]
+#       conv1 = conv2d(inputs, [3,3,in_channel,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+#       conv2 = conv2d(conv1, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+#     return conv2
 
 
-def _simple_decoder(inputs, out, stage=None, channels=None, scope=None, is_training=None):
-    for s in range(1, stage+1):
-      h, w = inputs.get_shape().as_list()[1:3]
-      up = tf.image.resize_bilinear(inputs, [2*h, 2*w])
-      inputs = conv_block(up, channels, "up_conv_block"+str(s), is_training)
-    outputs = conv2d(inputs, [3,3,channels,out], activate=None, is_training=is_training, scope="output_conv")
-    return outputs
+# def _simple_decoder(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+#     for s in range(1, stage+1):
+#       h, w = inputs.get_shape().as_list()[1:3]
+#       up = tf.image.resize_bilinear(inputs, [2*h, 2*w])
+#       inputs = conv_block(up, channels, "up_conv_block"+str(s), is_training)
+#     outputs = conv2d(inputs, [3,3,channels,out], activate=None, is_training=is_training, scope="output_conv")
+#     return outputs
 
 
-def _simple_unet(inputs, out, stage=None, channels=None, scope=None, is_training=None):
-    with tf.variable_scope(scope, 'simple_unet'):
-      down_conv_list = []
-      down = inputs
-      c = channels
-      for s in range(1, stage+1):
-        conv = conv_block(down, c, "down_conv_block"+str(s), is_training)
-        down_conv_list.append(conv)
-        down = tf.nn.max_pool(conv, [1,2,2,1], [1,2,2,1], "VALID")
-        c *= 2
+# def _simple_unet(inputs, out, stage=None, channels=None, scope=None, is_training=None):
+#     with tf.variable_scope(scope, 'simple_unet'):
+#       down_conv_list = []
+#       down = inputs
+#       c = channels
+#       for s in range(1, stage+1):
+#         conv = conv_block(down, c, "down_conv_block"+str(s), is_training)
+#         down_conv_list.append(conv)
+#         down = tf.nn.max_pool(conv, [1,2,2,1], [1,2,2,1], "VALID")
+#         c *= 2
 
-      conv = conv_block(down, c//2, "latent", is_training)
+#       conv = conv_block(down, c//2, "latent", is_training)
 
-      for s in range(1, stage+1):
-        down = down_conv_list[stage-s]
-        h, w = down.get_shape().as_list()[1:3]
-        up = tf.image.resize_bilinear(conv, [h, w])
-        conv = conv_block(tf.concat([up,down], axis=3), c, "up_conv_block"+str(s), is_training)
-        c //= 2
+#       for s in range(1, stage+1):
+#         down = down_conv_list[stage-s]
+#         h, w = down.get_shape().as_list()[1:3]
+#         up = tf.image.resize_bilinear(conv, [h, w])
+#         conv = conv_block(tf.concat([up,down], axis=3), c, "up_conv_block"+str(s), is_training)
+#         c //= 2
 
-      return  conv2d(conv, [1,1,channels,out], activate=None, is_training=is_training, scope="output_conv")
+#       return  conv2d(conv, [1,1,channels,out], activate=None, is_training=is_training, scope="output_conv")
 
-def __2d_unet_decoder(features, layers_dict, num_class, channels=None, scope=None, is_training=None):
-    with tf.variable_scope(scope, '2d_unet'):
-        i = 1
-        root = 2
-        for v in layers_dict.values():
-            if i == 1:
-                with tf.variable_scope("block1"):
-                  conv = conv2d(features, [3,3,2048,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
-                  conv = conv2d(conv, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
-            else:
-                conv = _2d_unet_block(conv, v, channels, is_training, "block"+str(i))
-            i += 1
-            channels //= root
-        h, w, c = conv.get_shape().as_list()[1:4]
-        conv = tf.image.resize_bilinear(conv, [2*h, 2*w])
-        conv1 = conv2d(conv, [3,3,c,c], activate=tf.nn.relu, is_training=is_training, scope="conv1")
-        conv2 = conv2d(conv1, [3,3,c,c], activate=tf.nn.relu, is_training=is_training, scope="conv2")
-        logits = conv2d(conv2, [1,1,c,num_class], activate=None, is_training=is_training, scope="logits")
-    return logits
+# def __2d_unet_decoder(features, layers_dict, num_class, channels=None, scope=None, is_training=None):
+#     with tf.variable_scope(scope, '2d_unet'):
+#         i = 1
+#         root = 2
+#         for v in layers_dict.values():
+#             if i == 1:
+#                 with tf.variable_scope("block1"):
+#                   conv = conv2d(features, [3,3,2048,channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+#                   conv = conv2d(conv, [3,3,channels,channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+#             else:
+#                 conv = _2d_unet_block(conv, v, channels, is_training, "block"+str(i))
+#             i += 1
+#             channels //= root
+#         h, w, c = conv.get_shape().as_list()[1:4]
+#         conv = tf.image.resize_bilinear(conv, [2*h, 2*w])
+#         conv1 = conv2d(conv, [3,3,c,c], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+#         conv2 = conv2d(conv1, [3,3,c,c], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+#         logits = conv2d(conv2, [1,1,c,num_class], activate=None, is_training=is_training, scope="logits")
+#     return logits
 
 
-def _2d_unet_block(inputs, feature, embed=None, is_training=True, scope=None):
-    with tf.variable_scope(scope, "2d_unet_block"):
-        in_channel = inputs.get_shape().as_list()[3]
-        h, w, c = feature.get_shape().as_list()[1:4]
-        if embed is not None:
-            out_channels = embed
-        else:
-            out_channels = c
-        inputs = tf.image.resize_bilinear(inputs, [h, w])
-        inputs = conv2d(inputs, [3,3,in_channel,out_channels], activate=tf.nn.relu, is_training=is_training, scope="up_conv")
-        concat_feature = tf.concat([inputs, feature], axis=3)
-        conv1 = conv2d(concat_feature, [3,3,c+out_channels,out_channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
-        conv2 = conv2d(conv1, [3,3,out_channels,out_channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
-    return conv2
+# def _2d_unet_block(inputs, feature, embed=None, is_training=True, scope=None):
+#     with tf.variable_scope(scope, "2d_unet_block"):
+#         in_channel = inputs.get_shape().as_list()[3]
+#         h, w, c = feature.get_shape().as_list()[1:4]
+#         if embed is not None:
+#             out_channels = embed
+#         else:
+#             out_channels = c
+#         inputs = tf.image.resize_bilinear(inputs, [h, w])
+#         inputs = conv2d(inputs, [3,3,in_channel,out_channels], activate=tf.nn.relu, is_training=is_training, scope="up_conv")
+#         concat_feature = tf.concat([inputs, feature], axis=3)
+#         conv1 = conv2d(concat_feature, [3,3,c+out_channels,out_channels], activate=tf.nn.relu, is_training=is_training, scope="conv1")
+#         conv2 = conv2d(conv1, [3,3,out_channels,out_channels], activate=tf.nn.relu, is_training=is_training, scope="conv2")
+#     return conv2
 
 
 def fc_layer(x,
@@ -797,16 +787,16 @@ def scale_dimension(dim, scale):
     return int((float(dim) - 1.0) * scale + 1.0)
 
 
-def se_block(inputs, node=32, scope=None):
-  with tf.variable_scope(scope, "se_block", reuse=tf.AUTO_REUSE):
-      channel = inputs.get_shape().as_list()[3]
-      net = inputs
-      net = tf.reduce_mean(net, [1,2], keep_dims=False)
-      net = fc_layer(net, [channel, 32], _std=1, scope="fc1")
-      net = tf.nn.relu(net)
-      net = fc_layer(net, [32, channel], _std=1, scope="fc2")
-      net = tf.nn.sigmoid(net)
-  return net
+# def se_block(inputs, node=32, scope=None):
+#   with tf.variable_scope(scope, "se_block", reuse=tf.AUTO_REUSE):
+#       channel = inputs.get_shape().as_list()[3]
+#       net = inputs
+#       net = tf.reduce_mean(net, [1,2], keep_dims=False)
+#       net = fc_layer(net, [channel, 32], _std=1, scope="fc1")
+#       net = tf.nn.relu(net)
+#       net = fc_layer(net, [32, channel], _std=1, scope="fc2")
+#       net = tf.nn.sigmoid(net)
+#   return net
 
 
 def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, cell_type='ConvGRU'):

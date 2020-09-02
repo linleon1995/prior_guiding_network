@@ -22,10 +22,67 @@
 #   sh ./local_test.sh
 #
 #
-
 # DATASET_NAME = ['2013_MICCAI_Abdominal']
 # DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+
+
+gpu_ids=2
+
+CUDA_VISIBLE_DEVICES=$gpu_ids python eval.py \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+    --dataset_name 2019_ISBI_CHAOS_CT \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_093/model.ckpt-best \
+    --seq_length=3 \
+    --cell_type BiConvGRU \
+    --guid_fuse sum_wo_back \
+    --guid_encoder image_only \
+    --store_all_imgs True \
+    --show_pred_only True \
+    --eval_split test \
+    --_3d_metrics False \
+
+CUDA_VISIBLE_DEVICES=$gpu_ids python eval.py \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+    --dataset_name 2019_ISBI_CHAOS_CT \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_084/model.ckpt-best \
+    --seq_length=3 \
+    --cell_type BiConvGRU \
+    --guid_fuse sum_wo_back \
+    --guid_encoder early \
+    --prior_num_subject 16 \
+    --store_all_imgs True \
+    --show_pred_only True \
+    --eval_split test \
+    --_3d_metrics False \
+    
+CUDA_VISIBLE_DEVICES=$gpu_ids python eval.py \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+    --dataset_name 2019_ISBI_CHAOS_CT \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_092/model.ckpt-best \
+    --seq_length=3 \
+    --cell_type BiConvGRU \
+    --guid_fuse sum_wo_back \
+    --guid_encoder early \
+    --prior_num_subject 20 \
+    --store_all_imgs True \
+    --show_pred_only True \
+    --eval_split test \
+    --_3d_metrics False \
+    
+CUDA_VISIBLE_DEVICES=$gpu_ids python eval.py \
+    --fusions context_att context_att context_att guid_uni guid_uni \
+    --dataset_name 2019_ISBI_CHAOS_CT \
+    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_091/model.ckpt-best \
+    --seq_length=3 \
+    --cell_type BiConvGRU \
+    --guid_fuse sum_wo_back \
+    --guid_encoder early \
+    --prior_num_subject 16 \
+    --store_all_imgs True \
+    --show_pred_only True \
+    --eval_split test \
+    --_3d_metrics False \
 
 # python train.py \
 #     --dataset_name 2019_ISBI_CHAOS_CT \
@@ -59,8 +116,33 @@
 #     --prior_num_subject=24 \
 #     --store_all_imgs=False
 
+# CUDA_VISIBLE_DEVICES=$gpu_ids python eval.py \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_002/model.ckpt-best \
+#     --guid_fuse mean_wo_back \
+#     --guid_encoder early \
+#     --prior_num_subject 16 \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
 
 
+# # prior bi train val
+# python eval.py \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_103/model.ckpt-best \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_fuse mean_wo_back \
+#     --guid_encoder early \
+#     --prior_num_subject 16 \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
 
 # # prior bi train val
 # python eval.py \
@@ -147,19 +229,19 @@
 # # prior forward train val
 # # prior forward train
 
-# prior att bi train
-python eval.py \
-    --fusions context_att context_att context_att guid_uni guid_uni \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_078/model.ckpt-50000 \
-    --seq_length=3 \
-    --cell_type BiConvGRU \
-    --guid_encoder early \
-    --prior_num_subject 16 \
-    --store_all_imgs True \
-    --show_pred_only True \
-    --eval_split test \
-    --_3d_metrics False \
+# # prior att bi train
+# python eval.py \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_078/model.ckpt-best \
+#     --seq_length=3 \
+#     --cell_type BiConvGRU \
+#     --guid_encoder early \
+#     --prior_num_subject 16 \
+#     --store_all_imgs True \
+#     --show_pred_only True \
+#     --eval_split test \
+#     --_3d_metrics False \
 
 
 

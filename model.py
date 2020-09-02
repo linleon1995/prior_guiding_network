@@ -1,11 +1,6 @@
 import tensorflow as tf
-# TODO: Remove numpy dependency
-import numpy as np
-# from tensorflow.python.ops import math_ops
 from core import features_extractor, stn, voxelmorph, crn_network, utils, resnet_v1_beta, preprocess_utils
-# from test_flownet import build_flow_model, FlowNetS
 import common
-# import experiments
 import math
 # spatial_transfom_exp = experiments.spatial_transfom_exp
 
@@ -15,16 +10,16 @@ bilinear_sampler = stn.bilinear_sampler
 voxel_deformable_transform = voxelmorph.voxel_deformable_transform
 refinement_network = crn_network.refinement_network
 mlp = utils.mlp
-conv2d = utils.conv2d
-__2d_unet_decoder = utils.__2d_unet_decoder
+# conv2d = utils.conv2d
+# __2d_unet_decoder = utils.__2d_unet_decoder
 # extractor = utils.simple_extractor
 
 # TODO: testing case (validation)
-# TODO: voxelmorph in 2d or 3d
 
 
 
 def get_encoded_priors(feature, num_encoder, out_node, is_training=True, scope=None):
+    """Encode prior from feature"""
     with tf.variable_scope('encoded_priors', scope):
         prior_list = []
         for i in range(num_encoder):
@@ -32,97 +27,11 @@ def get_encoded_priors(feature, num_encoder, out_node, is_training=True, scope=N
                                           scope="prior_encoder"+str(i)))
     return prior_list
 
-# # Warping layer ---------------------------------
-# def get_grid(x):
-#     batch_size, height, width, filters = tf.unstack(tf.shape(x))
-#     Bg, Yg, Xg = tf.meshgrid(tf.range(batch_size), tf.range(height), tf.range(width),
-#                              indexing = 'ij')
-#     # return indices volume indicate (batch, y, x)
-#     # return tf.stack([Bg, Yg, Xg], axis = 3)
-#     return Bg, Yg, Xg # return collectively for elementwise processing
-
-# def nearest_warp(x, flow):
-#     grid_b, grid_y, grid_x = get_grid(x)
-#     flow = tf.cast(flow, tf.int32)
-
-#     warped_gy = tf.add(grid_y, flow[:,:,:,1]) # flow_y
-#     warped_gx = tf.add(grid_x, flow[:,:,:,0]) # flow_x
-#     # clip value by height/width limitation
-#     _, h, w, _ = tf.unstack(tf.shape(x))
-#     warped_gy = tf.clip_by_value(warped_gy, 0, h-1)
-#     warped_gx = tf.clip_by_value(warped_gx, 0, w-1)
-
-#     warped_indices = tf.stack([grid_b, warped_gy, warped_gx], axis = 3)
-
-#     warped_x = tf.gather_nd(x, warped_indices)
-#     return warped_x
-
-# def bilinear_warp(x, flow):
-#     _, h, w, _ = tf.unstack(tf.shape(x))
-#     grid_b, grid_y, grid_x = get_grid(x)
-#     grid_b = tf.cast(grid_b, tf.float32)
-#     grid_y = tf.cast(grid_y, tf.float32)
-#     grid_x = tf.cast(grid_x, tf.float32)
-
-#     fx, fy = tf.unstack(flow, axis = -1)
-#     fx_0 = tf.floor(fx)
-#     fx_1 = fx_0+1
-#     fy_0 = tf.floor(fy)
-#     fy_1 = fy_0+1
-
-#     # warping indices
-#     h_lim = tf.cast(h-1, tf.float32)
-#     w_lim = tf.cast(w-1, tf.float32)
-#     gy_0 = tf.clip_by_value(grid_y + fy_0, 0., h_lim)
-#     gy_1 = tf.clip_by_value(grid_y + fy_1, 0., h_lim)
-#     gx_0 = tf.clip_by_value(grid_x + fx_0, 0., w_lim)
-#     gx_1 = tf.clip_by_value(grid_x + fx_1, 0., w_lim)
-
-#     g_00 = tf.cast(tf.stack([grid_b, gy_0, gx_0], axis = 3), tf.int32)
-#     g_01 = tf.cast(tf.stack([grid_b, gy_0, gx_1], axis = 3), tf.int32)
-#     g_10 = tf.cast(tf.stack([grid_b, gy_1, gx_0], axis = 3), tf.int32)
-#     g_11 = tf.cast(tf.stack([grid_b, gy_1, gx_1], axis = 3), tf.int32)
-
-#     # gather contents
-#     x_00 = tf.gather_nd(x, g_00)
-#     x_01 = tf.gather_nd(x, g_01)
-#     x_10 = tf.gather_nd(x, g_10)
-#     x_11 = tf.gather_nd(x, g_11)
-
-#     # coefficients
-#     c_00 = tf.expand_dims((fy_1 - fy)*(fx_1 - fx), axis = 3)
-#     c_01 = tf.expand_dims((fy_1 - fy)*(fx - fx_0), axis = 3)
-#     c_10 = tf.expand_dims((fy - fy_0)*(fx_1 - fx), axis = 3)
-#     c_11 = tf.expand_dims((fy - fy_0)*(fx - fx_0), axis = 3)
-
-#     return c_00*x_00 + c_01*x_01 + c_10*x_10 + c_11*x_11
-
-# class WarpingLayer(object):
-#     def __init__(self, warp_type = 'nearest', name = 'warping'):
-#         self.warp = warp_type
-#         self.name = name
-
-#     def __call__(self, x, flow):
-#         # expect shape
-#         # x:(#batch, height, width, #channel)
-#         # flow:(#batch, height, width, 2)
-#         with tf.name_scope(self.name) as ns:
-#             assert self.warp in ['nearest', 'bilinear']
-#             if self.warp == 'nearest':
-#                 x_warped = nearest_warp(x, flow)
-#             else:
-#                 x_warped = bilinear_warp(x, flow)
-#             return x_warped
-
 
 def pgb_network(images,
                 raw_height,
                 raw_width,
                 model_options,
-                # affine_transform,
-                # deformable_transform,
-                # samples=None,
-                # prior_imgs=None,
                 prior_segs=None,
                 num_class=None,
                 prior_slice=None,
@@ -169,8 +78,6 @@ def pgb_network(images,
 
     if seq_length > 1:
         n, t, h, w, c = preprocess_utils.resolve_shape(images, rank=5)
-        # images = images[:,1]
-        # images = tf.tile(images, [3,1,1,1])
         images = tf.reshape(images, [-1, h, w, c])
     # Produce Prior
     if prior_segs is not None:
@@ -181,6 +88,7 @@ def pgb_network(images,
     elif guid_encoder in ("late", "image_only", "p_embed"):
         in_node = images
 
+    # Feature Extractor (Encoder)
     features, end_points = features_extractor.extract_features(images=in_node,
                                                                output_stride=model_options.output_stride,
                                                                multi_grid=model_options.multi_grid,
@@ -210,6 +118,7 @@ def pgb_network(images,
                                        extractor_type="simple")
         output_dict[common.OUTPUT_Z] = z_logits
 
+    # Guidance Generating
     with slim.arg_scope([slim.batch_norm],
                         is_training=is_training):
         with slim.arg_scope([slim.conv2d],
@@ -233,17 +142,14 @@ def pgb_network(images,
                     p = tf.stack(prior_list, axis=4)
                     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
                     prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
-                    # prior_embed = tf.squeeze(tf.matmul(p, z), axis=4)
-                    # prior_seg = tf.concat([layers_dict["low_level5"], prior_embed], axis=3)
-                    # prior_seg = slim.conv2d(prior_seg, out_node, kernel_size=[1,1], activation_fn=None, scope="prior_seg")
-
+                    
                 tf.add_to_collection("guid_f", prior_seg)
 
                 if guidance_loss:
                     c = num_class
                     if predict_without_background:
                         c -= 1
-                    prior_pred = slim.conv2d(prior_seg, c, kernel_size=[ks,ks], stride=1, activation_fn=None, scope='prior_pred')
+                    prior_pred = slim.conv2d(prior_seg, c, kernel_size=[ks,ks], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
                     output_dict[common.GUIDANCE] = prior_pred
 
                     if "softmax" in guidance_loss_name:
@@ -257,71 +163,45 @@ def pgb_network(images,
                 prior_seg = None
                 prior_pred = None
 
+    # Refining Model (Decoder)
     refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior_seg=prior_seg, stage_pred_loss_name=stage_pred_loss_name,
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type,
                                 embed_node=out_node, predict_without_background=predict_without_background,
                                 weight_decay=weight_decay, is_training=is_training,num_class=num_class, ks=ks,
                                 **kwargs)
     logits, preds = refine_model.model()
-
+    layers_dict.update(preds)
+    
+    # Sequential Model for slice fusion
     if seq_length is not None:
         if seq_length > 1:
-            # assert batch_size%seq_length == 0
-            # _, height, width, _ = images.get_shape().as_list()
-            # print(logits, "000")
-            # logits.set_shape([batch_size*seq_length, height, width, num_class])
-            # print(logits, "111")
             logits = tf.reshape(logits, [n, t, h, w, c])
-            # print(logits, "222")
-            # logits = tf.split(value=logits, num_or_size_splits=seq_length, axis=0)
-            # logits = tf.stack(logits, axis=1)
             logits = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
-            # print(logits, "333")
-            # print(60*"LL", batch_size, seq_length, height, width, num_class)
-    layers_dict.update(preds)
+            
     if drop_prob is not None:
         logits = tf.nn.dropout(logits, rate=drop_prob)
-
     output_dict[common.OUTPUT_TYPE] = logits
+    
     trainable_vars = tf.trainable_variables()
     for v in trainable_vars:
       print(30*"-", v.name)
     return output_dict, layers_dict
 
 
-def get_slice_indice(indice, num_prior_slice, fused_slice):
-    # TODO: fused slice could be even number
-    # TODO: Non-uniform select --> multiply mask
-    # Make sure num_prior_slice always bigger than fused_slice
-    print(indice, 50*"o")
-    # From prob to slice index
-    indice = tf.multiply(indice, num_prior_slice)
-    print(indice, 50*"o")
-    # Shifhting to avoid out of range access
-    if fused_slice > 1:
-        shift = tf.divide(tf.cast(fused_slice, tf.int32), 2)
-        low = shift
-        high = num_prior_slice - shift
-        indice = tf.clip_by_value(indice, low, high)
-        start = indice - shift
-        end = indice + shift
-        indice = tf.concat([start, end], axis=1)
-    print(indice, 50*"o")
-    # Select the neighbor slices
-    def _range_fn(tp):
-        tp0 = tp[0]
-        tp1 = tp[1] + 1
-        return tf.range(tp0, tp1)
-    indice = tf.map_fn(lambda tp: _range_fn(tp), indice)
-    print(indice, 50*"o")
-    # One-hot encoding
-    indice = tf.one_hot(indices=indice,
-                        depth=num_prior_slice,
-                        on_value=1,
-                        off_value=0,
-                        axis=1)
-    print(indice, 50*"o")
-    return indice
+def get_prior(prior_segs, guidance_type, num_class, seq_length):
+    # TODO: else guidance type should raise ValueError
+    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
+        prior_seg = prior_segs[...,0]
+        prior_seg = tf.tile(prior_seg, [seq_length,1,1,1])
+    elif guidance_type == "gt":
+        prior_seg = tf.one_hot(indices=prior_segs[...,0],
+                                depth=num_class,
+                                on_value=1,
+                                off_value=0,
+                                axis=3)
+    else:
+        prior_seg = prior_segs
+    return prior_seg
 
 
 def predict_z_dimension(feature, out_node, extractor_type):
@@ -336,6 +216,41 @@ def predict_z_dimension(feature, out_node, extractor_type):
         else:
             raise ValueError("Unknown Extractor Type")
     return z_logits
+
+
+# def get_slice_indice(indice, num_prior_slice, fused_slice):
+#     # TODO: fused slice could be even number
+#     # TODO: Non-uniform select --> multiply mask
+#     # Make sure num_prior_slice always bigger than fused_slice
+#     print(indice, 50*"o")
+#     # From prob to slice index
+#     indice = tf.multiply(indice, num_prior_slice)
+#     print(indice, 50*"o")
+#     # Shifhting to avoid out of range access
+#     if fused_slice > 1:
+#         shift = tf.divide(tf.cast(fused_slice, tf.int32), 2)
+#         low = shift
+#         high = num_prior_slice - shift
+#         indice = tf.clip_by_value(indice, low, high)
+#         start = indice - shift
+#         end = indice + shift
+#         indice = tf.concat([start, end], axis=1)
+#     print(indice, 50*"o")
+#     # Select the neighbor slices
+#     def _range_fn(tp):
+#         tp0 = tp[0]
+#         tp1 = tp[1] + 1
+#         return tf.range(tp0, tp1)
+#     indice = tf.map_fn(lambda tp: _range_fn(tp), indice)
+#     print(indice, 50*"o")
+#     # One-hot encoding
+#     indice = tf.one_hot(indices=indice,
+#                         depth=num_prior_slice,
+#                         on_value=1,
+#                         off_value=0,
+#                         axis=1)
+#     print(indice, 50*"o")
+#     return indice
 
 
 # def predict_z_dimension(features, z_label_method, z_class):
@@ -355,42 +270,29 @@ def predict_z_dimension(feature, out_node, extractor_type):
 #     return z_pred
 
 
-def get_adaptive_guidance(prior_segs,
-                          z_pred,
-                          z_label_method,
-                          num_class=None,
-                          prior_slice=None,
-                          fusion_slice=None):
-    if z_label_method == "regression":
-        indice = get_slice_indice(indice=z_pred, num_prior_slice=prior_slice, fused_slice=fusion_slice)
-        prior_seg = tf.matmul(prior_segs, indice)
-        # TODO: get average?
-    elif  z_label_method == 'classification':
-        prior_seg = tf.multiply(prior_segs, z_pred)
-    else:
-        raise ValueError("Unknown model type for z predicition")
+# def get_adaptive_guidance(prior_segs,
+#                           z_pred,
+#                           z_label_method,
+#                           num_class=None,
+#                           prior_slice=None,
+#                           fusion_slice=None):
+#     if z_label_method == "regression":
+#         indice = get_slice_indice(indice=z_pred, num_prior_slice=prior_slice, fused_slice=fusion_slice)
+#         prior_seg = tf.matmul(prior_segs, indice)
+#         # TODO: get average?
+#     elif  z_label_method == 'classification':
+#         prior_seg = tf.multiply(prior_segs, z_pred)
+#     else:
+#         raise ValueError("Unknown model type for z predicition")
 
-    if num_class is not None:
-        prior_seg = tf.cast(prior_seg, tf.int32)
-        prior_seg  = tf.one_hot(prior_seg, num_class, 1, 0, axis=3)
-        prior_seg = tf.cast(prior_seg, tf.float32)
-    return prior_seg
+#     if num_class is not None:
+#         prior_seg = tf.cast(prior_seg, tf.int32)
+#         prior_seg  = tf.one_hot(prior_seg, num_class, 1, 0, axis=3)
+#         prior_seg = tf.cast(prior_seg, tf.float32)
+#     return prior_seg
 
 
-def get_prior(prior_segs, guidance_type, num_class, seq_length):
-    # TODO: else guidance type should raise ValueError
-    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-        prior_seg = prior_segs[...,0]
-        prior_seg = tf.tile(prior_seg, [seq_length,1,1,1])
-    elif guidance_type == "gt":
-        prior_seg = tf.one_hot(indices=prior_segs[...,0],
-                                depth=num_class,
-                                on_value=1,
-                                off_value=0,
-                                axis=3)
-    else:
-        prior_seg = prior_segs
-    return prior_seg
+
 
 
 # def refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, out_node,

@@ -10,7 +10,6 @@ import time
 
 import model
 import common
-import eval
 # import experiments
 from model import voxelmorph
 from datasets import data_generator
@@ -82,7 +81,7 @@ parser.add_argument('--dataset_name', nargs='+', required=True,
 parser.add_argument('--train_split', nargs='+', required=True,
                     help='')
 
-parser.add_argument('--seq_length', type=int, default=3,
+parser.add_argument('--seq_length', type=int, default=1,
                     help='')
 
 parser.add_argument('--cell_type', type=str, default="ConvGRU",

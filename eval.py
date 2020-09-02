@@ -25,7 +25,7 @@ import tensorflow as tf
 
 import common
 import model
-import CHAOSmetrics
+from chaos_eval import CHAOSmetrics
 from datasets import data_generator, file_utils
 from utils import eval_utils, train_utils
 from core import preprocess_utils
@@ -38,7 +38,7 @@ SSD = CHAOSmetrics.SSD
 DICE = CHAOSmetrics.DICE
 RAVD = CHAOSmetrics.RAVD
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 # TODO: if dir not exist. Don't build new one
@@ -747,6 +747,10 @@ def main(unused_argv):
                   nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Testing/raw/", file_list[file_idx]))
                   affine = nii_img.affine.copy()
                   hdr = nii_img.header.copy()
+                  # Vseg = Vseg[:,::-1]
+                  # Vseg = np.swapaxes(Vseg,0,1)
+                  Vseg = np.swapaxes(Vseg,0,2)
+                  Vseg = Vseg[::-1]
                   new_nii = nib.Nifti1Image(Vseg, np.eye(4), hdr)
                   out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files")
                   if not os.path.exists(out_dir):
@@ -775,7 +779,7 @@ def main(unused_argv):
                   
                   file_utils.save_in_image(task3, task3_path, file_name)
                   file_utils.save_in_image(task5, task5_path, file_name)
-                  print(pred.shape, pred.dtype, task3.shape, task3.dtype)
+                  
                 if depth == data[common.NUM_SLICES][0]-1:
                   j += 1
                 if i == num_sample-1:
