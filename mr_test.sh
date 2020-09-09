@@ -26,7 +26,7 @@
 # DATASET_NAME = ['2013_MICCAI_Abdominal']
 # DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
-gpu_ids=1
+gpu_ids=2
 
 # # prior single_image train
 # CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
@@ -88,116 +88,102 @@ gpu_ids=1
 #     --max_resize_value=256 \
 #     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#######################################################################################################################
+# # prior single_image train 107
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image context_att train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions context_att context_att context_att guid_uni guid_uni \
+# # prior single_image context_att train 000
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+# # prior single_image train 040
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T2 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --guid_encoder image_only \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# prior single_image context_att train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --guid_encoder image_only \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions context_att context_att context_att guid_uni guid_uni \
-
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
-    --guid_encoder image_only \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# prior single_image train
+# prior single_image train 046
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=16 \
     --train_split train \
+    --guid_fuse conv \
+    --weight_decay=0.001 \
+    --validation_steps=500 \
+    --training_number_of_steps=60000 \
+    --save_checkpoint_steps=500 \
+    --prior_num_subject=16 \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# prior single_image train 053
+CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=16 \
+    --train_split train \
+    --guid_fuse mean_wo_back \
+    --weight_decay=0.001 \
+    --validation_steps=500 \
+    --training_number_of_steps=80000 \
+    --save_checkpoint_steps=500 \
+    --guid_encoder image_only \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# prior single_image context_att train 054
+CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=16 \
+    --train_split train \
+    --guid_fuse mean_wo_back \
+    --weight_decay=0.001 \
+    --validation_steps=500 \
+    --training_number_of_steps=80000 \
+    --save_checkpoint_steps=500 \
+    --guid_encoder image_only \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions context_att context_att context_att guid_uni guid_uni \
+
+# prior single_image train 051
+CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+    --batch_size=16 \
+    --train_split train \
     --guid_fuse mean_wo_back \
     --weight_decay=0.001 \
     --validation_steps=500 \
@@ -208,7 +194,22 @@ CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --max_resize_value=256 \
     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image train
+# prior single_image train 055
+CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+    --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+    --batch_size=16 \
+    --train_split train \
+    --guid_fuse mean_wo_back \
+    --weight_decay=0.001 \
+    --validation_steps=500 \
+    --training_number_of_steps=60000 \
+    --save_checkpoint_steps=500 \
+    --guid_encoder image_only \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# prior single_image train 058
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=16 \
@@ -223,7 +224,7 @@ CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --max_resize_value=256 \
     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image context_att train
+# prior single_image context_att train 059
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=16 \
@@ -238,7 +239,7 @@ CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --max_resize_value=256 \
     --fusions context_att context_att context_att guid_uni guid_uni \
 
-# prior single_image train
+# prior single_image train 060
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
     --batch_size=16 \
@@ -253,7 +254,7 @@ CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --max_resize_value=256 \
     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image train
+# prior single_image train 062
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=16 \

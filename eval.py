@@ -22,6 +22,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import SimpleITK as sitk
+import nibabel as nib
 
 import common
 import model
@@ -711,12 +713,16 @@ def main(unused_argv):
               if common.OUTPUT_Z in output_dict:
                 eval_z = sess.run(cm_z, feed_dict=_feed_dict)
                 total_eval_z += eval_z
-              
+
               if FLAGS._3d_metrics:
                 if depth == 0:
                   Vref = []
                   Vseg = []
+                  Vref.append(data[common.LABEL][0,...,0])
+                  Vseg.append(pred[0])
                 elif depth == num_slice-1:
+                  Vref.append(data[common.LABEL][0,...,0])
+                  Vseg.append(pred[0])
                   dice_mean, ravd_mean, attend_class = 0, 0, 0
                   # TODO: optimize
                   for i in range(1, num_class):
@@ -732,6 +738,24 @@ def main(unused_argv):
                   print("dice_mean: {}, ravd_mean: {}".format(dice_mean/attend_class, ravd_mean/attend_class))
                   total_dice_mean.append(dice_mean/attend_class)
                   total_ravd_mean.append(ravd_mean/attend_class)
+                  
+                  # temporally
+                  Vseg = np.array(Vseg,order='A')
+                  file_list = os.listdir("/home/user/DISK/data/Jing/data/Training/raw/")
+                  file_list.sort()
+                  file_list = file_list[24:]
+                  nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Training/raw/", file_list[file_idx]))
+                  affine = nii_img.affine.copy()
+                  hdr = nii_img.header.copy()
+                  Vseg = np.swapaxes(Vseg,0,2)
+                  Vseg = Vseg[:,::-1]
+                  print(nii_img.get_data().shape, Vseg.shape)
+                  new_nii = nib.Nifti1Image(Vseg, affine, hdr)
+                  out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files_val")
+                  if not os.path.exists(out_dir):
+                    os.makedirs(out_dir, exist_ok=True)
+                  nib.save(new_nii, os.path.join(out_dir, 'img%04d.nii.gz' %(file_idx+61)))
+                  file_idx += 1
                 else:
                   Vref.append(data[common.LABEL][0,...,0])
                   Vseg.append(pred[0])
@@ -740,18 +764,18 @@ def main(unused_argv):
               if sub_dataset == "2013_MICCAI_Abdominal":
                 if depth == 0:
                   Vseg = []
+                  Vseg.append(pred[0])
                 elif depth == num_slice-1:
+                  Vseg.append(pred[0])
                   Vseg = np.array(Vseg,order='A')
                   file_list = os.listdir("/home/user/DISK/data/Jing/data/Testing/raw/")
                   file_list.sort()
                   nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Testing/raw/", file_list[file_idx]))
                   affine = nii_img.affine.copy()
                   hdr = nii_img.header.copy()
-                  # Vseg = Vseg[:,::-1]
-                  # Vseg = np.swapaxes(Vseg,0,1)
                   Vseg = np.swapaxes(Vseg,0,2)
-                  Vseg = Vseg[::-1]
-                  new_nii = nib.Nifti1Image(Vseg, np.eye(4), hdr)
+                  Vseg = Vseg[:,::-1]
+                  new_nii = nib.Nifti1Image(Vseg, affine, hdr)
                   out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files")
                   if not os.path.exists(out_dir):
                     os.makedirs(out_dir, exist_ok=True)
@@ -759,7 +783,7 @@ def main(unused_argv):
                   file_idx += 1
                 else:
                   Vseg.append(pred[0])
-            
+
             if i in display_imgs:
               if FLAGS.show_pred_only:
                 file_name = "result{:03d}.png".format(depth)
@@ -776,10 +800,10 @@ def main(unused_argv):
                     task5_path = os.path.join(eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
                   task3 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 0, 3: 0, 4: 0})
                   task5 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 126, 3: 189, 4: 252})
-                  
+
                   file_utils.save_in_image(task3, task3_path, file_name)
                   file_utils.save_in_image(task5, task5_path, file_name)
-                  
+
                 if depth == data[common.NUM_SLICES][0]-1:
                   j += 1
                 if i == num_sample-1:
@@ -1027,3 +1051,14 @@ def main(unused_argv):
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
+    """
+    im = sitk.ReadImage("/home/user/DISK/data/Jing/data/Training/raw/img0040.nii.gz")
+    spacing = im.GetSpacing()
+    print(spacing)
+
+    im2 = nib.load("/home/user/DISK/data/Jing/data/Training/raw/img0039.nii.gz")
+    header_info = im2.header
+    print(header_info)
+    print(len(header_info['pixdim']))
+    print(im2.affine)
+    """

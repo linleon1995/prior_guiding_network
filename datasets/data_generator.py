@@ -31,7 +31,7 @@ _DATASETS_INFORMATION = {
 _DATASETS_STORING_PATH_MAP = {
     '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
                               "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
-                              "test": None},
+                              "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Test_Sets/"},
     '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
                            "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
                            "test":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/"},
