@@ -5,7 +5,6 @@ Created on Mon Jan 13 10:18:33 2020
 @author: Jing-Siang, Lin
 """
 
-
 import os
 import sys
 import argparse
@@ -21,13 +20,10 @@ parser.add_argument('--data_dir', type=str, required=True,
                     help='2019 ISBI CHAOS dataset root folder.')
 
 parser.add_argument('--output_dir', type=str, required=True,
-                    help='Path to save converted TensorFlow examples.')
-
-parser.add_argument('--seq_length', type=int, required=True,
-                    help='The slice number in single sequence.')
+                    help='Path to save converted SSTable of TensorFlow examples.')
 
 parser.add_argument('--split_indices', nargs='+', type=int,
-                    help="Indices to for the training set and validation set splitting.")
+                    help="")
 
 
 MR_LABEL_CONVERT = {63: 1, 126: 2, 189: 3, 252: 4}
@@ -65,6 +61,7 @@ _DATA_FORMAT_MAP = {
     'image': 'dcm',
     'label': 'png',
 }
+
 
 def _get_files(data_path, modality, img_or_label):
   """Gets files for the specified data type and dataset split.
@@ -132,62 +129,7 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
   return height, width
 
 
-def _convert_single_subject_to_seq(output_filename, modality, seq_length, image_files, label_files=None):
-  with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-    if label_files is not None:
-      assert len(image_files) == len(label_files)
-      label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
-
-    image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
-    for i in range(len(image_files)):
-        sequence = tf.train.SequenceExample()
-        context = sequence.context.feature
-        features = sequence.feature_lists.feature_list
-
-        num_slices = len(image_files)
-        start = i - seq_length // 2
-        for j in range(start, start+seq_length):
-            if j < 0:
-                slice_idx = 0
-            elif j > num_slices-1:
-                slice_idx = num_slices-1
-            else:
-                slice_idx = j
-
-            # Read the image.
-            image_data = image_reader.decode_image(image_files[slice_idx])
-            image_data = image_data[0]
-            image_slice = image_data.tostring()
-            height, width = np.shape(image_data)
-
-            # Read the semantic segmentation annotation.
-            if label_files is not None:
-                seg_data = label_reader.decode_image(label_files[slice_idx])
-                if "MR" in modality:
-                    seg_data = file_utils.convert_label_value(seg_data, MR_LABEL_CONVERT)
-                elif "CT" in modality:
-                    seg_data = file_utils.convert_label_value(seg_data, {255: 1})
-                seg_slice = seg_data.tostring()
-
-            image_encoded = features['image/encoded'].feature.add()
-            image_encoded.bytes_list.value.append(image_slice)
-            if label_files is not None:
-                segmentation_encoded = features['segmentation/encoded'].feature.add()
-                segmentation_encoded.bytes_list.value.append(seg_slice)
-            depth_encoded = features['image/depth'].feature.add()
-            depth_encoded.int64_list.value.append(slice_idx)
-
-        context['dataset/num_frames'].int64_list.value.append(num_slices)
-        context['image/format'].bytes_list.value.append(_DATA_FORMAT_MAP["image"].encode('ascii'))
-        context['image/channels'].int64_list.value.append(1)
-        context['image/height'].int64_list.value.append(height)
-        context['image/width'].int64_list.value.append(width)
-
-        tfrecord_writer.write(sequence.SerializeToString())
-
-  return height, width
-
-def _convert_dataset(out_dir, dataset_split, modality, seq_length, train_split_indices=None):
+def _convert_dataset(data_dir, out_dir, dataset_split, modality, train_split_indices=None):
   """Converts the specified dataset split to TFRecord format.
   Args:
     dataset_split: The dataset split (e.g., train, val).
@@ -195,13 +137,15 @@ def _convert_dataset(out_dir, dataset_split, modality, seq_length, train_split_i
     RuntimeError: If loaded image and label have different shape, or if the
       image file with specified postfix could not be found.
   """
-  data_path = os.path.join(FLAGS.data_dir, _SPLIT_MAP[dataset_split], _MODALITY_MAP[modality][0])
+
+  data_path = os.path.join(data_dir, _SPLIT_MAP[dataset_split], _MODALITY_MAP[modality][0])
+
   folder_for_each_subject = os.listdir(data_path)
   folder_for_each_subject.sort()
   if train_split_indices is not None:
     if max(train_split_indices) > len(folder_for_each_subject):
       raise ValueError("Out of Range")
-    # Determine indices for train or validation split
+   
     if dataset_split == "train":
       split_indices = train_split_indices
     elif dataset_split == "val":
@@ -209,37 +153,40 @@ def _convert_dataset(out_dir, dataset_split, modality, seq_length, train_split_i
     folder_for_each_subject = [folder_for_each_subject[idx] for idx in split_indices]
 
   num_shard = len(folder_for_each_subject)
+
+  # make dir if not exist
   if not os.path.exists(out_dir):
     os.makedirs(out_dir, exist_ok=True)
-  total_slices = 0
 
+  total_slices = 0
   for shard_id, sub_folder in enumerate(folder_for_each_subject):
     path = os.path.join(data_path, sub_folder)
+
     image_files = _get_files(path, modality, img_or_label="image")
     kwargs={"image_files": image_files}
     if dataset_split in ("train", "val"):
       label_files = _get_files(path, modality, img_or_label="label")
       kwargs["label_files"] = label_files
+
+    total_slices += len(image_files)
+
     shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
           dataset_split, modality, shard_id, num_shard)
-    output_filename = os.path.join(out_dir, shard_filename)
 
-    # Convert single subject
-    if seq_length > 1:
-      height, width = _convert_single_subject_to_seq(output_filename, modality, seq_length, **kwargs)
-    else:
-      height, width = _convert_single_subject(output_filename, modality, **kwargs)
+    output_filename = os.path.join(out_dir, shard_filename)
+    height, width = _convert_single_subject(output_filename, modality, **kwargs)
 
     sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
         dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
-    total_slices += len(image_files)
 
   sys.stdout.write('\n' + 60*"-")
   sys.stdout.write('\n total_slices: {}'.format(total_slices))
   sys.stdout.write('\n')
   sys.stdout.flush()
 
+
 def main(unused_argv):
+  assert FLAGS.split_indices[1] > FLAGS.split_indices[0]
   dataset_split = {
                   "train": list(range(*FLAGS.split_indices)),
                   "val": list(range(*FLAGS.split_indices)),
@@ -251,11 +198,8 @@ def main(unused_argv):
       if "MR_T1" in modality_for_output:
         modality_for_output = "MR_T1"
 
-      if FLAGS.seq_length > 1:
-        out_dir = os.path.join(FLAGS.output_dir, "seq"+str(FLAGS.seq_length), _SPLIT_MAP[split], modality_for_output)
-      else:
-        out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split], modality_for_output)
-      _convert_dataset(out_dir, split, m, FLAGS.seq_length, dataset_split[split])
+      out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split], modality_for_output)
+      _convert_dataset(FLAGS.data_dir, out_dir, split, m, dataset_split[split])
 
 
 if __name__ == '__main__':

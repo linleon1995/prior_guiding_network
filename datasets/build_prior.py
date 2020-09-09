@@ -1,10 +1,7 @@
 import os
 import numpy as np
-import nibabel as nib
-import argparse
 import matplotlib.pyplot as plt
 import cv2
-import SimpleITK as sitk
 import file_utils
 
 class build_medical_images_prior(object):
@@ -46,25 +43,6 @@ class build_medical_images_prior(object):
         file_name = os.path.join(self.img_output_dir, self.img_name+".png")
         cv2.imwrite(file_name, img)
 
-    # def save_prior(self, prior):
-    #     if not os.path.exists(self.output_dir):
-    #         os.makedirs(self.output_dir, exist_ok=True)
-    #     prior_name = get_prior_name(self.num_slice, self.num_subject)
-
-    #     if self.save_prior_in_npy:
-    #         np.save(os.path.join(self.output_dir, prior_name+".npy"), prior)
-
-    #     if self.save_prior_in_img:
-    #         img_output_dir = os.path.join(self.output_dir, "priors_img")
-    #         if not os.path.exists(img_output_dir):
-    #             os.makedirs(img_output_dir, exist_ok=True)
-
-    #         for i in range(self.num_slice):
-    #             for j in range(self.num_class):
-    #                 img_name = prior_name + "-depth%03d-class%03d" %(i, j)
-    #                 file_name = os.path.join(img_output_dir, img_name+".png")
-    #                 cv2.imwrite(file_name, np.int32(255*prior[:,:,j,i]))
-
 
 def get_prior_name(num_slice, num_subject):
     return "train-slice%03d-subject%03d" %(num_slice, num_subject)
@@ -79,11 +57,6 @@ def np_onehot(data, num_class=None):
 
 
 def remove_zeros_slice(data):
-    """
-    one-hot data in specific class: [H,W,C]
-    Return
-        [H,W,C'] which includes all non-zero frame
-    """
     nonzero_idx = np.nonzero(np.sum(np.sum(data, axis=0), axis=0))
     nonzero_idx = nonzero_idx[0]
     start, end = nonzero_idx[0], nonzero_idx[-1]
@@ -93,17 +66,17 @@ def remove_zeros_slice(data):
 
 def normalize_slice(data, num_slice):
     """
-    data: [H,W,C]
-    num_slice: C'
+    Args:
+        data: Volume data for single subject (patient) in shape [H,W,C]
+        num_slice: The number of normalization level (K)
     Return:
-        normalized_data: [H,W,C']
+        normalized_data: Normalized data in shape [H,W,K]
     """
     c = data.shape[2]
     seg = np.linspace(0, c+1, num_slice+1)
     seg = np.int32(seg)
 
     normalized_data = []
-    # for i, _ in enumerate(seg):
     for i in range(seg.shape[0]-1):
         if i <= num_slice:
             region = data[...,seg[i]:seg[i+1]]
@@ -121,12 +94,6 @@ def normalize_value(data):
 
 
 def merge_training_seg(load_func, file_list, num_subject, num_slice, num_class, remove_zeros):
-    """
-    data_list: [data1, data2,..., dataN]
-    data: [H,W,C]
-    Returns:
-        [H,W,C,K]
-    """
     norm_data_list = []
     merge_list = []
     assert num_subject <= len(file_list)

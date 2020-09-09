@@ -212,15 +212,16 @@ class Dataset(object):
         }
 
         if "train" in self.split_name or "val" in self.split_name:
-            features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            # features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             # features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         if "train" in self.split_name or "val" in self.split_name:
-            # label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
+            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            # label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
             # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
