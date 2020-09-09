@@ -8,18 +8,29 @@ Created on Mon Jan 13 10:18:33 2020
 
 import glob
 import math
-import os.path
+import os
 import re
 import sys
 import argparse
 import numpy as np
 import tensorflow as tf
+<<<<<<< HEAD
 
 import build_medical_data, file_utils
+=======
+import matplotlib.pyplot as plt
+import build_medical_data, file_utils, dataset_infos
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+ 
+# TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
+# TODO: Should call this file to build dataset instead of calling single function
+# FLAGS = tf.app.flags.FLAGS
+>>>>>>> 884293048ea389149e401a5333f864a32dd5c751
 
 
 parser = argparse.ArgumentParser()
 
+<<<<<<< HEAD
 parser.add_argument('--data_dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
                     help='MICCAI 2013 dataset root folder.')
 
@@ -43,6 +54,34 @@ parser.add_argument('--split_indices', type=int, default=None,
 parser.add_argument('--extract_fg_exist_slice', type=bool, default=False,
                     help='')
 
+=======
+parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/testing/',
+                    help='MICCAI 2013 dataset root folder.')
+
+parser.add_argument('--output_dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/',
+                    help='Path to save converted SSTable of TensorFlow examples.')                    
+
+parser.add_argument('--dataset-split', type=str, default=None,
+                    help='') 
+
+parser.add_argument('--num-shard', type=int, default=None,
+                    help='')  
+
+parser.add_argument('--num_samples', type=int, default=None,
+                    help='')  
+
+# TODO: manage multiple integers
+parser.add_argument('--split-indices', type=int, default=None,
+                    help='') 
+
+parser.add_argument('--extract_fg_exist_slice', type=bool, default=False,
+                    help='')
+
+               
+_NUM_SLICES = 3779
+NUM_CLASS = 14
+_DATA_TYPE = "2D"
+>>>>>>> 884293048ea389149e401a5333f864a32dd5c751
 
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
@@ -80,20 +119,20 @@ def _get_files(data, data_dir, dataset_split, split_indices=None):
   """
   # TODO: description
   # TODO: dataset converting and prior converting should be separate, otherwise prior converting will be executed twice
-
+ 
   filenames = file_utils.get_file_list(
     data_dir+_FOLDERS_MAP[data]+"/", fileStr=[dataset_split], fileExt=["nii.gz"], sort_files=True)
-
+  
   if split_indices is not None:
     # TODO: do it correctly
     if split_indices[1] > len(filenames):
       raise ValueError("Out of Range")
-
+    
     filenames = filenames[split_indices[0]:split_indices[1]]
-
+    
   # if data == 'label' and dataset_split == 'test':
   #   return None
-
+  
   return filenames
 
 
@@ -124,26 +163,27 @@ def _convert_dataset(dataset_split, data_dir, output_dir, extract_fg_exist_slice
         dataset_split, shard_id, num_images)
     output_filename = os.path.join(output_dir, shard_filename)
     with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-
+      
       # Read the image.
       image_data = image_reader.decode_image(image_files[shard_id])
       image_data = image_data[:,::-1]
       height, width, num_slices = image_reader.read_image_dims(image_data)
-
+      
       if extract_fg_exist_slice:
         image_type = "image (foreground)"
       else:
         image_type = "image"
-
+      
+      # TODO: Incorrect num_slice information for forground case  
       sys.stdout.write('\n>> [{}] Converting {} {}/{} shard {} in num_frame {} and size[{},{}]'.format(
-        dataset_split, image_type, shard_id+1, num_images, shard_id+1, len(image_files), height, width))
-
+        dataset_split, image_type, shard_id+1, num_images, shard_id+1, num_slices, height, width))
+      
       # sys.stdout.flush()
       if dataset_split in ("train", "val"):
         # Read the semantic segmentation annotation.
         seg_data = label_reader.decode_image(label_files[shard_id])
         seg_data = seg_data[:,::-1]
-
+        
         seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
         if height != seg_height or width != seg_width:
           raise RuntimeError('Shape mismatched between image and label.')
@@ -187,21 +227,18 @@ def _convert_dataset(dataset_split, data_dir, output_dir, extract_fg_exist_slice
 def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
-  # data_dir = "/home/user/DISK/data/Jing/data/Training/"
-  # output_dir = "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Trian_Sets/tfrecord/"
-  # dataset_split = {
-  #                  "train": [0,24],
-  #                  "val": [24,30],
-  #                  "test": None
-  #                  }
-  # for extract_fg_exist_slice in [True, False]:
-  #   for split, indices in dataset_split.items():
-  #     _convert_dataset(split, data_dir, output_dir, extract_fg_exist_slice, indices)
-
+  data_dir = "/home/user/DISK/data/Jing/data/Training/"
+  output_dir = "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Train_Sets/"
+  dataset_split = {"train": [0,24],
+                   "val": [24,30]}
+  for extract_fg_exist_slice in [True, False]:
+    for split, indices in dataset_split.items():
+      _convert_dataset(split, data_dir, output_dir, extract_fg_exist_slice, indices)
+      
   data_dir = "/home/user/DISK/data/Jing/data/Testing/"
   output_dir = "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Test_Sets/"
   _convert_dataset("test", data_dir, output_dir, False, None)
-
+  
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   main(unparsed)

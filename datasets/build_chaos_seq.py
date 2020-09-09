@@ -139,7 +139,6 @@ def _convert_single_subject_to_seq(dataset_name, output_filename, modality, seq_
         sequence = tf.train.SequenceExample()
         context = sequence.context.feature
         features = sequence.feature_lists.feature_list
-
         num_slices = len(image_files)
         start = i - seq_length // 2
         for j in range(start, start+seq_length):
@@ -156,7 +155,6 @@ def _convert_single_subject_to_seq(dataset_name, output_filename, modality, seq_
             image_slice = image_data.tostring()
             # print(np.shape(image_data))
             height, width = np.shape(image_data)
-
             # Read the semantic segmentation annotation.
             if label_files is not None:
                 seg_data = label_reader.decode_image(label_files[slice_idx])
@@ -177,22 +175,22 @@ def _convert_single_subject_to_seq(dataset_name, output_filename, modality, seq_
                 segmentation_encoded.bytes_list.value.append(seg_slice)
             depth_encoded = features['image/depth'].feature.add()
             depth_encoded.int64_list.value.append(slice_idx)
-
-
+                
+            
         context['dataset/name'].bytes_list.value.append(dataset_name.encode('ascii'))
         context['dataset/num_frames'].int64_list.value.append(num_slices)
         context['image/format'].bytes_list.value.append(_DATA_FORMAT_MAP["image"].encode('ascii'))
         context['image/channels'].int64_list.value.append(1)
         context['image/height'].int64_list.value.append(height)
         context['image/width'].int64_list.value.append(width)
-
+    
         tfrecord_writer.write(sequence.SerializeToString())
 
     #   # Read the semantic segmentation annotation.
     #   example_kwargs = {}
     #   if label_files is not None:
     #     seg_data = label_reader.decode_image(label_files[i])
-
+        
     #     if "MR" in modality:
     #       seg_data = file_utils.convert_label_value(seg_data, MR_LABEL_CONVERT)
     #       # if i %10 == 0:
@@ -210,7 +208,7 @@ def _convert_single_subject_to_seq(dataset_name, output_filename, modality, seq_
     #     example_kwargs = {"seg_data": seg_slice,
     #                       # "organ_label": organ_label
     #                       }
-
+        
     #     # print(np.min(seg_data), np.max(seg_data))
     #   # # TODO: re_match?
     #   # re_match = _IMAGE_FILENAME_RE.search(image_files[i])
@@ -251,8 +249,7 @@ def _convert_dataset(dataset_name, out_dir, dataset_split, modality, seq_length,
   # TODO: make dir automatically
   if not os.path.exists(out_dir):
     os.makedirs(out_dir, exist_ok=True)
-
-  print(folder_for_each_subject)
+          
   total_slices = 0
   for shard_id, sub_folder in enumerate(folder_for_each_subject):
     path = os.path.join(data_path, sub_folder)
@@ -268,23 +265,23 @@ def _convert_dataset(dataset_name, out_dir, dataset_split, modality, seq_length,
     #     shard_id+1, num_shard, shard_id+1, len(image_files)))
 
     total_slices += len(image_files)
-
+    
     shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
           dataset_split, modality, shard_id, num_shard)
 
     output_filename = os.path.join(out_dir, shard_filename)
     height, width = _convert_single_subject_to_seq(dataset_name, output_filename, modality, seq_length, **kwargs)
-
+    
     sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
         dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
-
+  
   sys.stdout.write('\n' + 60*"-")
   sys.stdout.write('\n total_slices: {}'.format(total_slices))
   sys.stdout.write('\n')
   sys.stdout.flush()
 
 
-
+ 
 def unit_test_get_files():
   total_files = {}
   for img_or_label in ['image', 'label']:
@@ -300,10 +297,10 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   # unit_test_get_files()
-
+  
   dataset_split = {
-                  # "train": [0,16],
-                  # "val": [16,20],
+                #   "train": [0,16],
+                #   "val": [16,20],
                   "test": None
                   }
   for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
@@ -312,7 +309,7 @@ def main(unused_argv):
       modality_for_output = m
       if "MR_T1" in modality_for_output:
         modality_for_output = "MR_T1"
-
+        
       out_dir = os.path.join(FLAGS.output_dir, "seq"+str(FLAGS.seq_length), _SPLIT_MAP[split], modality_for_output)
       _convert_dataset(FLAGS.dataset_name, out_dir, split, m, FLAGS.seq_length, dataset_split[split])
 

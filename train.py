@@ -1,12 +1,12 @@
 import os
+import math
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import glob
-import nibabel as nib
 import argparse
 import six
 import time
+from tensorflow.python.ops import math_ops
 
 import model
 import common
@@ -16,8 +16,7 @@ from datasets import data_generator
 from utils import train_utils, eval_utils
 from core import features_extractor
 import input_preprocess
-from tensorflow.python.ops import math_ops
-import math
+
 colorize = train_utils.colorize
 # spatial_transfom_exp = experiments.spatial_transfom_exp
 
@@ -48,13 +47,12 @@ LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
 # TODO: shouldn't just select the first dataset pre_crop_size
 #DATA_INFO = data_generator._DATASETS_INFORMATION[DATASET_NAME[0]]
 
-# TODO: tf argparse
 # TODO: dropout
 # TODO: Multi-Scale Training
 # TODO: flags.DEFINE_multi_integer
 # TODO: Solve Warning in new tensorflow version
 # TODO: tf.gather problem
-
+# TODO: num_clones=2 and image_only --> bug
 
 def create_training_path(train_logdir):
     # TODO: Check whether empty of last folder before creating new one
@@ -886,7 +884,6 @@ def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, st
   # predictions = tf.cast(predictions, tf.int32)
   prediction = eval_utils.inference_segmentation(logits, dim=3)
   pred_flat = tf.reshape(prediction, shape=[-1,])
-
   # labels = tf.squeeze(samples[common.LABEL], axis=3)
 
   if FLAGS.seq_length > 1:

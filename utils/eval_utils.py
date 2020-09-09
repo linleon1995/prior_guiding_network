@@ -47,6 +47,40 @@ def eval_flol_model(dsc_in_diff_th, threshold):
     ax.set_ylabel("Dice Score")
     plt.show()
 
+
+def print_checkpoint_tensor_name(checkpoint_dir):
+    # TODO: all_tensors,  all_tensor_names for parameters
+    """Print all tensor name from graph"""
+    from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+    # List ALL tensors example output
+    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False, 
+                                    all_tensor_names=True)
+    
+  
+def eval_flol_model(dsc_in_diff_th, threshold):
+    """
+    """
+    ll = []
+    _, ax = plt.subplots(1,1)
+    num_class = len(dsc_in_diff_th)
+    for i, c in enumerate(dsc_in_diff_th):
+        if i < num_class-1:
+            label = class_to_organ[i+1]
+        else:
+            label = "mean"
+        if i+1 > 10:
+            ax.plot(threshold, c, "*-", label=label)
+        else:
+            ax.plot(threshold, c, label=label)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper right')
+    ax.set_xticks(threshold, minor=False)
+    ax.grid(True)
+    ax.set_title("Threshold to DSC for each calss")
+    ax.set_xlabel("Threshold")
+    ax.set_ylabel("Dice Score")
+    plt.show()
+
 class Build_Pyplot_Subplots(object):
     def __init__(self, saving_path, is_showfig, is_savefig, subplot_split, type_list):
         self.fig, self.ax = plt.subplots(figsize=(9,3),*subplot_split)

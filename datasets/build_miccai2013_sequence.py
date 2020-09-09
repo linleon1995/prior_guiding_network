@@ -18,21 +18,7 @@ import tensorflow as tf
 
 import build_medical_data, file_utils
  
-# TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
-# FLAGS = tf.app.flags.FLAGS
-
-# tf.app.flags.DEFINE_string('miccai_2013',
-#                            '/home/acm528_02/Jing_Siang/data/Synpase_raw/',
-#                            'MICCAI 2013 dataset root folder.')
-
-# tf.app.flags.DEFINE_string(
-#     'output_dir',
-#     '/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
-#     'Path to save converted SSTable of TensorFlow examples.')
-
-# TODO: code refactoring
 parser = argparse.ArgumentParser()
-
 parser.add_argument('--data-dir', type=str, default='/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Test_Sets/',
                     help='MICCAI 2013 dataset root folder.')
 
@@ -140,7 +126,7 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir):
 
     for shard_id in range(num_shard):
         shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
-            dataset_split, "seq", shard_id, _NUM_SHARDS)
+            dataset_split, "seq", shard_id, num_shard)
         output_filename = os.path.join(output_dir, shard_filename)
         with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
             sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
@@ -215,19 +201,10 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   for dataset_split in ['test']:
     _convert_dataset(dataset_split, FLAGS.data_dir, FLAGS.seq_length, os.path.join(FLAGS.output_dir, "tfrecord", "seq3", "Test_Sets"))
+  # for dataset_split in ['train', 'val']:
+  #   _convert_dataset(dataset_split, FLAGS.data_dir, FLAGS.seq_length, FLAGS.output_dir)
 
 
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   main(unparsed)
-    # import SimpleITK as sitk
-    # image = sitk.ReadImage("/home/acm528_02/Jing_Siang/project/Tensorflow/tf_thesis/label0001.nii.gz")
-
-    # # Access the numpy array:
-    # image_arr = sitk.GetArrayFromImage(image)
-
-    # image_arr = np.int32(image_arr)
-    # for i in range(0,240,20):
-    #     plt.imshow(image_arr[i])
-    #     plt.show()
-    # print(np.shape(image_arr))

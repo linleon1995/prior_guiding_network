@@ -45,14 +45,12 @@ def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
                     if f.startswith(file_start):
                         Str = True
                         break
-
         if fileExt is not None:
             if len(fileExt) > 0:   
                 for file_end in fileExt:
                     if f.endswith(file_end):
                         Ext = True
                         break
-
         if (Str and Ext) or (not Str and not Ext):
             file_list.append(os.path.join(path,f))
                 

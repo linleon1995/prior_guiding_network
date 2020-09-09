@@ -14,7 +14,7 @@ import tensorflow as tf
 import common
 import input_preprocess
 from core import preprocess_utils
-from datasets import build_prior, file_utils, dataset_infos
+from datasets import file_utils, dataset_infos
 from utils import train_utils
 
 _DATASETS_INFORMATION = {
@@ -212,15 +212,15 @@ class Dataset(object):
         }
 
         if "train" in self.split_name or "val" in self.split_name:
-            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             # features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         if "train" in self.split_name or "val" in self.split_name:
-            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            # label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
+            # label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
             # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
@@ -402,7 +402,6 @@ class Dataset(object):
             image = tf.expand_dims(tf.transpose(image, [2, 0, 1]), axis=3)
             if label is not None:
                 label = tf.expand_dims(tf.transpose(label, [2, 0, 1]), axis=3)
-
         sample[common.IMAGE] = image
         if not self.is_training:
             # Original image is only used during visualization.

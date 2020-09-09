@@ -158,7 +158,6 @@ def pgb_network(images,
                         prior_pred = tf.nn.sigmoid(prior_pred)
                 else:
                     prior_pred = None
-
             else:
                 prior_seg = None
                 prior_pred = None

@@ -25,11 +25,11 @@ MR_LABEL_CONVERT = {1: 63, 2: 126, 3: 189, 4: 252}
 # FLAGS = tf.app.flags.FLAGS
 
 parser = argparse.ArgumentParser()
-
 parser.add_argument('--data-dir', type=str, default='/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/',
                     help='MICCAI 2013 dataset root folder.')
 
 parser.add_argument('--output-dir', type=str, default='/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/',
+
                     help='Path to save converted SSTable of TensorFlow examples.')
 
 parser.add_argument('--dataset-split', type=str, default="train",
@@ -120,13 +120,13 @@ def _get_files(data_path, modality, img_or_label):
                                        sort_files=True)
   return filenames
 
-
 def _convert_single_subject(output_filename, modality, image_files, label_files=None):
   """write one subject in one tfrecord sample
   """
   with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
     if label_files is not None:
       assert len(image_files) == len(label_files)
+      # TODO: if ITK could accept all format, just remove the reader format option
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
@@ -148,39 +148,24 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
         seg_data = label_reader.decode_image(label_files[i])
         
         if "MR" in modality:
-          seg_data = convert_label_value(seg_data, MR_LABEL_CONVERT)
-          # if i %10 == 0:
-          #   print(np.shape(seg_data))
-          #   plt.imshow(seg_data)
-          #   plt.show()
+          seg_data = file_utils.convert_label_value(seg_data, MR_LABEL_CONVERT)
         elif "CT" in modality:
-          seg_data = convert_label_value(seg_data, {1: 255})
-        # seg_data = seg_data // 255
-        
+          seg_data = file_utils.convert_label_value(seg_data, {255: 1})
+          
         seg_slice = seg_data.tostring()
+        example_kwargs = {"seg_data": seg_slice}
         
-        # seg_onehot = np.eye(N_CLASS)[seg_data]
-        # organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
-        example_kwargs = {"seg_data": seg_slice,
-                          # "organ_label": organ_label
-                          }
-        
-        print(np.min(image_data), np.max(image_data))
-        # print(np.min(seg_data), np.max(seg_data))
-      # # TODO: re_match?
-      # re_match = _IMAGE_FILENAME_RE.search(image_files[i])
-      # if re_match is None:
-      #   raise RuntimeError('Invalid image filename: ' + image_files[i])
-      # filename = os.path.basename(re_match.group(1))
       filename = image_files[i]
 
       example = build_medical_data.image_seg_to_tfexample(
-          image_slice, filename, height, width, depth=i, num_slices=num_slices, **example_kwargs)
+          image_slice, filename, height, width, depth=i, num_slices=num_slices, dataset_name=dataset_name, **example_kwargs)
+
       tfrecord_writer.write(example.SerializeToString())
 
   return height, width
 
-def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
+
+def _convert_dataset(data_dir, out_dir, dataset_name, dataset_split, modality, split_indices=None):
   """Converts the specified dataset split to TFRecord format.
   Args:
     dataset_split: The dataset split (e.g., train, val).
@@ -188,8 +173,7 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
     RuntimeError: If loaded image and label have different shape, or if the
       image file with specified postfix could not be found.
   """
-
-  data_path = os.path.join(FLAGS.data_dir, _SPLIT_MAP[dataset_split], _MODALITY_MAP[modality][0])
+  data_path = os.path.join(data_dir, _SPLIT_MAP[dataset_split], _MODALITY_MAP[modality][0])
 
   folder_for_each_subject = os.listdir(data_path)
   folder_for_each_subject.sort()
@@ -197,11 +181,8 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
     if split_indices[1] > len(folder_for_each_subject):
       raise ValueError("Out of Range")
     folder_for_each_subject = folder_for_each_subject[split_indices[0]:split_indices[1]]
-
-  if FLAGS.num_shard is not None:
-    num_shard = FLAGS.num_shard
-  else:
-    num_shard = len(folder_for_each_subject)
+    
+  num_shard = len(folder_for_each_subject)
 
   # TODO: make dir automatically
   if not os.path.exists(out_dir):
@@ -227,7 +208,8 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
           dataset_split, modality, shard_id, num_shard)
 
     output_filename = os.path.join(out_dir, shard_filename)
-    height, width = _convert_single_subject(output_filename, modality, **kwargs)
+
+    height, width = _convert_single_subject(dataset_name, output_filename, modality, **kwargs)
     
     sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
         dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
@@ -237,11 +219,6 @@ def _convert_dataset(out_dir, dataset_split, modality, split_indices=None):
   sys.stdout.write('\n')
   sys.stdout.flush()
 
-def convert_label_value(data, convert_dict):
-  # TODO: optimize
-  for k, v in convert_dict.items():
-    data[data==v] = k
-  return data
  
 def unit_test_get_files():
   total_files = {}
@@ -258,19 +235,20 @@ def main(unused_argv):
   # Only support converting 'train' and 'val' sets for now.
   # for dataset_split in ['train', 'val']:
   # unit_test_get_files()
-  dataset_split = {"train": [0,16],
-                    "val": [16,20],
-                    "test": None}
+  dataset_split = {
+                  "train": [0,16],
+                  "val": [16,20],
+                  "test": None
+                  }
   for m in ["CT", "MR_T2", "MR_T1_In", "MR_T1_Out"]:
     for split in dataset_split:
       modality_for_output = m
       if "MR_T1" in modality_for_output:
         modality_for_output = "MR_T1"
         
-      out_dir = os.path.join(FLAGS.output_dir, _SPLIT_MAP[split], modality_for_output)
-      _convert_dataset(out_dir, split, m, dataset_split[split])
-
-  # _convert_dataset("test", FLAGS.split_indices)
+      out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split], modality_for_output)
+      _convert_dataset(FLAGS.data_dir, out_dir, FLAGS.dataset_name, split, m, dataset_split[split])
+      
 
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
