@@ -1,14 +1,14 @@
 import tensorflow as tf
-from core import features_extractor, stn, voxelmorph, crn_network, utils, resnet_v1_beta, preprocess_utils
+from core import features_extractor, utils, resnet_v1_beta, preprocess_utils
 import common
 import math
 # spatial_transfom_exp = experiments.spatial_transfom_exp
 
 slim = tf.contrib.slim
-spatial_transformer_network = stn.spatial_transformer_network
-bilinear_sampler = stn.bilinear_sampler
-voxel_deformable_transform = voxelmorph.voxel_deformable_transform
-refinement_network = crn_network.refinement_network
+#spatial_transformer_network = stn.spatial_transformer_network
+#bilinear_sampler = stn.bilinear_sampler
+#voxel_deformable_transform = voxelmorph.voxel_deformable_transform
+#refinement_network = crn_network.refinement_network
 mlp = utils.mlp
 # conv2d = utils.conv2d
 # __2d_unet_decoder = utils.__2d_unet_decoder
@@ -215,109 +215,4 @@ def predict_z_dimension(feature, out_node, extractor_type):
         else:
             raise ValueError("Unknown Extractor Type")
     return z_logits
-
-
-# def get_slice_indice(indice, num_prior_slice, fused_slice):
-#     # TODO: fused slice could be even number
-#     # TODO: Non-uniform select --> multiply mask
-#     # Make sure num_prior_slice always bigger than fused_slice
-#     print(indice, 50*"o")
-#     # From prob to slice index
-#     indice = tf.multiply(indice, num_prior_slice)
-#     print(indice, 50*"o")
-#     # Shifhting to avoid out of range access
-#     if fused_slice > 1:
-#         shift = tf.divide(tf.cast(fused_slice, tf.int32), 2)
-#         low = shift
-#         high = num_prior_slice - shift
-#         indice = tf.clip_by_value(indice, low, high)
-#         start = indice - shift
-#         end = indice + shift
-#         indice = tf.concat([start, end], axis=1)
-#     print(indice, 50*"o")
-#     # Select the neighbor slices
-#     def _range_fn(tp):
-#         tp0 = tp[0]
-#         tp1 = tp[1] + 1
-#         return tf.range(tp0, tp1)
-#     indice = tf.map_fn(lambda tp: _range_fn(tp), indice)
-#     print(indice, 50*"o")
-#     # One-hot encoding
-#     indice = tf.one_hot(indices=indice,
-#                         depth=num_prior_slice,
-#                         on_value=1,
-#                         off_value=0,
-#                         axis=1)
-#     print(indice, 50*"o")
-#     return indice
-
-
-# def predict_z_dimension(features, z_label_method, z_class):
-#     with tf.variable_scope('z_prediction_branch'):
-#         gap = tf.reduce_mean(features, axis=[1,2], keep_dims=False)
-#         if z_label_method == 'regression':
-#             z_logits = mlp(gap, output_dims=1, scope='z_info_extractor')
-#             z_pred = tf.nn.sigmoid(z_logits)
-#             z_pred = tf.squeeze(z_pred, axis=1)
-#         elif z_label_method == "classification":
-#             z_logits = mlp(gap, output_dims=z_class, scope='z_info_extractor')
-#             z_pred = tf.nn.softmax(z_logits, axis=1)
-#             z_pred = tf.expand_dims(tf.expand_dims(z_pred, axis=1), axis=1)
-#         else:
-#             raise ValueError("Unknown z prediction model type")
-
-#     return z_pred
-
-
-# def get_adaptive_guidance(prior_segs,
-#                           z_pred,
-#                           z_label_method,
-#                           num_class=None,
-#                           prior_slice=None,
-#                           fusion_slice=None):
-#     if z_label_method == "regression":
-#         indice = get_slice_indice(indice=z_pred, num_prior_slice=prior_slice, fused_slice=fusion_slice)
-#         prior_seg = tf.matmul(prior_segs, indice)
-#         # TODO: get average?
-#     elif  z_label_method == 'classification':
-#         prior_seg = tf.multiply(prior_segs, z_pred)
-#     else:
-#         raise ValueError("Unknown model type for z predicition")
-
-#     if num_class is not None:
-#         prior_seg = tf.cast(prior_seg, tf.int32)
-#         prior_seg  = tf.one_hot(prior_seg, num_class, 1, 0, axis=3)
-#         prior_seg = tf.cast(prior_seg, tf.float32)
-#     return prior_seg
-
-
-
-
-
-# def refine_by_decoder(images, prior_seg, prior_pred, stage_pred_loss, layers_dict, fusions, out_node,
-#                       fine_tune_batch_norm=True, weight_decay=0.0, reuse=None, is_training=None):
-#     # batch_norm_params = utils.get_batch_norm_params(
-#     #     decay=0.9997,
-#     #     epsilon=1e-5,
-#     #     scale=True,
-#     #     is_training=(is_training and fine_tune_batch_norm),
-#     #     # sync_batch_norm_method=model_options.sync_batch_norm_method
-#     #     )
-#     # # batch_norm = utils.get_batch_norm_fn(
-#     # #     model_options.sync_batch_norm_method)
-#     # batch_norm = slim.batch_norm
-#     # with slim.arg_scope(
-#     #     [slim.conv2d, slim.separable_conv2d],
-#     #     weights_regularizer=slim.l2_regularizer(weight_decay),
-#     #     activation_fn=tf.nn.relu,
-#     #     normalizer_fn=slim.batch_norm,
-#     #     padding='SAME',
-#     #     stride=1,
-#     #     reuse=reuse):
-#     #     with slim.arg_scope([batch_norm], **batch_norm_params):
-#     refine_model = utils.Refine(layers_dict, fusions, prior=prior_seg, stage_pred_loss=stage_pred_loss,
-#                                 prior_pred=prior_pred, guid_conv_nums=64, guid_conv_type="conv",
-#                                 embed_node=out_node, weight_decay=weight_decay, is_training=is_training)
-#     logits, preds = refine_model.model()
-#     return logits, preds
 

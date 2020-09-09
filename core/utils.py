@@ -119,6 +119,7 @@ class Refine(object):
             elif "guid_class" in self.fusions:
               guid = self.prior_pred
             elif "guid_uni" in self.fusions or "context_att" in self.fusions or "self_att" in self.fusions:
+              guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
 
           for i, v in enumerate(self.low_level):
