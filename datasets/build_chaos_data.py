@@ -100,6 +100,7 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
+    num_slices = len(image_files)
     for i in range(len(image_files)):
       # Read the image.
       image_data = image_reader.decode_image(image_files[i])
@@ -107,8 +108,6 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
 
       image_slice = image_data.tostring()
       height, width = np.shape(image_data)
-
-      num_slices = len(image_files)
 
       # Read the semantic segmentation annotation.
       example_kwargs = {}
@@ -126,7 +125,7 @@ def _convert_single_subject(output_filename, modality, image_files, label_files=
       filename = image_files[i]
 
       example = build_medical_data.image_seg_to_tfexample(
-          image_slice, filename, height, width, depth=i, num_slices=num_slices, **example_kwargs)
+          image_slice, height, width, depth=i, num_slices=num_slices, **example_kwargs)
       tfrecord_writer.write(example.SerializeToString())
 
   return height, width
@@ -139,12 +138,13 @@ def _convert_single_subject_to_seq(output_filename, modality, seq_length, image_
       label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
 
     image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
+    num_slices = len(image_files)
     for i in range(len(image_files)):
         sequence = tf.train.SequenceExample()
         context = sequence.context.feature
         features = sequence.feature_lists.feature_list
 
-        num_slices = len(image_files)
+        # Aceess slices for each sequence sample
         start = i - seq_length // 2
         for j in range(start, start+seq_length):
             if j < 0:
@@ -176,13 +176,11 @@ def _convert_single_subject_to_seq(output_filename, modality, seq_length, image_
                 segmentation_encoded.bytes_list.value.append(seg_slice)
             depth_encoded = features['image/depth'].feature.add()
             depth_encoded.int64_list.value.append(slice_idx)
-
-        context['dataset/num_frames'].int64_list.value.append(num_slices)
-        context['image/format'].bytes_list.value.append(_DATA_FORMAT_MAP["image"].encode('ascii'))
-        context['image/channels'].int64_list.value.append(1)
+        
         context['image/height'].int64_list.value.append(height)
         context['image/width'].int64_list.value.append(width)
-
+        context['image/num_slices'].int64_list.value.append(num_slices)
+        context['image/format'].bytes_list.value.append(_DATA_FORMAT_MAP["image"].encode('ascii'))
         tfrecord_writer.write(sequence.SerializeToString())
 
   return height, width
@@ -230,8 +228,8 @@ def _convert_dataset(out_dir, dataset_split, modality, seq_length, train_split_i
     else:
       height, width = _convert_single_subject(output_filename, modality, **kwargs)
 
-    sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} and size[{},{}]'.format(
-        dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), height, width))
+    sys.stdout.write('\n>> [{}:{}] Converting image {}/{} shard {} in num_frame {} sequence length {} and size[{},{}]'.format(
+        dataset_split, modality, shard_id+1, num_shard, shard_id+1, len(image_files), seq_length, height, width))
     total_slices += len(image_files)
 
   sys.stdout.write('\n' + 60*"-")

@@ -3,85 +3,39 @@
 """
 Created on Mon Jan 13 10:18:33 2020
 
-@author: EE_ACM528_04
+@author: Jing-Siang, Lin
 """
 
-import glob
-import math
+
 import os
 import re
 import sys
 import argparse
 import numpy as np
 import tensorflow as tf
-<<<<<<< HEAD
-
-import build_medical_data, file_utils
-=======
-import matplotlib.pyplot as plt
-import build_medical_data, file_utils, dataset_infos
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
- 
-# TODO: tensorflow 1.4 API doesn't support tf.app.flags.DEFINE_enume, apply this after update tensorflow version
-# TODO: Should call this file to build dataset instead of calling single function
-# FLAGS = tf.app.flags.FLAGS
->>>>>>> 884293048ea389149e401a5333f864a32dd5c751
-
+import build_medical_data
+import file_utils
+str2bool = file_utils.str2bool
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--data_dir', type=str, required=True,
+                    help='2015 MICCAI BTCV dataset root folder.')
 
-<<<<<<< HEAD
-parser.add_argument('--data_dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/',
-                    help='MICCAI 2013 dataset root folder.')
+parser.add_argument('--output_dir', type=str, required=True,
+                    help='Path to save converted TensorFlow examples.')
 
-parser.add_argument('--output_dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord',
-                    help='Path to save converted SSTable of TensorFlow examples.')
+parser.add_argument('--split_indices', nargs='+', type=int,
+                    help="Indices to for the training set and validation set splitting")
 
+parser.add_argument('--extract_fg_exist_slice', type=str2bool,
+                    help='Extract the slice including foreground')
 
-parser.add_argument('--dataset_split', type=str, default=None,
-                    help='')
-
-# parser.add_argument('--num_shard', type=int, default=None,
-#                     help='')
-
-# parser.add_argument('--num_samples', type=int, default=None,
-#                     help='')
-
-# TODO: manage multiple integers
-parser.add_argument('--split_indices', type=int, default=None,
-                    help='')
-
-parser.add_argument('--extract_fg_exist_slice', type=bool, default=False,
-                    help='')
-
-=======
-parser.add_argument('--data-dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/testing/',
-                    help='MICCAI 2013 dataset root folder.')
-
-parser.add_argument('--output_dir', type=str, default='/home/acm528_02/Jing_Siang/data/Synpase_raw/tfrecord/',
-                    help='Path to save converted SSTable of TensorFlow examples.')                    
-
-parser.add_argument('--dataset-split', type=str, default=None,
-                    help='') 
-
-parser.add_argument('--num-shard', type=int, default=None,
-                    help='')  
-
-parser.add_argument('--num_samples', type=int, default=None,
-                    help='')  
-
-# TODO: manage multiple integers
-parser.add_argument('--split-indices', type=int, default=None,
-                    help='') 
-
-parser.add_argument('--extract_fg_exist_slice', type=bool, default=False,
-                    help='')
-
-               
-_NUM_SLICES = 3779
-NUM_CLASS = 14
-_DATA_TYPE = "2D"
->>>>>>> 884293048ea389149e401a5333f864a32dd5c751
+# A map from data split to folder name that saves the data.
+_SPLIT_MAP = {
+    'train': 'Train_Sets',
+    'val': 'Train_Sets',
+    'test': 'Test_Sets',
+}
 
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
@@ -101,38 +55,25 @@ _DATA_FORMAT_MAP = {
     'label': 'nii.gz',
 }
 
-# TODO: describe
-# _DATA_SPLIT = 25/30
-
 # Image file pattern.
 _IMAGE_FILENAME_RE = re.compile('(.+)' + _POSTFIX_MAP['image'])
 
 
-def _get_files(data, data_dir, dataset_split, split_indices=None):
+def _get_files(data, data_dir, dataset_split, train_split_indices=None):
   """Gets files for the specified data type and dataset split.
-  Args:
-    data: String, desired data ('image' or 'label').
-    dataset_split: String, dataset split ('train', 'val', 'test')
-  Returns:
-    A list of sorted file names or None when getting label for
-      test set.
   """
-  # TODO: description
-  # TODO: dataset converting and prior converting should be separate, otherwise prior converting will be executed twice
- 
   filenames = file_utils.get_file_list(
-    data_dir+_FOLDERS_MAP[data]+"/", fileStr=[dataset_split], fileExt=["nii.gz"], sort_files=True)
+    os.path.join(data_dir, _SPLIT_MAP[dataset_split], _FOLDERS_MAP[data]), fileStr=[_POSTFIX_MAP[data]], fileExt=["nii.gz"], sort_files=True)
   
-  if split_indices is not None:
-    # TODO: do it correctly
-    if split_indices[1] > len(filenames):
+  if train_split_indices is not None:
+    if max(train_split_indices) > len(filenames):
       raise ValueError("Out of Range")
     
-    filenames = filenames[split_indices[0]:split_indices[1]]
-    
-  # if data == 'label' and dataset_split == 'test':
-  #   return None
-  
+    if dataset_split == "train":
+      split_indices = train_split_indices
+    elif dataset_split == "val":
+      split_indices = list(set(range(len(filenames)))-set(train_split_indices))
+    filenames = [filenames[idx] for idx in split_indices]
   return filenames
 
 
@@ -144,18 +85,21 @@ def _convert_dataset(dataset_split, data_dir, output_dir, extract_fg_exist_slice
     RuntimeError: If loaded image and label have different shape, or if the
       image file with specified postfix could not be found.
   """
-  image_files = _get_files('image', data_dir, _POSTFIX_MAP["image"], split_indices)
+  image_files = _get_files("image", data_dir, dataset_split, split_indices)
   if dataset_split in ("train", "val"):
-    label_files = _get_files('label', data_dir, _POSTFIX_MAP["label"], split_indices)
+    label_files = _get_files("label", data_dir, dataset_split, split_indices)
 
+  image_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["image"], channels=1)
+  if dataset_split in ("train", "val"):
+    label_reader = build_medical_data.ImageReader(_DATA_FORMAT_MAP["label"], channels=1)
+  
+  if not os.path.exists(output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+      
+  # Convert each subject to single tfrecord example  
   num_images = len(image_files)
-
-  image_reader = build_medical_data.ImageReader('nii.gz', channels=1)
-  if dataset_split in ("train", "val"):
-    label_reader = build_medical_data.ImageReader('nii.gz', channels=1)
-
   for shard_id in range(num_images):
-    if extract_fg_exist_slice:
+    if not extract_fg_exist_slice:
       shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
         dataset_split, "fg", shard_id, num_images)
     else:
@@ -163,81 +107,65 @@ def _convert_dataset(dataset_split, data_dir, output_dir, extract_fg_exist_slice
         dataset_split, shard_id, num_images)
     output_filename = os.path.join(output_dir, shard_filename)
     with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
-      
       # Read the image.
       image_data = image_reader.decode_image(image_files[shard_id])
       image_data = image_data[:,::-1]
       height, width, num_slices = image_reader.read_image_dims(image_data)
       
-      if extract_fg_exist_slice:
+      if not extract_fg_exist_slice:
         image_type = "image (foreground)"
       else:
         image_type = "image"
       
-      # TODO: Incorrect num_slice information for forground case  
       sys.stdout.write('\n>> [{}] Converting {} {}/{} shard {} in num_frame {} and size[{},{}]'.format(
         dataset_split, image_type, shard_id+1, num_images, shard_id+1, num_slices, height, width))
-      
-      # sys.stdout.flush()
+
+      # Read the semantic segmentation annotation.
       if dataset_split in ("train", "val"):
-        # Read the semantic segmentation annotation.
         seg_data = label_reader.decode_image(label_files[shard_id])
         seg_data = seg_data[:,::-1]
         
         seg_height, seg_width, _ = label_reader.read_image_dims(seg_data)
         if height != seg_height or width != seg_width:
           raise RuntimeError('Shape mismatched between image and label.')
-      # Convert to tf example.
-      # TODO: re_match?
+        
       re_match = _IMAGE_FILENAME_RE.search(image_files[shard_id])
       if re_match is None:
         raise RuntimeError('Invalid image filename: ' + image_files[shard_id])
       filename = os.path.basename(re_match.group(1))
 
-      # TODO: organ label
-      # if dataset_split in ("train", "val"):
-      #   seg_onehot = np.eye(NUM_CLASS)[seg_data]
-      #   organ_labels = np.sum(np.sum(seg_onehot, 1), 1)
-      #   organ_labels = np.int32(organ_labels>0)
+      num_fg_slice = 0
       for i in range(num_slices):
-        if extract_fg_exist_slice:
-          cond = np.sum(seg_data[i])
+        if not extract_fg_exist_slice:
+          fg_in_slice = np.sum(seg_data[i])
         else:
-          cond = True
-        if cond:
+          fg_in_slice = True
+        if fg_in_slice:
+          num_fg_slice += 1
           image_slice = image_data[i].tostring()
           if dataset_split in ("train", "val"):
             seg_slice = seg_data[i].tostring()
-            # organ_label = organ_labels[i].tostring()
-            example = build_medical_data.image_seg_to_tfexample(image_slice, filename, height, width, depth=i,
-                                                                num_slices=num_slices, seg_data=seg_slice)
+            example = build_medical_data.image_seg_to_tfexample(image_slice, height, width, depth=i,
+                                                                num_slices=num_fg_slice, seg_data=seg_slice)
           elif dataset_split == "test":
-            example = build_medical_data.image_seg_to_tfexample(image_slice, filename, height, width, depth=i,
-                                                                num_slices=num_slices)
-
-          tfrecord_writer.write(example.SerializeToString())
-
-
-
-
+            example = build_medical_data.image_seg_to_tfexample(image_slice, height, width, depth=i,
+                                                                num_slices=num_fg_slice)
+        tfrecord_writer.write(example.SerializeToString())
+      
   sys.stdout.write('\n')
   sys.stdout.flush()
 
 
 def main(unused_argv):
-  # Only support converting 'train' and 'val' sets for now.
-  # for dataset_split in ['train', 'val']:
-  data_dir = "/home/user/DISK/data/Jing/data/Training/"
-  output_dir = "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Train_Sets/"
-  dataset_split = {"train": [0,24],
-                   "val": [24,30]}
-  for extract_fg_exist_slice in [True, False]:
-    for split, indices in dataset_split.items():
-      _convert_dataset(split, data_dir, output_dir, extract_fg_exist_slice, indices)
+  assert FLAGS.split_indices[1] > FLAGS.split_indices[0]
+  dataset_split = {"train": list(range(*FLAGS.split_indices)),
+                   "val": list(range(*FLAGS.split_indices)),
+                   "test": None}
+  
+  for split, indices in dataset_split.items():
+    out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split])
+    _convert_dataset(split, FLAGS.data_dir, out_dir, True, indices)
       
-  data_dir = "/home/user/DISK/data/Jing/data/Testing/"
-  output_dir = "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Test_Sets/"
-  _convert_dataset("test", data_dir, output_dir, False, None)
   
 if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()

@@ -1,9 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan 13 10:18:33 2020
+@author: Jing-Siang, Lin
+"""
+
 import os
 import numpy as np
 import SimpleITK as sitk
 import cv2
 
 
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Unsupported value encountered.')
+        
+        
 def read_medical_images(file):
     image = sitk.ReadImage(file)
     image_arr = sitk.GetArrayFromImage(image)
@@ -26,8 +42,8 @@ def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_da
         sitk.WriteImage(out, os.path.join(out_dir, file_name+image_format))
     else:
         raise ValueError("Unknown saving_data_type")
-    
-    
+
+
 def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
     # TODO: fileStr, fileExt are empty list, None condition
     file_list = []
@@ -35,7 +51,7 @@ def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
         fileStr = [fileStr]
     if isinstance(fileExt, str):
         fileExt = [fileExt]
-        
+
     for f in os.listdir(path):
         # candidate = None
         Str, Ext = False, False
@@ -46,33 +62,32 @@ def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
                         Str = True
                         break
         if fileExt is not None:
-            if len(fileExt) > 0:   
+            if len(fileExt) > 0:
                 for file_end in fileExt:
                     if f.endswith(file_end):
                         Ext = True
                         break
         if (Str and Ext) or (not Str and not Ext):
             file_list.append(os.path.join(path,f))
-                
+
     if len(file_list) == 0:
-        raise ValueError("No file exist in %s" %path)  
-    
+        raise ValueError("No file exist in %s" %path)
+
     # Determine the number of files to load
     if sort_files:
         file_list.sort()
     if file_idx is not None:
         file_list = file_list[file_idx[0], file_idx[1]]
-        
+
     return file_list
 
 
 def convert_label_value(data, convert_dict):
-    # TODO: optimize
     for k, v in convert_dict.items():
         data[data==k] = v
     return data
- 
- 
+
+
 def save_in_image(data, path, file_name):
     if not os.path.exists(path):
         os.makedirs(path)

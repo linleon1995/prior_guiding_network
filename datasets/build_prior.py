@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan 13 10:18:33 2020
+@author: Jing-Siang, Lin
+"""
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

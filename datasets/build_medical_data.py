@@ -3,7 +3,7 @@
 """
 Created on Mon Jan 13 10:18:03 2020
 
-@author: EE_ACM528_04
+@author: Jing-Siang, Lin
 """
 
 import collections
@@ -26,7 +26,6 @@ class ImageReader(object):
     """
     self._image_format = image_format
 
-
   def decode_image(self, image_path):
       """
       """
@@ -37,20 +36,7 @@ class ImageReader(object):
       image_arr = sitk.GetArrayFromImage(image)
 
       self._decode = np.int32(image_arr)
-
-      # if self._image_format in ('.nii.gz', 'nii.gz', '.nii', 'nii'):
-
-      #
-
-      # elif self._image_format in ('dcm', '.dcm'):
-      #     import matplotlib.pyplot as plt
-      #     pass
-      #     image_arr = sitk.GetArrayFromImage(image)
-      #     self._decode = np.int32(image_arr)
-      #     plt.imshow(self._decode[0])
-      #     plt.show()
       return self._decode
-
 
   def read_image_dims(self, image):
       """
@@ -90,7 +76,7 @@ def _bytes_list_feature(values):
       bytes_list=tf.train.BytesList(value=[norm2bytes(values)]))
 
 
-def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slices, image_format=None, seg_data=None):
+def image_seg_to_tfexample(image_data, height, width, depth, num_slices, image_format=None, seg_data=None):
   """Converts one image/segmentation pair to tf example.
   Args:
     image_data: string of image data.
@@ -103,7 +89,6 @@ def image_seg_to_tfexample(image_data, filename, height, width, depth, num_slice
   """
   feature={
       'image/encoded': _bytes_list_feature(image_data),
-      'image/filename': _bytes_list_feature(filename),
       'image/height': _int64_list_feature(height),
       'image/width': _int64_list_feature(width),
       'image/depth': _int64_list_feature(depth),

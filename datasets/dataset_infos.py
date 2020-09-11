@@ -1,26 +1,21 @@
 
 import collections
 
-# TODO: might have multiple size in single dataset
-# TODO: remove ignore_label
-# TODO: gonna be a better way to do this --> Each dataset might have different params be recorded
-BASE_DATA_DIR = "/home/acm528_02/Jing_Siang/data/"
-
+BASE_DATA_DIR = "/home/user/DISK/data/Jing/data/"
 DatasetDescriptor = collections.namedtuple(
     'DatasetDescriptor',
     [
         'splits_to_sizes',  # Splits of the dataset into training, val and test.
         'num_classes',  # Number of semantic classes, including the
                         # background class (if exists). For example, there
-                        # are 20 foreground classes + 1 background class in
-                        # the PASCAL VOC 2012 dataset. Thus, we set
-                        # num_classes=21.
+                        # are 13 foreground classes + 1 background class in
+                        # the MICCAI BTCV dataset. Thus, we set
+                        # num_classes=14.
         'channel', # The image channel. Most of the time,  medical image channel would be 1.
         'ignore_label',  # Ignore label value.
         'height', # raw data height
         'width', # raw data width
         'train', # training parameters
-        'prior_dir', # prior storing directory
         'HU_window',
     ])
 
@@ -36,7 +31,6 @@ _ISBI_CHAOS_INFORMATION_CT = DatasetDescriptor(
     ignore_label=255,
     height=512,
     width=512,
-    prior_dir="/home/user/DISK/data/Jing/model/Thesis/priors/2019_ISBI_CHAOS/CT/",
     HU_window=[-125, 275],
     train={
         "train_crop_size": [256, 256],
@@ -56,7 +50,6 @@ _ISBI_CHAOS_INFORMATION_MR_T2 = DatasetDescriptor(
     ignore_label=255,
     height=256,
     width=256,
-    prior_dir="/home/user/DISK/data/Jing/model/Thesis/priors/2019_ISBI_CHAOS/MR_T2/",
     HU_window=None,
     train={
         "train_crop_size": [256, 256],
@@ -76,7 +69,6 @@ _ISBI_CHAOS_INFORMATION_MR_T1 = DatasetDescriptor(
     ignore_label=255,
     height=256,
     width=256,
-    prior_dir="/home/user/DISK/data/Jing/model/Thesis/priors/2019_ISBI_CHAOS/MR_T1/",
     HU_window=None,
     train={
         "train_crop_size": [256, 256],
@@ -96,13 +88,9 @@ _MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
     ignore_label=255,
     height=512,
     width=512,
-    prior_dir='/home/user/DISK/data/Jing/model/Thesis/priors/2013_MICCAI_BTCV/',
     HU_window=[-125, 275],
     train={
         "train_crop_size": [256, 256],
         "pre_crop_size": [460, 460],
     }
 )
-# 3111, 688
-# PRE_CROP_SIZE = {"train-val": [394, 440],
-#                  "train": [458, 440]}

@@ -30,18 +30,18 @@ echo "Converting 2019 ISBI CHAOS dataset in length=3 sequence..."
 python "${BUILD_SCRIPT}" \
   --data_dir="${CHAOS_ROOT}" \
   --output_dir="${OUTPUT_DIR}" \
-  --seq_length=£¾ \
+  --seq_length=3 \
   --split_indices 0 16
 
 
 # Build prior of the dataset
-PRIOR_DIR="${CHAOS_ROOT}/prior/"
+PRIOR_DIR="${CHAOS_ROOT}/priors/"
 mkdir -p "${PRIOR_DIR}"
 
 echo "Converting 2019 ISBI CHAOS dataset to prior..."
 python build_chaos_prior.py \
   --data_dir="${CHAOS_ROOT}" \
   --output_dir="${PRIOR_DIR}" \
-  --num_subject 1 2 \
+  --num_subject 16 20 \
   --prior_slice 1 \
   --modality CT MR_T1 MR_T2

@@ -3,7 +3,7 @@
 """
 Created on Wed Jul 31 21:39:35 2019
 
-@author: acm528_02
+@author: Jing-Siang, Lin
 """
 
 import numpy as np
@@ -18,49 +18,13 @@ from datasets import file_utils, dataset_infos
 from utils import train_utils
 
 _DATASETS_INFORMATION = {
-    '2013_MICCAI_Abdominal': dataset_infos._MICCAI_ABDOMINAL_INFORMATION,
+    '2015_MICCAI_Abdominal': dataset_infos._MICCAI_ABDOMINAL_INFORMATION,
     '2019_ISBI_CHAOS_CT': dataset_infos._ISBI_CHAOS_INFORMATION_CT,
     '2019_ISBI_CHAOS_MR_T1': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T1,
     '2019_ISBI_CHAOS_MR_T2': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T2,
 }
 
-# TODO: MR_T1 in and out
-#TODO: test set
-# /home/user/DISK/data/Jing/data/Training/tfrecord/
-# Single image path
-_DATASETS_STORING_PATH_MAP = {
-    '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
-                              "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord/",
-                              "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/img/Test_Sets/"},
-    '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
-                           "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/CT/",
-                           "test":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/CT/"},
-    '2019_ISBI_CHAOS_MR_T1': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
-                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T1/",
-                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T1/"},
-    '2019_ISBI_CHAOS_MR_T2': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
-                              "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Train_Sets/MR_T2/",
-                              "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/Test_Sets/MR_T2/"},
-    }
-
-# Ssquence data path
-# _DATASETS_STORING_PATH_MAP = {
-#     '2013_MICCAI_Abdominal': {"train": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
-#                               "val":  "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/Train_Sets/tfrecord_seq/",
-#                               "test": "/home/user/DISK/data/Jing/data/2013_MICCAI_BTCV/tfrecord/seq3/Test_Sets/"},
-
-#     '2019_ISBI_CHAOS_CT': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
-#                            "val":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/CT/",
-#                            "test":  "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/CT/"},
-#     '2019_ISBI_CHAOS_MR_T1': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
-#                               "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T1/",
-#                               "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T1/"},
-#     '2019_ISBI_CHAOS_MR_T2': {"train": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
-#                               "val": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Train_Sets/MR_T2/",
-#                               "test": "/home/user/DISK/data/Jing/data/2019_ISBI_CHAOS/tfrecord/seq3/Test_Sets/MR_T2/"},
-#     }
-
-# BASE_DATA_DIR = dataset_infos.BASE_DATA_DIR
+BASE_DATA_DIR = dataset_infos.BASE_DATA_DIR
 SPLIT_FOLDER_MAP = {"train": "Train_Sets",
                     "val": "Train_Sets",
                     "test": "Test_Sets"}
@@ -71,21 +35,22 @@ _FILE_PATTERN = '%s-*'
 
 
 
-# def get_data_dir(name, split, seq_length):
-#     if seq_length is not None:
-#         if seq_length > 1:
-#             img_or_seq = "seq" + str(seq_length)
-#         else:
-#             img_or_seq = "img"
-#     else:
-#         img_or_seq = "img"
-#     if name == "2013_MICCAI_Abdominal":
-#         return os.path.join(BASE_DATA_DIR, "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split])
-#     elif "2019_ISBI_CHAOS" in name:
-#         modality = name.split("CHAOS_")[1]
-#         return os.path.join(BASE_DATA_DIR, "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split], modality)
-#     else:
-#         raise ValueError("Unknown Dataset Name")
+def get_data_dir(name, split, seq_length=None):
+    # TODO: general case
+    if seq_length is not None:
+        if seq_length > 1:
+            img_or_seq = "seq" + str(seq_length)
+        else:
+            img_or_seq = "img"
+    else:
+        img_or_seq = "img"
+    if name == "2015_MICCAI_Abdominal":
+        return os.path.join(BASE_DATA_DIR, "2015_MICCAI_BTCV", "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split])
+    elif "2019_ISBI_CHAOS" in name:
+        modality = name.split("CHAOS_")[1]
+        return os.path.join(BASE_DATA_DIR, "2019_ISBI_CHAOS", "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split], modality)
+    else:
+        raise ValueError("Unknown Dataset Name")
 
 
 def get_z_label(z_label_method, num_slices, depth, z_class=None):
@@ -142,8 +107,8 @@ class Dataset(object):
             if sub_dataset not in _DATASETS_INFORMATION:
                 raise ValueError('The specified dataset is not supported.')
             # TODO: Only consider the first split dir --> split_name[0]
-            self.dataset_dir[sub_dataset] = _DATASETS_STORING_PATH_MAP[sub_dataset][split_name[0]]
-            # self.dataset_dir[sub_dataset] = get_data_dir(sub_dataset, split_name, seq_length)
+            # self.dataset_dir[sub_dataset] = _DATASETS_STORING_PATH_MAP[sub_dataset][split_name[0]]
+            self.dataset_dir[sub_dataset] = get_data_dir(sub_dataset, split_name[0], seq_length)
             self.splits_to_sizes[sub_dataset] = _DATASETS_INFORMATION[sub_dataset].splits_to_sizes
         self.dataset_name = dataset_name
         # TODO: dataset information for each dataset
@@ -212,16 +177,16 @@ class Dataset(object):
         }
 
         if "train" in self.split_name or "val" in self.split_name:
-            features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
-            # features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            # features['image/segmentation/class/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
+            features['segmentation/encoded'] =  tf.FixedLenFeature((), tf.string, default_value='')
             # features['image/segmentation/class/organ_label'] = tf.FixedLenFeature((), tf.string, default_value='')
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
         image = tf.decode_raw(parsed_features['image/encoded'], tf.int32)
         if "train" in self.split_name or "val" in self.split_name:
-            label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
-            # label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
+            # label = tf.decode_raw(parsed_features['image/segmentation/class/encoded'], tf.int32)
+            label = tf.decode_raw(parsed_features['segmentation/encoded'], tf.int32)
             # organ_label = tf.decode_raw(parsed_features["image/segmentation/class/organ_label"], tf.int32)
         elif "test" in self.split_name:
             label = None
@@ -318,14 +283,15 @@ class Dataset(object):
             print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
                 self.prior_num_slice, self.prior_num_subject))
             # # TODO: get prior name properly
-            def load_prior(prior_dir):
+            def load_prior(path):
                 prior_name = "train-slice%03d-subject%03d" %(self.prior_num_slice, self.prior_num_subject)
-                prior = np.load(os.path.join(prior_dir, prior_name+".npy"))
+                prior = np.load(os.path.join(path, prior_name+".npy"))
                 return prior
 
             prior_list = []
             for sub_dataset in self.dataset_name:
-                prior = load_prior(_DATASETS_INFORMATION[sub_dataset].prior_dir)
+                prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors")
+                prior = load_prior(prior_dir)
                 prior = tf.convert_to_tensor(prior)
                 # Consider prior in shape [H,W,K,1]
                 prior = tf.image.resize_bilinear(tf.expand_dims(prior,axis=0)[...,0], [height,width])
