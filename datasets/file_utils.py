@@ -9,7 +9,7 @@ import os
 import numpy as np
 import SimpleITK as sitk
 import cv2
-
+import argparse
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -45,40 +45,51 @@ def write_medical_images(imgs, out_dir, image_format, file_name="img", saving_da
 
 
 def get_file_list(path, fileStr=[], fileExt=[], sort_files=True, file_idx=None):
-    # TODO: fileStr, fileExt are empty list, None condition
     file_list = []
-    if isinstance(fileStr, str):
-        fileStr = [fileStr]
-    if isinstance(fileExt, str):
-        fileExt = [fileExt]
-
+    def get_judge(key):
+        if isinstance(key, str):
+            key = [key]
+        judge = True
+        if key is not None:
+            if len(key) == 0:
+                judge = False
+        else:
+            judge = False
+        return judge, key
+    
+    str_judge, fileStr = get_judge(fileStr)
+    ext_judge, fileExt = get_judge(fileExt)
+    
     for f in os.listdir(path):
-        # candidate = None
         Str, Ext = False, False
-        if fileStr is not None:
-            if len(fileStr) > 0:
-                for file_start in fileStr:
-                    if f.startswith(file_start):
-                        Str = True
-                        break
-        if fileExt is not None:
-            if len(fileExt) > 0:
-                for file_end in fileExt:
-                    if f.endswith(file_end):
-                        Ext = True
-                        break
-        if (Str and Ext) or (not Str and not Ext):
-            file_list.append(os.path.join(path,f))
+        if str_judge:
+            for file_start in fileStr:
+                if f.startswith(file_start):
+                    Str = True
+                    break
+        else:
+            Str = True
+        
+        if ext_judge:
+            for file_end in fileExt:
+                if f.endswith(file_end):
+                    Ext = True
+                    break
+        else:
+            Ext = True
 
+        if Str and Ext:
+            file_list.append(os.path.join(path,f))
+                   
     if len(file_list) == 0:
         raise ValueError("No file exist in %s" %path)
 
-    # Determine the number of files to load
+    if file_idx is not None:
+        tmp = [file_list[i] for i in file_idx]
+        file_list = tmp
+        
     if sort_files:
         file_list.sort()
-    if file_idx is not None:
-        file_list = file_list[file_idx[0], file_idx[1]]
-
     return file_list
 
 
@@ -92,3 +103,5 @@ def save_in_image(data, path, file_name):
     if not os.path.exists(path):
         os.makedirs(path)
     cv2.imwrite(os.path.join(path, file_name), data)
+    
+    

@@ -17,8 +17,8 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import build_medical_data
 import file_utils
-import build_miccai2013
-_get_files = build_miccai2013._get_files
+import build_btcv_img
+_get_files = build_btcv_img._get_files
  
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', type=str, required=True,

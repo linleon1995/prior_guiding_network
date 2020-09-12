@@ -776,7 +776,6 @@ def main(unused_argv):
               outputs_to_num_classes=train_generator.num_of_classes,
               crop_size=data_inforamtion.train["train_crop_size"],
               output_stride=FLAGS.output_stride)
-            check_model_conflict(model_options)
 
             steps = tf.compat.v1.placeholder(tf.int32, shape=[])
 
