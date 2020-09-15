@@ -13,12 +13,33 @@ import SimpleITK as sitk
 from scipy import ndimage
 from sklearn.neighbors import KDTree
 import nibabel as nib
+import matplotlib.pyplot as plt
+from medpy import metric
+
 """
 def evaluate(Vref,Vseg,dicom_dir):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
     return dice, ravd
 """
+def hausdorff_distance(test=None, reference=None, confusion_matrix=None, nan_for_nonexisting=True, voxel_spacing=None, connectivity=1, **kwargs):
+
+    if confusion_matrix is None:
+        confusion_matrix = ConfusionMatrix(test, reference)
+
+    test_empty, test_full, reference_empty, reference_full = confusion_matrix.get_existence()
+
+    if test_empty or test_full or reference_empty or reference_full:
+        if nan_for_nonexisting:
+            return float("NaN")
+        else:
+            return 0
+
+    test, reference = confusion_matrix.test, confusion_matrix.reference
+
+    return metric.hd(test, reference, voxel_spacing, connectivity)
+    
+    
 def evaluate(Vref,Vseg,dicom_dir):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
@@ -38,7 +59,7 @@ def SSD(Vref,Vseg,dicom_dir):
     
     ref_border=Vref ^ ndimage.binary_erosion(Vref, structure=struct, border_value=1)
     ref_border_voxels=np.array(np.where(ref_border))
-    print(ref_border_voxels.shape, ref_border.shape)
+    # print(ref_border_voxels.shape, ref_border.shape)
     """
     print(struct, ref_border)
     for i in range(3):
@@ -68,6 +89,7 @@ def SSD(Vref,Vseg,dicom_dir):
     
     assd=(dist_seg_to_ref.sum() + dist_ref_to_seg.sum())/(len(dist_seg_to_ref)+len(dist_ref_to_seg))
     mssd=np.concatenate((dist_seg_to_ref, dist_ref_to_seg)).max()    
+    print(np.std(dist_seg_to_ref), np.std(dist_ref_to_seg))
     return assd, mssd
 
 def transformToRealCoordinates(indexPoints,dicom_dir):
@@ -128,13 +150,15 @@ def png_series_reader(dir):
     return V
 
 if __name__ == '__main__':
+
+    
     # ======= Directories =======
     # cwd = os.path.normpath(os.getcwd() + os.sep + os.pardir)
     cwd = os.path.normpath(os.getcwd() + os.sep)
     print(cwd)
-    ground_dir = os.listdir("/home/user/DISK/data/Jing/data/Training/label/")
+    ground_dir = os.listdir("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/label/")
     seg_dir = os.listdir("/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best/nii_files_val/")
-    dicom_dir = os.listdir("/home/user/DISK/data/Jing/data/Training/raw/")
+    dicom_dir = os.listdir("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/raw/")
     ground_dir.sort()
     dicom_dir.sort()
     seg_dir.sort()
@@ -143,26 +167,52 @@ if __name__ == '__main__':
     print(ground_dir)
     # ======= Volume Reading =======
     def read_medical_images(file):
-      image = sitk.ReadImage(file)
-      image_arr = sitk.GetArrayFromImage(image)
+      # image = sitk.ReadImage(file)
+      # image_arr = sitk.GetArrayFromImage(image)
+      image_arr = nib.load(file).get_data()
       image_arr = np.int32(image_arr)
       return image_arr
-    dd, rr, aa, mm = [], [], [], []
+    
+    total_dd, total_rr, total_aa, total_mm = [], [], [], []
     for i in range(6):
-      Vref = read_medical_images("/home/user/DISK/data/Jing/data/Training/label/"+ground_dir[i])
+      dd, rr, aa, mm = [], [], [], []
+      Vref = read_medical_images("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/label/"+ground_dir[i])
       Vseg = read_medical_images("/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best/nii_files_val/"+seg_dir[i]) 
-      ddd = nib.load("/home/user/DISK/data/Jing/data/Training/raw/"+dicom_dir[i]) 
+      ddd = nib.load("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/raw/"+dicom_dir[i]) 
+      """
+      x = 60
+      plt.imshow(Vref[...,x])
+      plt.show()
+      plt.imshow(Vseg[...,x])
+      plt.show()
+      plt.imshow(ddd.get_data()[...,x])
+      plt.show()
       print(Vref.shape, Vseg.shape, ddd.get_data().shape)
-      print('Volumes imported.')
-      # ======= Evaluation =======
-      print('Calculating...')
-      [dice, ravd, assd ,mssd]=evaluate(Vref,Vseg,ddd)
-      print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(dice, ravd, assd ,mssd))
-      dd.append(dice)
-      rr.append(ravd)
-      aa.append(assd)
-      mm.append(mssd)
-    print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(sum(dd)/len(dd), sum(rr)/len(rr), sum(aa)/len(aa), sum(mm)/len(mm)))
+      """
+      # hausdorff_distance(test=Vseg, reference=Vref, confusion_matrix=None, nan_for_nonexisting=True, voxel_spacing=None, connectivity=1, **kwargs)
+      
+      for j in range(1,13):
+        v_ref = Vref
+        v_ref = np.int32(v_ref==j)
+        v_seg = Vseg
+        v_seg = np.int32(v_seg==j)
+        print('Volumes imported.')
+        # ======= Evaluation =======
+        print('Calculating...')
+        if np.sum(v_seg) == 0 or np.sum(v_ref) == 0:
+          continue
+        [dice, ravd, assd ,mssd]=evaluate(v_ref,v_seg,ddd)
+        print('Class%d DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(j, dice, ravd, assd ,mssd))
+        dd.append(dice)
+        rr.append(ravd)
+        aa.append(assd)
+        mm.append(mssd)
+        print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(sum(dd)/len(dd), sum(rr)/len(rr), sum(aa)/len(aa), sum(mm)/len(mm)))
+      total_dd.append(sum(dd)/len(dd))    
+      total_rr.append(sum(rr)/len(rr)) 
+      total_aa.append(sum(aa)/len(aa)) 
+      total_mm.append(sum(mm)/len(mm)) 
+      print('DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(sum(total_dd)/len(total_dd), sum(total_rr)/len(total_rr), sum(total_aa)/len(total_aa), sum(total_mm)/len(total_mm)))
       
       
       
