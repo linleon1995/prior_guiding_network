@@ -16,32 +16,37 @@ from core import features_extractor
 import input_preprocess
 colorize = train_utils.colorize
 
+
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
 def create_training_path(train_logdir):
-    # TODO: Check whether empty of last folder before creating new one
     idx = 0
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
     while os.path.exists(path):
         idx += 1
         path = os.path.join(train_logdir, "run_{:03d}".format(idx))
-
     os.makedirs(path)
     return path
 
-
-
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Unsupported value encountered.')
+      
 parser = argparse.ArgumentParser()
 parser.add_argument('--fusions', nargs='+', required=True,
                     help='')
 
 parser.add_argument('--dataset_name', nargs='+', required=True,
-                    help='')
+                    help='The list contains all the datasets name in training')
 
 parser.add_argument('--train_split', nargs='+', required=True,
-                    help='')
+                    help='The list contains the splitting apply in training process')
 
 parser.add_argument('--seq_length', type=int, default=1,
-                    help='')
+                    help='The slice number in single sequence sample')
 
 parser.add_argument('--cell_type', type=str, default="ConvGRU",
                     help='')
@@ -49,22 +54,11 @@ parser.add_argument('--cell_type', type=str, default="ConvGRU",
 parser.add_argument('--guid_fuse', type=str, default="sum_wo_back",
                     help='')
 
-parser.add_argument('--guid_feature_only', type=bool, default=False,
+parser.add_argument('--apply_sram2', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--stage_pred_ks', type=int, default=1,
-                    help='')
-
-parser.add_argument('--add_feature', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--apply_sram2', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--fuse_flag', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--predict_without_background', type=bool, default=False,
+# TODO: remove?
+parser.add_argument('--predict_without_background', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
@@ -79,7 +73,7 @@ parser.add_argument('--guid_conv_type', type=str, default="conv",
 parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
-parser.add_argument('--share', type=bool, default=True,
+parser.add_argument('--share', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--weight_decay', type=float, default=1e-3,
@@ -95,14 +89,15 @@ parser.add_argument('--batch_size', type=int, default=16,
 parser.add_argument('--tf_initial_checkpoint', type=str, default=None,
                     help='')
 
-parser.add_argument('--initialize_last_layer', type=bool, default=True,
+parser.add_argument('--initialize_last_layer', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--training_number_of_steps', type=int, default=30000,
                     help='')
 
+# TODO:
 parser.add_argument('--profile_logdir', type=str, default='',
-                    help='')
+                    help='Where the profile files are stored.')
 
 parser.add_argument('--master', type=str, default='',
                     help='')
@@ -116,7 +111,7 @@ parser.add_argument('--log_steps', type=int, default=10,
 parser.add_argument('--save_summaries_secs', type=int, default=None,
                     help='')
 
-parser.add_argument('--save_summaries_images', type=bool, default=False,
+parser.add_argument('--save_summaries_images', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--save_checkpoint_steps', type=int, default=1000,
@@ -128,13 +123,11 @@ parser.add_argument('--validation_steps', type=int, default=1000,
 parser.add_argument('--num_ps_tasks', type=int, default=0,
                     help='')
 
-parser.add_argument('--last_layers_contain_logits_only', type=bool, default=True,
-                    help='')
-
 parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
 # Model configuration
+#tbc
 parser.add_argument('--model_variant', type=str, default=None,
                     help='')
 
@@ -146,9 +139,10 @@ parser.add_argument('--z_label_method', type=str, default=None,
 
 parser.add_argument('--z_class', type=int, default=None,
                     help='')
+
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"
-# TODO: Check conflict of guidance
+# TODO
 parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
                     help='')
 
@@ -158,16 +152,18 @@ parser.add_argument('--prior_num_slice', type=int, default=1,
 parser.add_argument('--prior_num_subject', type=int, default=16,
                     help='')
 
+#tbc
 parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
+#tbc
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss', type=bool, default=True,
+parser.add_argument('--stage_pred_loss', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--guidance_loss', type=bool, default=True,
+parser.add_argument('--guidance_loss', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--regularization_weight', type=float, default=None,
@@ -208,22 +204,12 @@ parser.add_argument('--slow_start_learning_rate', type=float, default=1e-4,
 parser.add_argument('--momentum', type=float, default=0.9,
                     help='')
 
-# Dataset settings.
-# '2019_ISBI_CHAOS_CT', '2019_ISBI_CHAOS_MR', '2013_MICCAI_Abdominal'
-# parser.add_argument('--dataset', type=str, default=DATASET_NAME,
-#                     help='')
-
-# parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
-#                     help='')
-
+#tbc
 parser.add_argument('--output_stride', type=int, default=None,
                     help='')
 
 parser.add_argument('--num_clones', type=int, default=1,
                     help='')
-
-# parser.add_argument('--crop_size', type=int, default=256,
-#                     help='')
 
 parser.add_argument('--min_scale_factor', type=float, default=0.625,
                     help='')
@@ -243,8 +229,9 @@ parser.add_argument('--max_resize_value', type=int, default=None,
 parser.add_argument('--resize_factor', type=int, default=None,
                     help='')
 
-parser.add_argument('--pre_crop_flag', type=bool, default=True,
+parser.add_argument('--pre_crop_flag', type=str2bool, nargs='?', const=True, default=True,
                     help='')
+
 
 def get_session(sess):
     session = sess
@@ -254,7 +241,7 @@ def get_session(sess):
     return session
 
 def _build_network(samples, outputs_to_num_classes, model_options, ignore_label, is_training):
-  """Builds a clone of DeepLab.
+  """Builds a clone of pgn.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
     outputs_to_num_classes: A map from output type to the number of classes. For
@@ -298,7 +285,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 num_class=num_class,
                 prior_slice=prior_slices,
                 batch_size=clone_batch_size,
-                guidance_type=FLAGS.guidance_type,
                 fusion_slice=FLAGS.fusion_slice,
                 drop_prob=FLAGS.drop_prob,
                 stn_in_each_class=True,
@@ -318,12 +304,8 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
-                fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
                 apply_sram2=FLAGS.apply_sram2,
-                add_feature=FLAGS.add_feature,
-                guid_feature_only=FLAGS.guid_feature_only,
-                stage_pred_ks=FLAGS.stage_pred_ks,
                 guid_fuse=FLAGS.guid_fuse,
                 seq_length=FLAGS.seq_length,
                 cell_type=FLAGS.cell_type
@@ -366,18 +348,18 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                  z_label=z_label,
                  z_pred=z_pred,
                  prior_segs=prior_seg,
-                 guidance=layers_dict,
+                 layers_dict=layers_dict,
                  guidance_original=guidance_original)
   return output_dict, layers_dict
 
 
 def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, reuse_variable):
-    """Calculates the total loss on a single tower running the deeplab model.
+    """Calculates the total loss on a single tower running the pgn model.
     Args:
         iterator: An iterator of type tf.data.Iterator for images and labels.
         num_of_classes: Number of classes for the dataset.
         ignore_label: Ignore label for the dataset.
-        scope: Unique prefix string identifying the deeplab tower.
+        scope: Unique prefix string identifying the pgn tower.
         reuse_variable: If the variable should be reused.
     Returns:
         The total loss for a batch of data.
@@ -473,7 +455,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
 
 
 def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_segs,
-                   guidance, guidance_original, **kwargs):
+                   layers_dict, guidance_original, **kwargs):
   """Logs the summaries for the model.
   Args:
     input_image: Input image of the model. Its shape is [batch_size, height,
@@ -501,33 +483,24 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
     summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
     tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
 
-  # TODO: parameterization
-  # if guidance is not None:
-  #   # tf.summary.image('reg_field/%s' % 'field_x', colorize(field[...,0:1], cmap='viridis'))
-  #   # tf.summary.image('reg_field/%s' % 'field_y', colorize(field[...,1:2], cmap='viridis'))
+    summary_feature_node = [0,1,2]
+    for n in summary_feature_node:
+      tf.summary.image('low_level1/node%d' %n, colorize(layers_dict["low_level1"][...,n:n+1], cmap='viridis'))
+      tf.summary.image('low_level2/node%d' %n, colorize(layers_dict["low_level2"][...,n:n+1], cmap='viridis'))
+      tf.summary.image('low_level3/node%d' %n, colorize(layers_dict["low_level3"][...,n:n+1], cmap='viridis'))
+      tf.summary.image('low_level4/node%d' %n, colorize(layers_dict["low_level4"][...,n:n+1], cmap='viridis'))
+      tf.summary.image('low_level5/node%d' %n, colorize(layers_dict["low_level5"][...,n:n+1], cmap='viridis'))
 
-  #   tf.summary.image('guidance/%s' % 'guidance1_6', colorize(guidance['guidance4'][...,6:7], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guidance1_7', colorize(guidance['guidance4'][...,7:8], cmap='viridis'))
-
-  #   tf.summary.image('guidance/%s' % 'guidance2_6', colorize(guidance['guidance3'][...,6:7], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guidance2_7', colorize(guidance['guidance3'][...,7:8], cmap='viridis'))
-
-  #   tf.summary.image('guidance/%s' % 'guidance3_6', colorize(guidance['guidance2'][...,6:7], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guidance3_7', colorize(guidance['guidance2'][...,7:8], cmap='viridis'))
-
-  #   tf.summary.image('guidance/%s' % 'guidance4_6', colorize(guidance['guidance1'][...,6:7], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guidance4_7', colorize(guidance['guidance1'][...,7:8], cmap='viridis'))
-
-  #   tf.summary.image('guidance/%s' % 'guidance5/logits_6', colorize(output[...,6:7], cmap='viridis'))
-  #   tf.summary.image('guidance/%s' % 'guidance5/logits_7', colorize(output[...,7:8], cmap='viridis'))
-
-    guid_avg = tf.get_collection("guid_avg")
-    tf.summary.image('guidance/%s' % 'guid_avg0', colorize(guid_avg[0][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg1', colorize(guid_avg[1][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg2', colorize(guid_avg[2][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/%s' % 'guid_avg3', colorize(guid_avg[3][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/%s' % 'guid_avg4', colorize(guid_avg[4][...,0:1], cmap='viridis'))
-
+    guid = tf.get_collection("guidance")
+    # TODO: validation issue
+    print(guid)
+    tf.summary.image('guidance/guid0', colorize(guid[0][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/guid1', colorize(guid[1][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/guid2', colorize(guid[2][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/guid3', colorize(guid[3][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/guid4', colorize(guid[4][...,0:1], cmap='viridis'))
+    tf.summary.image('guidance/guid5', colorize(guid[5][...,0:1], cmap='viridis'))
+    
   # # if z_label is not None and z_pred is not None:
   # #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
@@ -564,8 +537,8 @@ def _average_gradients(tower_grads):
 
   return average_grads
 
-def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, reuse=None):
-  """Trains the deeplab model.
+def _train_pgn_model(iterator, num_of_classes, model_options, ignore_label, reuse=None):
+  """Trains the pgn model.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
     num_of_classes: Number of classes for the dataset.
@@ -620,16 +593,6 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
     if tower_summaries is not None:
       summaries.append(tower_summaries)
 
-    # # Modify the gradients for biases and last layer variables.
-    # last_layers = model.get_extra_layer_scopes(
-    #     FLAGS.last_layers_contain_logits_only)
-    # grad_mult = train_utils.get_model_gradient_multipliers(
-    #     last_layers, FLAGS.last_layer_gradient_multiplier)
-    # if grad_mult:
-    #   grads_and_vars = tf.contrib.training.multiply_gradients(
-    #       grads_and_vars, grad_mult)
-
-
     # Create gradient update op.
     grad_updates = optimizer.apply_gradients(
         grads_and_vars, global_step=global_step)
@@ -655,8 +618,8 @@ def _train_deeplab_model(iterator, num_of_classes, model_options, ignore_label, 
   return train_tensor, summary_op
 
 
-def _val_deeplab_model(iterator, num_of_classes, model_options, ignore_label, steps, reuse=None):
-  """Trains the deeplab model.
+def _val_pgn_model(iterator, num_of_classes, model_options, ignore_label, steps, reuse=None):
+  """Trains the pgn model.
   Args:
     iterator: An iterator of type tf.data.Iterator for images and labels.
     num_of_classes: Number of classes for the dataset.
@@ -729,10 +692,10 @@ def main(unused_argv):
             train_generator = data_generator.Dataset(
                 dataset_name=FLAGS.dataset_name,
                 split_name=FLAGS.train_split,
+                guidance_type=FLAGS.guidance_type,
                 batch_size=clone_batch_size,
                 pre_crop_flag=FLAGS.pre_crop_flag,
                 mt_label_method=FLAGS.z_label_method,
-                guidance_type=FLAGS.guidance_type,
                 mt_class=FLAGS.z_class,
                 mt_label_type="z_label",
                 crop_size=data_inforamtion.train["train_crop_size"],
@@ -755,9 +718,9 @@ def main(unused_argv):
               val_generator = data_generator.Dataset(
                   dataset_name=FLAGS.dataset_name,
                   split_name=["val"],
+                  guidance_type=FLAGS.guidance_type,
                   batch_size=1,
                   mt_label_method=FLAGS.z_label_method,
-                  guidance_type=FLAGS.guidance_type,
                   mt_class=FLAGS.z_class,
                   mt_label_type="z_label",
                   crop_size=[data_inforamtion.height, data_inforamtion.width],
@@ -783,7 +746,7 @@ def main(unused_argv):
             iter1 = dataset1.make_one_shot_iterator()
             train_samples = iter1.get_next()
 
-            train_tensor, summary_op = _train_deeplab_model(
+            train_tensor, summary_op = _train_pgn_model(
                 train_samples, train_generator.num_of_classes, model_options,
                 train_generator.ignore_label)
 
@@ -792,7 +755,7 @@ def main(unused_argv):
               iter2 = dataset2.make_one_shot_iterator()
               val_samples = iter2.get_next()
 
-              val_tensor, _ = _val_deeplab_model(
+              val_tensor, _ = _val_pgn_model(
                 val_samples, val_generator.num_of_classes, model_options,
                 val_generator.ignore_label, steps)
 

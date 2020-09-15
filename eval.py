@@ -85,22 +85,10 @@ parser.add_argument('--guid_fuse', type=str, default="sum_wo_back",
 parser.add_argument('--cell_type', type=str, default="ConvGRU",
                     help='')
 
-parser.add_argument('--guid_feature_only', type=bool, default=False,
+parser.add_argument('--apply_sram2', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--stage_pred_ks', type=int, default=1,
-                    help='')
-
-parser.add_argument('--add_feature', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--apply_sram2', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--fuse_flag', type=bool, default=True,
-                    help='')
-
-parser.add_argument('--predict_without_background', type=bool, default=False,
+parser.add_argument('--predict_without_background', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
@@ -118,7 +106,7 @@ parser.add_argument('--guid_conv_type', type=str, default="conv",
 parser.add_argument('--guid_conv_nums', type=int, default=2,
                     help='')
 
-parser.add_argument('--share', type=bool, default=True,
+parser.add_argument('--share', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--master', type=str, default='',
@@ -135,7 +123,7 @@ parser.add_argument('--checkpoint_dir', type=str, default=None,
 parser.add_argument('--drop_prob', type=float, default=None,
                     help='')
 
-parser.add_argument('--guid_weight', type=bool, default=False,
+parser.add_argument('--guid_weight', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
 parser.add_argument('--eval_batch_size', type=int, default=1,
@@ -160,7 +148,7 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
                     help='')
 
 # Change to True for adding flipped images during test.
-parser.add_argument('--add_flipped_images', type=bool, default=False,
+parser.add_argument('--add_flipped_images', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
 parser.add_argument('--z_model', type=str, default=None,
@@ -172,10 +160,10 @@ parser.add_argument('--z_label_method', type=str, default=None,
 parser.add_argument('--z_class', type=int, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss', type=bool, default=True,
+parser.add_argument('--stage_pred_loss', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--guidance_loss', type=bool, default=True,
+parser.add_argument('--guidance_loss', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
@@ -187,52 +175,28 @@ parser.add_argument('--guid_loss_name', type=str, default="sigmoid_cross_entropy
 parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_entropy",
                     help='')
 
-parser.add_argument('--zero_guidance', type=bool, default=False,
+parser.add_argument('--zero_guidance', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=bool, default=False,
+parser.add_argument('--vis_guidance', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-parser.add_argument('--vis_features', type=bool, default=False,
+parser.add_argument('--vis_features', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-parser.add_argument('--vis_prior', type=bool, default=False,
+parser.add_argument('--vis_prior', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-parser.add_argument('--display_box_plot', type=bool, default=False,
+parser.add_argument('--display_box_plot', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-# TODO: Avoid input any bool parameters
-# parser.add_argument('--store_all_imgs', type=bool, default=True,
-#                     help='')
-
-# parser.add_argument('--show_pred_only', type=bool, default=True,
-#                     help='')
-
-parser.add_argument('--store_all_imgs', type=str2bool, nargs='?', const=True,
+parser.add_argument('--store_all_imgs', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--show_pred_only', type=str2bool, nargs='?', const=True,
+parser.add_argument('--show_pred_only', type=str2bool, nargs='?', const=True, default=True,
                     help='')
-# Dataset settings.
-# parser.add_argument('--dataset', type=str, default=DATASET_NAME,
-#                     help='')
-
-# parser.add_argument('--dataset_dir', type=str, default=DATASET_DIR,
-#                     help='')
 
 parser.add_argument('--max_number_of_evaluations', type=int, default=1,
-                    help='')
-
-# Exp.
-# TODO: dx, dy should get together, tensorflow argument
-parser.add_argument('--stn_exp_angle', type=int, default=None,
-                    help='')
-
-parser.add_argument('--stn_exp_dx', type=int, default=None,
-                    help='')
-
-parser.add_argument('--stn_exp_dy', type=int, default=None,
                     help='')
 
 parser.add_argument('--_3d_metrics', type=str2bool, nargs='?', const=True,
@@ -421,26 +385,16 @@ def main(unused_argv):
                 placeholder_dict[common.HEIGHT],
                 placeholder_dict[common.WIDTH],
                 model_options=model_options,
-                # labels=placeholder_dict[common.LABEL],
-                # samples=placeholder_dict["organ_label"],
-                # prior_imgs=placeholder_dict[common.PRIOR_IMGS],
                 prior_segs=placeholder_dict[common.PRIOR_SEGS],
-                # prior_segs=samples[common.PRIOR_SEGS],
                 num_class=dataset.num_of_classes,
-                # num_slices=placeholder_dict[common.NUM_SLICES],
-                # prior_slice=prior_slices,
                 batch_size=FLAGS.eval_batch_size,
                 guidance_type=FLAGS.guidance_type,
-
                 fusion_slice=FLAGS.fusion_slice,
-                # prior_dir=FLAGS.prior_dir,
                 drop_prob=FLAGS.drop_prob,
                 guid_weight=FLAGS.guid_weight,
                 stn_in_each_class=True,
                 is_training=False,
                 weight_decay=0.0,
-                # fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                # guidance_acc=FLAGS.guidance_acc,
                 share=FLAGS.share,
                 fusions=FLAGS.fusions,
                 out_node=FLAGS.out_node,
@@ -454,13 +408,9 @@ def main(unused_argv):
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
-                fuse_flag=FLAGS.fuse_flag,
                 predict_without_background=FLAGS.predict_without_background,
                 reuse=tf.AUTO_REUSE,
                 apply_sram2=FLAGS.apply_sram2,
-                add_feature=FLAGS.add_feature,
-                guid_feature_only=FLAGS.guid_feature_only,
-                stage_pred_ks=FLAGS.stage_pred_ks,
                 guid_fuse=FLAGS.guid_fuse,
                 seq_length=FLAGS.seq_length,
                 cell_type=FLAGS.cell_type
@@ -524,55 +474,6 @@ def main(unused_argv):
         pred_z = eval_utils.inference_segmentation(output_dict[common.OUTPUT_Z], dim=1)
         label_z = placeholder_dict[common.Z_LABEL]
         cm_z = tf.confusion_matrix(label_z, pred_z, num_classes=dataset.mt_class)
-
-    # num_fg_pixel = tf.reduce_sum(label_onehot, axis=[1,2])
-    # labels_flat = tf.reshape(labels, shape=[-1,])
-
-    # kernel2 = tf.ones((6, 6, dataset.num_of_classes))
-    # # kernel2 = tf.cast(kernel2, tf.int32)
-    # kernel3 = tf.ones((7, 7, dataset.num_of_classes))
-    # # kernel3 = tf.cast(kernel3, tf.int32)
-    # kernel4 = tf.ones((8, 8, dataset.num_of_classes))
-    # # kernel4 = tf.cast(kernel4, tf.int32)
-
-    # label2 = tf.nn.dilation2d(label_onehot, filter=kernel2, strides=(1,1,1,1),
-    #                           rates=(1,1,1,1), padding="SAME")
-    # label2 = label2 - tf.ones_like(label2)
-    # label3 = tf.nn.dilation2d(label_onehot, filter=kernel3, strides=(1,1,1,1),
-    #                           rates=(1,1,1,1), padding="SAME")
-    # label3 = label3 - tf.ones_like(label3)
-    # label4 = tf.nn.dilation2d(label_onehot, filter=kernel4, strides=(1,1,1,1),
-    #                           rates=(1,1,1,1), padding="SAME")
-    # label4 = label4 - tf.ones_like(label4)
-    # image_128 = tf.image.resize_bilinear(samples[common.IMAGE],[128, 128], align_corners=True)
-    # image_diff = samples[common.IMAGE] - image_128
-
-    # if FLAGS.vis_guidance:
-    #   def guid_mean_dsc(logits, label):
-    #     h, w = label.get_shape().as_list()[1:3]
-    #     logits = tf.compat.v2.image.resize(logits, [h, w])
-    #     loss = train_utils.loss_utils(logits, label, "mean_dice_coefficient")
-    #     return 1 - loss
-    #   guid0 = layers_dict["guidance_in"]
-    #   guid1 = layers_dict["guidance1"]
-    #   guid2 = layers_dict["guidance2"]
-    #   guid3 = layers_dict["guidance3"]
-    #   guid4 = layers_dict["guidance4"]
-
-    #   guid1_dsc = guid_mean_dsc(logits, labels)
-
-    #   guid_list = tf.get_collection("guidance")
-
-
-    # if common.OUTPUT_Z in output_dict:
-    #   z_mse = tf.losses.mean_squared_error(placeholder_dict[common.Z_LABEL], output_dict[common.OUTPUT_Z])
-
-    # Define the evaluation metric.
-    # predictions_tag = 'miou'
-    # mIoU, update_op = tf.contrib.metrics.streaming_mean_iou(pred_flat, labels_flat, num_classes=dataset.num_of_classes,
-    #                                                         )
-    # tf.summary.scalar(predictions_tag, mIoU)
-
 
     summary_op = tf.summary.merge_all()
     summary_hook = tf.contrib.training.SummaryAtEndHook(

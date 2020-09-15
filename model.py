@@ -1,21 +1,10 @@
 import tensorflow as tf
 from core import features_extractor, utils, resnet_v1_beta, preprocess_utils
 import common
-import math
-# spatial_transfom_exp = experiments.spatial_transfom_exp
 
 slim = tf.contrib.slim
-#spatial_transformer_network = stn.spatial_transformer_network
-#bilinear_sampler = stn.bilinear_sampler
-#voxel_deformable_transform = voxelmorph.voxel_deformable_transform
-#refinement_network = crn_network.refinement_network
 mlp = utils.mlp
-# conv2d = utils.conv2d
-# __2d_unet_decoder = utils.__2d_unet_decoder
-# extractor = utils.simple_extractor
-
 # TODO: testing case (validation)
-
 
 
 def get_encoded_priors(feature, num_encoder, out_node, is_training=True, scope=None):
@@ -37,11 +26,8 @@ def pgb_network(images,
                 prior_slice=None,
                 batch_size=None,
                 z_label_method=None,
-                # z_label=None,
                 z_class=None,
-                guidance_type=None,
                 fusion_slice=None,
-                # prior_dir=None,
                 drop_prob=None,
                 stn_in_each_class=None,
                 reuse=None,
@@ -58,7 +44,6 @@ def pgb_network(images,
         segmentations:
     """
     output_dict = {}
-    # h, w = images.get_shape().as_list()[1:3]
     weight_decay = kwargs.pop("weight_decay", None)
     fusions = kwargs.pop("fusions", None)
     out_node = kwargs.pop("out_node", None)
@@ -70,9 +55,7 @@ def pgb_network(images,
     stage_pred_loss_name = kwargs.pop("stage_pred_loss_name", None)
     guid_conv_nums = kwargs.pop("guid_conv_nums", None)
     guid_conv_type = kwargs.pop("guid_conv_type", None)
-    fuse_flag = kwargs.pop("fuse_flag", None)
     predict_without_background = kwargs.pop("predict_without_background", False)
-    ks = kwargs.pop("stage_pred_ks", None)
     seq_length = kwargs.pop("seq_length", None)
     cell_type = kwargs.pop("cell_type", None)
 
@@ -81,7 +64,7 @@ def pgb_network(images,
         images = tf.reshape(images, [-1, h, w, c])
     # Produce Prior
     if prior_segs is not None:
-        prior_from_data = get_prior(prior_segs, guidance_type, num_class, seq_length)
+        prior_from_data = tf.tile(prior_segs[...,0], [seq_length,1,1,1])
 
     if guid_encoder in ("early", "p_embed_prior"):
         in_node = tf.concat([images, prior_from_data], axis=3)
@@ -129,7 +112,7 @@ def pgb_network(images,
             if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions or "self_att" in fusions:
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
-                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[ks,ks], scope="guidance_embedding")
+                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
                 elif guid_encoder == "late":
                     img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
                     prior_embed = utils.get_guidance(tf.concat([images, prior_from_data], axis=3), out_node, model_options.output_stride)
@@ -142,14 +125,15 @@ def pgb_network(images,
                     p = tf.stack(prior_list, axis=4)
                     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
                     prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
-                    
+
                 tf.add_to_collection("guid_f", prior_seg)
 
                 if guidance_loss:
                     c = num_class
                     if predict_without_background:
                         c -= 1
-                    prior_pred = slim.conv2d(prior_seg, c, kernel_size=[ks,ks], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
+                    prior_pred = slim.conv2d(layers_dict["low_level5"], c, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
+                    # prior_pred = slim.conv2d(prior_seg, c, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
                     output_dict[common.GUIDANCE] = prior_pred
 
                     if "softmax" in guidance_loss_name:
@@ -163,49 +147,32 @@ def pgb_network(images,
                 prior_pred = None
 
     # Refining Model (Decoder)
-    refine_model = utils.Refine(layers_dict, fusions, fuse_flag, prior_seg=prior_seg, stage_pred_loss_name=stage_pred_loss_name,
+    refine_model = utils.Refine(layers_dict, fusions, prior_seg=prior_seg, stage_pred_loss_name=stage_pred_loss_name,
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type,
                                 embed_node=out_node, predict_without_background=predict_without_background,
-                                weight_decay=weight_decay, is_training=is_training,num_class=num_class, ks=ks,
+                                weight_decay=weight_decay, is_training=is_training, num_class=num_class,
                                 **kwargs)
     logits, preds = refine_model.model()
     layers_dict.update(preds)
-    
+
     # Sequential Model for slice fusion
     if seq_length is not None:
         if seq_length > 1:
             logits = tf.reshape(logits, [n, t, h, w, c])
             logits = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
-            
+
     if drop_prob is not None:
         logits = tf.nn.dropout(logits, rate=drop_prob)
     output_dict[common.OUTPUT_TYPE] = logits
-    
+
     trainable_vars = tf.trainable_variables()
     for v in trainable_vars:
       print(30*"-", v.name)
     return output_dict, layers_dict
 
 
-def get_prior(prior_segs, guidance_type, num_class, seq_length):
-    # TODO: else guidance type should raise ValueError
-    if guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-        prior_seg = prior_segs[...,0]
-        prior_seg = tf.tile(prior_seg, [seq_length,1,1,1])
-    elif guidance_type == "gt":
-        prior_seg = tf.one_hot(indices=prior_segs[...,0],
-                                depth=num_class,
-                                on_value=1,
-                                off_value=0,
-                                axis=3)
-    else:
-        prior_seg = prior_segs
-    return prior_seg
-
-
 def predict_z_dimension(feature, out_node, extractor_type):
     with tf.variable_scope('multi_task_branch'):
-        # TODO: neighbor slices
         if extractor_type == "simple":
             gap = tf.reduce_mean(feature, axis=[1,2], keep_dims=False)
             z_logits = mlp(gap, output_dims=out_node, num_layers=2,

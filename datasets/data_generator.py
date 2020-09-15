@@ -290,7 +290,17 @@ class Dataset(object):
 
             prior_list = []
             for sub_dataset in self.dataset_name:
-                prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors")
+                # TODO: fix
+                if "2019_ISBI_CHAOS" in sub_dataset:
+                  if "CT" in sub_dataset:
+                    modality = "CT"
+                  elif "MR_T1" in sub_dataset:
+                    modality = "MR_T1"
+                  elif "MR_T2" in sub_dataset:
+                    modality = "MR_T2"    
+                  prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors", modality)
+                elif sub_dataset == "2015_MICCAI_Abdominal":
+                  prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors")
                 prior = load_prior(prior_dir)
                 prior = tf.convert_to_tensor(prior)
                 # Consider prior in shape [H,W,K,1]
