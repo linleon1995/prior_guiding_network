@@ -19,6 +19,7 @@ losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for
               "sigmoid_dice_loss": losses.add_sigmoid_dice_loss_for_each_scale,
               "softmax_generaled_dice_loss": losses.add_softmax_generaled_dice_loss_for_each_scale,}
 
+
 def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
     ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
 

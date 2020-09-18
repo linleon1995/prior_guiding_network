@@ -34,7 +34,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Unsupported value encountered.')
-      
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--fusions', nargs='+', required=True,
                     help='')
@@ -160,13 +160,11 @@ parser.add_argument('--fusion_slice', type=float, default=3,
 parser.add_argument('--z_loss_decay', type=float, default=None,
                     help='')
 
+# TODO: remove stage_pred_loss, guidance loss
 parser.add_argument('--stage_pred_loss', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--guidance_loss', type=str2bool, nargs='?', const=True, default=True,
-                    help='')
-
-parser.add_argument('--regularization_weight', type=float, default=None,
                     help='')
 
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
@@ -386,11 +384,11 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
         num_label_pixels = tf.reduce_sum(tf.nn.sigmoid(output_dict[common.OUTPUT_TYPE]))
         stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (num_label_pixels + 1e-10)
     else:
-      stage_pred_loss_weight = 1.0
+      stage_pred_loss_weight = 0.1
     if FLAGS.guidance_loss:
       guidance_loss_weight = stage_pred_loss_weight
     else:
-      guidance_loss_weight = 1.0
+      guidance_loss_weight = 0.1
     # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
 
     loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "decay": None, "weights": seg_weight, "scope": "segmenation"}
@@ -441,16 +439,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     seg_loss = losses[0]
     for loss in losses:
         tf.summary.scalar('Losses/%s' % loss.op.name, loss)
-
-    if FLAGS.regularization_weight is not None:
-        regularization_loss = tf.losses.get_regularization_loss(scope=scope)
-        regularization_loss = FLAGS.regularization_weight * regularization_loss
-        regularization_loss = tf.identity(regularization_loss, name='regularization_loss_with_decay')
-        tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
-                            regularization_loss)
-        total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
-    else:
-        total_loss = tf.add_n(losses)
+    total_loss = tf.add_n(losses)
     return total_loss, seg_loss
 
 
@@ -499,8 +488,8 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
     tf.summary.image('guidance/guid2', colorize(guid[2][...,0:1], cmap='viridis'))
     tf.summary.image('guidance/guid3', colorize(guid[3][...,0:1], cmap='viridis'))
     tf.summary.image('guidance/guid4', colorize(guid[4][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/guid5', colorize(guid[5][...,0:1], cmap='viridis'))
-    
+    # tf.summary.image('guidance/guid5', colorize(guid[5][...,0:1], cmap='viridis'))
+
   # # if z_label is not None and z_pred is not None:
   # #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
