@@ -7,16 +7,6 @@ mlp = utils.mlp
 # TODO: testing case (validation)
 
 
-def get_encoded_priors(feature, num_encoder, out_node, is_training=True, scope=None):
-    """Encode prior from feature"""
-    with tf.variable_scope('encoded_priors', scope):
-        prior_list = []
-        for i in range(num_encoder):
-            prior_list.append(slim.conv2d(feature, out_node, kernel_size=[3,3], activation_fn=None,
-                                          scope="prior_encoder"+str(i)))
-    return prior_list
-
-
 def pgb_network(images,
                 raw_height,
                 raw_width,
@@ -29,7 +19,6 @@ def pgb_network(images,
                 z_class=None,
                 fusion_slice=None,
                 drop_prob=None,
-                stn_in_each_class=None,
                 reuse=None,
                 is_training=None,
                 scope=None,
@@ -55,7 +44,6 @@ def pgb_network(images,
     stage_pred_loss_name = kwargs.pop("stage_pred_loss_name", None)
     guid_conv_nums = kwargs.pop("guid_conv_nums", None)
     guid_conv_type = kwargs.pop("guid_conv_type", None)
-    predict_without_background = kwargs.pop("predict_without_background", False)
     seq_length = kwargs.pop("seq_length", None)
     cell_type = kwargs.pop("cell_type", None)
 
@@ -112,28 +100,30 @@ def pgb_network(images,
             if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions or "self_att" in fusions:
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
-                    prior_seg = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
-                elif guid_encoder == "late":
-                    img_embed = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="image_embedding")
-                    prior_embed = utils.get_guidance(tf.concat([images, prior_from_data], axis=3), out_node, model_options.output_stride)
-                    prior_seg = slim.conv2d(tf.concat([img_embed,prior_embed],axis=3), out_node, 3, scope="prior_seg")
-                elif guid_encoder in ("p_embed", "p_embed_prior"):
-                    if z_class is None:
-                        raise ValueError("Unknown Z class for prior embedding weighting")
-                    prior_list = get_encoded_priors(layers_dict["low_level5"], z_class, out_node)
-                    tf.add_to_collection("prior_list", prior_list)
-                    p = tf.stack(prior_list, axis=4)
-                    z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
-                    prior_seg = tf.squeeze(tf.matmul(p, z), axis=4)
+                    embed_latent = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
+                # elif guid_encoder in ("p_embed", "p_embed_prior"):
+                #     if z_class is None:
+                #         raise ValueError("Unknown Z class for prior embedding weighting")
+                #     with tf.variable_scope('encoded_priors', scope):
+                #         prior_list = []
+                #         for i in range(z_class):
+                #             prior_list.append(slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[3,3],
+                #                                           activation_fn=None, scope="prior_encoder"+str(i)))
+                #     tf.add_to_collection("prior_list", prior_list)
+                #     p = tf.stack(prior_list, axis=4)
+                #     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
+                #     embed_latent = tf.squeeze(tf.matmul(p, z), axis=4)
 
-                tf.add_to_collection("guid_f", prior_seg)
+                # tf.add_to_collection("guid_f", prior_seg)
 
                 if guidance_loss:
-                    c = num_class
-                    if predict_without_background:
-                        c -= 1
-                    prior_pred = slim.conv2d(layers_dict["low_level5"], c, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
-                    # prior_pred = slim.conv2d(prior_seg, c, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
+                    # TODO: PGN_v1
+                    # if z_logits is not None and :
+                    #     z_pred = tf.nn.softmax(z_logits, axis=1)
+                        
+                    # else:
+                    prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
+                    # prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
                     output_dict[common.GUIDANCE] = prior_pred
 
                     if "softmax" in guidance_loss_name:
@@ -143,14 +133,13 @@ def pgb_network(images,
                 else:
                     prior_pred = None
             else:
-                prior_seg = None
+                embed_latent = None
                 prior_pred = None
 
     # Refining Model (Decoder)
-    refine_model = utils.Refine(layers_dict, fusions, prior_seg=prior_seg, stage_pred_loss_name=stage_pred_loss_name,
+    refine_model = utils.Refine(layers_dict, fusions, prior_seg=embed_latent, stage_pred_loss_name=stage_pred_loss_name,
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type,
-                                embed_node=out_node, predict_without_background=predict_without_background,
-                                weight_decay=weight_decay, is_training=is_training, num_class=num_class,
+                                embed_node=out_node, weight_decay=weight_decay, is_training=is_training, num_class=num_class,
                                 **kwargs)
     logits, preds = refine_model.model()
     layers_dict.update(preds)
@@ -177,6 +166,7 @@ def predict_z_dimension(feature, out_node, extractor_type):
             gap = tf.reduce_mean(feature, axis=[1,2], keep_dims=False)
             z_logits = mlp(gap, output_dims=out_node, num_layers=2,
                            decreasing_root=16, scope='z_info_extractor')
+        # TODO: region based extractor
         elif extractor_type == "region":
             pass
         else:
