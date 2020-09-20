@@ -4,7 +4,6 @@ import common
 
 slim = tf.contrib.slim
 mlp = utils.mlp
-# TODO: testing case (validation)
 
 
 def pgb_network(images,
@@ -38,8 +37,6 @@ def pgb_network(images,
     out_node = kwargs.pop("out_node", None)
     guid_encoder = kwargs.pop("guid_encoder", None)
     z_model = kwargs.pop("z_model", None)
-    guidance_loss = kwargs.pop("guidance_loss", False)
-    stage_pred_loss = kwargs.pop("stage_pred_loss", False)
     guidance_loss_name = kwargs.pop("guidance_loss_name", None)
     stage_pred_loss_name = kwargs.pop("stage_pred_loss_name", None)
     guid_conv_nums = kwargs.pop("guid_conv_nums", None)
@@ -116,14 +113,15 @@ def pgb_network(images,
 
                 # tf.add_to_collection("guid_f", prior_seg)
 
-                if guidance_loss:
+                if guidance_loss_name is not None:
                     # TODO: PGN_v1
                     # if z_logits is not None and :
                     #     z_pred = tf.nn.softmax(z_logits, axis=1)
-                        
+
                     # else:
-                    prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
-                    # prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %c)
+                    # prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
+                    prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
+                    # tf.add_to_collection("stage_pred", prior_pred)
                     output_dict[common.GUIDANCE] = prior_pred
 
                     if "softmax" in guidance_loss_name:
@@ -141,8 +139,9 @@ def pgb_network(images,
                                 prior_pred=prior_pred, guid_conv_nums=guid_conv_nums, guid_conv_type=guid_conv_type,
                                 embed_node=out_node, weight_decay=weight_decay, is_training=is_training, num_class=num_class,
                                 **kwargs)
-    logits, preds = refine_model.model()
-    layers_dict.update(preds)
+    logits = refine_model.model()
+    # logits, preds = refine_model.model()
+    # layers_dict.update(preds)
 
     # Sequential Model for slice fusion
     if seq_length is not None:

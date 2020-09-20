@@ -156,24 +156,22 @@ parser.add_argument('--prior_num_subject', type=int, default=16,
 parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
-#tbc
-parser.add_argument('--z_loss_decay', type=float, default=None,
+parser.add_argument('--z_loss_weight', type=float, default=None,
                     help='')
 
-# TODO: remove stage_pred_loss, guidance loss
-parser.add_argument('--stage_pred_loss', type=str2bool, nargs='?', const=True, default=True,
+parser.add_argument('--guid_loss_weight', type=float, default=1.0,
                     help='')
 
-parser.add_argument('--guidance_loss', type=str2bool, nargs='?', const=True, default=True,
+parser.add_argument('--stage_pred_loss_weight', type=float, default=1.0,
                     help='')
 
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
                     help='')
 
-parser.add_argument('--guid_loss_name', type=str, default="sigmoid_cross_entropy",
+parser.add_argument('--guid_loss_name', type=str, default="softmax_cross_entropy",
                     help='')
 
-parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_entropy",
+parser.add_argument('--stage_pred_loss_name', type=str, default="softmax_cross_entropy",
                     help='')
 
 
@@ -238,6 +236,7 @@ def get_session(sess):
         session = session._sess
     return session
 
+
 def _build_network(samples, outputs_to_num_classes, model_options, ignore_label, is_training):
   """Builds a clone of pgn.
   Args:
@@ -272,7 +271,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
 
-
   num_class = outputs_to_num_classes['semantic']
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
@@ -296,8 +294,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 z_label_method=FLAGS.z_label_method,
                 z_model=FLAGS.z_model,
                 z_class=FLAGS.z_class,
-                guidance_loss=FLAGS.guidance_loss,
-                stage_pred_loss=FLAGS.stage_pred_loss,
                 guidance_loss_name=FLAGS.guid_loss_name,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
@@ -369,40 +365,17 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                                 model_options, ignore_label, is_training=True)
 
     loss_dict = {}
-    seg_weight = 1.0
-    # guidance_loss_weight = FLAGS.guidance_loss
-    # stage_pred_loss_weight = FLAGS.stage_pred_loss
-    # stage_pred_loss_weight = [0.04] + 13*[1.0]
-    # TODO: stage_pred_loss should be weight or flag
-    # TODO: predict_w.o_bg case
-    if FLAGS.stage_pred_loss:
-      if FLAGS.stage_pred_loss_name == "softmax_generaled_dice_loss":
-        num_label_pixels = tf.reduce_sum(tf.one_hot(
-          samples[common.LABEL][...,0], num_of_classes, on_value=1.0, off_value=0.0), axis=[1,2])
-        stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (tf.pow(num_label_pixels, 2) + 1e-10)
-      elif FLAGS.stage_pred_loss_name == "sigmoid_cross_entropy":
-        num_label_pixels = tf.reduce_sum(tf.nn.sigmoid(output_dict[common.OUTPUT_TYPE]))
-        stage_pred_loss_weight = (tf.ones_like(num_label_pixels) + 1e-10) / (num_label_pixels + 1e-10)
-    else:
-      stage_pred_loss_weight = 0.1
-    if FLAGS.guidance_loss:
-      guidance_loss_weight = stage_pred_loss_weight
-    else:
-      guidance_loss_weight = 0.1
-    # seg_weight = train_utils.get_loss_weight(samples[common.LABEL], loss_name, loss_weight=SEG_WEIGHT_FLAG)
+    loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "weights": 1.0, "scope": "segmenation"}
 
-    loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "decay": None, "weights": seg_weight, "scope": "segmenation"}
-    if FLAGS.guidance_loss:
-      # guidance_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.guid_loss_name,
-      #                                                    decay=FLAGS.guidance_loss)
-      loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "decay": None, "weights": guidance_loss_weight, "scope": "guidance"}
-    if FLAGS.stage_pred_loss:
-      # stage_pred_loss_weight = train_utils.get_loss_weight(samples[common.LABEL], FLAGS.stage_pred_loss_name,
-      #                                                      decay=FLAGS.stage_pred_loss)
-      loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "decay": None, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
+    if FLAGS.guid_loss_name is not None:
+      loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "weights": FLAGS.guid_loss_weight, "scope": "guidance"}
 
+    if FLAGS.stage_pred_loss_name is not None:
+      loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "weights": FLAGS.stage_pred_loss_weight, "scope": "stage_pred"}
+
+    # TODO: z loss condition
     if common.OUTPUT_Z in output_dict:
-      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "decay": None, "weights": 1.0, "scope": "z_pred"}
+      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "weights": FLAGS.z_loss_weight, "scope": "z_pred"}
       z_class = FLAGS.z_class
     else:
       z_class = None

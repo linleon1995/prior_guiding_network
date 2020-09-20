@@ -82,7 +82,7 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 #     raise ValueError("Unknown guid fuse")
 
 #   tf.add_to_collection("guidance", guid)
-#   return 
+#   return
 
 # class Refine(object):
 #   def __init__(self, low_level, fusions, prior_seg=None, prior_pred=None, stage_pred_loss_name=None, guid_conv_nums=2,
@@ -107,12 +107,12 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 
 #     self.apply_sram2 = kwargs.pop("apply_sram2", False)
 #     self.guid_fuse = kwargs.pop("guid_fuse", "sum")
-    
+
 #     self.g = guidance_fusion_method(x, self.num_class, self.out_node, level)
 #     self.e = slim.conv2d
 #     self.attention = utils.
-    
-  
+
+
 #   def get(self):
 #     batch_norm = slim.batch_norm
 #     batch_norm_params = get_batch_norm_params(decay=0.9997,
@@ -134,7 +134,7 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 #         with slim.arg_scope([batch_norm], **batch_norm_params):
 #           y = self.model()
 #     return y
-  
+
 #   def model(self):
 #     def func(x, fuse, guid=None, apply_second_att=True):
 #       embed = self.e(x)
@@ -145,7 +145,7 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 #       if apply_second_att:
 #         net = attention(net, guid)
 #       return net
-    
+
 #     f = func(self.low_level[0], self.e(self.low_level[0]))
 #     guid = self.g(f)
 #     fuse = self.e(f)
@@ -153,8 +153,8 @@ resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
 #       f = func(self.low_level[i], fuse, guid)
 #       if i < len(self.low_level)-1:
 #         guid = self.g(f)
-#       fuse = self.e(f)  
-    
+#       fuse = self.e(f)
+
 #     y = fuse
 #     y = resize_bilinear(y, [2*h, 2*w])
 #     y = slim.conv2d(y, self.embed_node, scope="decoder_output")
@@ -252,7 +252,6 @@ class Refine(object):
                           normalizer_fn=slim.batch_norm):
         with slim.arg_scope([batch_norm], **batch_norm_params):
           y_tm1 = self.prior_seg
-          preds = {}
 
           # TODO: Would default vars value causes error?
           if self.prior_seg is not None or self.prior_pred is not None:
@@ -264,7 +263,7 @@ class Refine(object):
               guid = tf.reduce_mean(self.prior_pred, axis=3, keepdims=True)
           out_node = self.embed_node
           tf.add_to_collection("guidance", guid)
-          
+
           for i, v in enumerate(self.low_level):
             module_order = self.num_stage-i
             fuse_method = self.fusions[i]
@@ -307,8 +306,8 @@ class Refine(object):
               stage_pred =  slim.conv2d(fuse, num_class, kernel_size=[1,1], activation_fn=None,
                                           scope="stage_pred%d_pred_class%d" %(module_order,num_class))
 
-
-              preds["guidance%d" %module_order] = stage_pred
+              # preds["guidance%d" %module_order] = stage_pred
+              tf.add_to_collection("stage_pred", stage_pred)
 
             if fuse_method in ("guid"):
               guid = y
@@ -318,7 +317,7 @@ class Refine(object):
               if i < len(self.low_level)-1:
                 if "softmax" in self.stage_pred_loss_name:
                   # guid = tf.nn.softmax(stage_pred, axis=3)
-                  guid = tf.nn.softmax(y, axis=3)
+                  guid = tf.nn.softmax(stage_pred, axis=3)
                 elif "sigmoid" in self.stage_pred_loss_name:
                   guid = tf.nn.sigmoid(stage_pred)
 
@@ -406,7 +405,7 @@ class Refine(object):
           y = slim.conv2d(y, self.embed_node, scope="decoder_output")
           y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits_pred_class%d' %self.num_class)
 
-    return y, preds
+    return y
 
   def get_fusion_method(self, method):
     if method == "concat":

@@ -20,228 +20,44 @@ losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for
               "softmax_generaled_dice_loss": losses.add_softmax_generaled_dice_loss_for_each_scale,}
 
 
-def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
-    ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
-
-    # If logits are provided then convert the predictions into probabilities
-    if from_logits:
-        pred_prob = tf.sigmoid(y_pred)
-    else:
-        pred_prob = y_pred
-
-    p_t = (y_true * pred_prob) + ((1 - y_true) * (1 - pred_prob))
-    alpha_factor = 1.0
-    modulating_factor = 1.0
-
-    if alpha:
-        alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
-
-    if gamma:
-        modulating_factor = tf.pow((1.0 - p_t), gamma)
-
-    # compute the final loss and return
-    return tf.reduce_sum(alpha_factor * modulating_factor * ce)
-                         
-  # p = tf.nn.sigmoid(labels)
-  # q = 1 - p
-  
-  # p = tf.math.maximum(p, _EPSILON)
-  # q = tf.math.maximum(q, _EPSILON)
-    
-  # pos_loss = -alpha * ((1-p)**gamma) * tf.log(p)
-  # neg_loss = -alpha * ((1-q)**gamma) * tf.log(q)
-  # focal_loss = labels*pos_loss + (1-labels)*neg_loss
-  # focal_loss = tf.reduce_sum(focal_loss)
-  # return focal_loss
 
 
-def loss_utils(logits, labels, cost_name, **cost_kwargs):
-    # TODO: unified all loss to using logits instead of using after final activate function
-    """
-    Constructs the cost function, either cross_entropy, weighted cross_entropy or dice_coefficient.
-    Optional arguments are: 
-    class_weights: weights for the different classes in case of multi-class imbalance
-    regularizer: power of the L2 regularizers added to the loss function
-    """
-    if cost_name == "cross_entropy":
-        add_softmax_cross_entropy_loss_for_each_scale(logits,
-                                                    labels,
-                                                    14,
-                                                    -1,
-                                                    loss_weight=[0.04]+13*[1.0])
-        loss = tf.losses.get_losses()[0]
-        # flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
-        # flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
-        
-        # class_weights = cost_kwargs.pop("class_weights", None)
-        
-        # if class_weights is not None:
-        #     class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
-    
-        #     weight_map = tf.multiply(flat_labels, class_weights)
-        #     weight_map = tf.reduce_sum(weight_map, axis=1)
-    
-        #     loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits,
-        #                                                         labels=flat_labels)
-        #     weighted_loss = tf.multiply(loss_map, weight_map)
-    
-        #     loss = tf.reduce_mean(weighted_loss)
-            
-        # else:
-        #     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_logits, 
-        #                                                                     labels=flat_labels))
-
-            
-    elif cost_name == "KL_divergence":
-        eps = 1e-5
-        labels = tf.exp(labels)
-        loss = tf.reduce_mean(tf.reduce_sum(labels * tf.log((eps+labels)/(eps+logits)), axis=3))
-        
-    elif cost_name == "cross_entropy_sigmoid":
-        flat_logits = tf.reshape(logits, [-1, logits.get_shape()[-1]])
-        flat_labels = tf.reshape(labels, [-1, labels.get_shape()[-1]])
-        
-        class_weights = cost_kwargs.pop("class_weights", None)
-        
-        if class_weights is not None:
-            class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
-    
-            weight_map = tf.multiply(flat_labels, class_weights)
-            weight_map = tf.reduce_sum(weight_map, axis=1)
-    
-            loss_map = tf.nn.sigmoid_cross_entropy_with_logits(logits=flat_logits,
-                                                                labels=flat_labels)
-            weighted_loss = tf.multiply(loss_map, weight_map)
-    
-            loss = tf.reduce_mean(weighted_loss)
-            
-        else:
-            loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=flat_logits, 
-                                                                            labels=flat_labels))
-            
-    elif cost_name == "cross_entropy_zlabel":
-        class_weights = cost_kwargs.pop("class_weights", None)
-        z_class = cost_kwargs.pop('z_class', None)
-        
-        labels = tf.one_hot(indices=labels,
-                            depth=int(z_class),
-                            on_value=1,
-                            off_value=0,
-                            axis=-1,
-                            )
-        if class_weights is not None:
-            class_weights = tf.constant(np.array(class_weights, dtype=np.float32))
-    
-            weight_map = tf.multiply(labels, class_weights)
-            weight_map = tf.reduce_sum(weight_map, axis=1)
-    
-            loss_map = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
-                                                                labels=labels)
-            weighted_loss = tf.multiply(loss_map, weight_map)
-    
-            loss = tf.reduce_mean(weighted_loss)
-            
-        else:
-            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, 
-                                                                            labels=labels))
-            
-    elif cost_name == "mean_dice_coefficient":       
-        eps = 1e-5
-        batch_size = cost_kwargs.pop("batch_size", None)
-        # TODO: num_class variables or change in datagenerator
-        is_onehot = cost_kwargs.pop("is_onehot", True)
-        if is_onehot:
-          labels = tf.one_hot(indices=labels,
-                              depth=14,
-                              on_value=1,
-                              off_value=0,
-                              axis=-1,
-                              )
-        gt = tf.reshape(labels, [-1, labels.get_shape()[3]])
-        gt = tf.cast(gt, tf.float32)
-        prediction = tf.nn.softmax(logits)
-        prediction = tf.reshape(prediction, [-1, logits.get_shape()[3]])
-        
-        intersection = tf.reduce_sum(gt*prediction, 0)
-        union = tf.reduce_sum(gt, 0) + tf.reduce_sum(prediction, 0)
-
-        loss = (2*intersection+eps) / (union+eps)
-        loss = 1 - tf.reduce_mean(loss)
-
-        # if is_onehot:
-        #   labels = tf.one_hot(indices=labels,
-        #                       depth=14,
-        #                       on_value=1,
-        #                       off_value=0,
-        #                       axis=-1,
-        #                       )
-        # gt = tf.reshape(labels, [batch_size, -1, labels.get_shape()[-1]])
-        # gt = tf.cast(gt, tf.float32)
-        # prediction = tf.nn.softmax(logits)
-        # prediction = tf.reshape(prediction, [batch_size, -1, logits.get_shape()[-1]])
-        
-        # intersection = tf.reduce_sum(gt*prediction, axis=1)
-        # union = tf.reduce_sum(gt, axis=1) + tf.reduce_sum(prediction, axis=1)
-        # loss = 1 - tf.reduce_mean((2*intersection+eps)/(union+eps), axis=1)
-        # loss = tf.reduce_mean(loss)
-
-    elif cost_name == "MSE":
-        loss = tf.losses.mean_squared_error(
-                                        labels,
-                                        logits,
-                                        )
-    elif cost_name == "binary_focal_sigmoid":
-      alpha = cost_kwargs.pop("alpha", 0.25)
-      gamma = cost_kwargs.pop("gamma", 2.0)
-      flat_logits = tf.reshape(logits, [-1, ])
-      flat_labels = tf.reshape(labels, [-1, ])
-      loss = binary_focal_sigmoid_loss(flat_labels, flat_logits, alpha, gamma)   
-      
-    else:
-        raise ValueError("Unknown cost function: "%cost_name)
-
-    # regularizer = cost_kwargs.pop("regularizer", None)
-    # if regularizer is not None:
-    #     regularizers = sum([tf.nn.l2_loss(variable) for variable in self.variables])
-    #     loss += (regularizer * regularizers)
-    return loss
-    
 def get_loss_func(loss_name):
   if loss_name not in losses_map:
     raise ValueError('Unsupported loss %s.' % loss_name)
-  
+
   func = losses_map[loss_name]
   @functools.wraps(func)
   def network_fn(*args, **kwargs):
       return func(*args, **kwargs)
-  return network_fn    
-     
-     
-def get_losses(output_dict, 
-               layers_dict, 
-               samples, 
+  return network_fn
+
+
+def get_losses(output_dict,
+               layers_dict,
+               samples,
                loss_dict,
                num_classes,
                seq_length,
                batch_size=None,
                predict_without_background=None,
                z_class=None):
-    
+
     # TODO: layers_dict and output_dict diff, should just input one of them
 
     # Calculate segmentation loss
     label = samples[common.LABEL]
-    
+
     if seq_length > 1:
       _, t, h, w, c = label.shape.as_list()
       frame_label = tf.reshape(label, [-1, h, w, c])
       # TODO: should be done in input_process
       label = label[:,seq_length//2]
       # sel_indices = tf.range(seq_length//2, batch_size*seq_length, delta=seq_length, dtype=tf.int32)
-      # label = tf.gather(label, indices=sel_indices, axis=0)  
+      # label = tf.gather(label, indices=sel_indices, axis=0)
     else:
       frame_label = label
-       
+
     scales_to_logits = {"full": output_dict[common.OUTPUT_TYPE]}
     get_loss_func(loss_dict[common.OUTPUT_TYPE]["loss"])(
       scales_to_logits=scales_to_logits,
@@ -250,49 +66,30 @@ def get_losses(output_dict,
       ignore_label=255,
       loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
       scope=loss_dict[common.OUTPUT_TYPE]["scope"])
-    
+
     if predict_without_background:
       original_label = tf.one_hot(original_label[...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
       original_label = original_label[...,1:]
       num_classes -= 1
-      
-    
-      
+
+
     # Calculate stage prediction loss
-    # TODO: the way to form guid_dict
-    # TODO: different parameters in different losses, how to deal with each losss in a generalized way
     if "stage_pred" in loss_dict:
-        guid_dict = {}
-        # size = [2,2,2,4,4]
-        i = 0
-        
-        for name, value in layers_dict.items():
-          if "guidance" in name:
-            # kernel = tf.ones((size[i], size[i], num_classes))
-            # kernel = None
-            
+        # i = 0
+        stage_pred = tf.get_collection("stage_pred")
+        # for name, value in layers_dict.items():
+        for i, value in enumerate(stage_pred):
+          # if "guidance" in name:
             get_loss_func(loss_dict["stage_pred"]["loss"])(
-              scales_to_logits={name: value},
+              scales_to_logits={"stage%d" %(i+1): value},
               labels=frame_label,
               num_classes=num_classes,
               ignore_label=255,
-              # dilated_kernel=kernel,
               loss_weight=loss_dict["stage_pred"]["weights"],
               scope=loss_dict["stage_pred"]["scope"])
-            i+=1
-        # guid_dict = {}
-        # for name, value in layers_dict.items():
-        #   if "guidance" in name:
-        #     guid_dict[name] = value
-        # get_loss_func(loss_dict["stage_pred"]["loss"])(
-        #   scales_to_logits=guid_dict,
-        #   labels=samples[common.LABEL],
-        #   num_classes=num_classes,
-        #   ignore_label=255,
-        #   loss_weight=loss_dict["stage_pred"]["weights"],
-        #   scope=loss_dict["stage_pred"]["scope"])
+            # i+=1
 
-    # Calculate guidance loss  
+    # Calculate guidance loss
     if common.GUIDANCE in loss_dict:
         # TODO: modify g
         g = {"transform": output_dict[common.GUIDANCE]}
@@ -303,7 +100,7 @@ def get_losses(output_dict,
           ignore_label=255,
           loss_weight=loss_dict[common.GUIDANCE]["weights"],
           scope=loss_dict[common.GUIDANCE]["scope"])
-        
+
     if common.OUTPUT_Z in loss_dict:
         get_loss_func(loss_dict[common.OUTPUT_Z]["loss"])(
             scales_to_logits={common.OUTPUT_Z: output_dict[common.OUTPUT_Z]},
@@ -313,40 +110,6 @@ def get_losses(output_dict,
             loss_weight=loss_dict[common.OUTPUT_Z]["weights"],
             upsample_logits=False,
             scope=loss_dict[common.OUTPUT_Z]["scope"])
-    
-def get_files_name(path, data_suffix='*.jpg'):
-    subject = glob.glob(path + data_suffix)
-    if not subject:
-        raise IOError("No such file data suffix exist")
-    subject.sort()
-    return subject
-
-def get_dice_loss_weight():
-  pass
-
-def get_cross_entropy_loss_weight():
-  pass
-
-def load_nibabel_data(path, num_of_class=None, processing_list=None, onehot_label=False):
-    # get file list
-    subject = get_files_name(path, data_suffix='*.nii.gz')
-    
-    # select processing subject by subject_list
-    if processing_list is not None:
-        subject = [subject[s] for s in processing_list]
-    
-    # preprocessing
-    imgs = []
-    for i in subject:
-        sample = nib.load(i).get_data()
-        sample = np.flip(np.swapaxes(sample, 0, -1), 1)
-        if onehot_label:
-            if num_of_class is None:
-                raise ValueError('TODO!!')
-            sample = np.eye(num_of_class)[sample]
-            sample = np.uint8(sample)
-        imgs.append(sample)
-    return imgs
 
 
 def _div_maybe_zero(total_loss, num_present):
@@ -377,7 +140,7 @@ def colorize(value, vmin=None, vmax=None, cmap=None):
     output_color = colorize(output, vmin=0.0, vmax=1.0, cmap='viridis')
     tf.summary.image('output', output_color)
     ```
-    
+
     Returns a 3D tensor of shape [height, width, 3].
     """
 
@@ -396,158 +159,9 @@ def colorize(value, vmin=None, vmax=None, cmap=None):
     cm = plt.cm.get_cmap(cmap if cmap is not None else 'gray')
     colors = tf.constant(cm.colors, dtype=tf.float32)
     value = tf.gather(colors, indices)
-  
+
     value = tf.cast(value*255, tf.uint8)
     return value
-
-
-def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
-                                                  labels,
-                                                  num_classes,
-                                                  ignore_label,
-                                                  loss_weight=1.0,
-                                                  upsample_logits=True,
-                                                  hard_example_mining_step=0,
-                                                  top_k_percent_pixels=1.0,
-                                                  gt_is_matting_map=False,
-                                                  scope=None):
-  """Adds softmax cross entropy loss for logits of each scale.
-  Args:
-    scales_to_logits: A map from logits names for different scales to logits.
-      The logits have shape [batch, logits_height, logits_width, num_classes].
-    labels: Groundtruth labels with shape [batch, image_height, image_width, 1].
-    num_classes: Integer, number of target classes.
-    ignore_label: Integer, label to ignore.
-    loss_weight: A float or a list of loss weights. If it is a float, it means
-      all the labels have the same weight. If it is a list of weights, then each
-      element in the list represents the weight for the label of its index, for
-      example, loss_weight = [0.1, 0.5] means the weight for label 0 is 0.1 and
-      the weight for label 1 is 0.5.
-    upsample_logits: Boolean, upsample logits or not.
-    hard_example_mining_step: An integer, the training step in which the hard
-      exampling mining kicks off. Note that we gradually reduce the mining
-      percent to the top_k_percent_pixels. For example, if
-      hard_example_mining_step = 100K and top_k_percent_pixels = 0.25, then
-      mining percent will gradually reduce from 100% to 25% until 100K steps
-      after which we only mine top 25% pixels.
-    top_k_percent_pixels: A float, the value lies in [0.0, 1.0]. When its value
-      < 1.0, only compute the loss for the top k percent pixels (e.g., the top
-      20% pixels). This is useful for hard pixel mining.
-    gt_is_matting_map: If true, the groundtruth is a matting map of confidence
-      score. If false, the groundtruth is an integer valued class mask.
-    scope: String, the scope for the loss.
-  Raises:
-    ValueError: Label or logits is None, or groundtruth is matting map while
-      label is not floating value.
-  """
-  if labels is None:
-    raise ValueError('No label for softmax cross entropy loss.')
-
-  # If input groundtruth is a matting map of confidence, check if the input
-  # labels are floating point values.
-  if gt_is_matting_map and not labels.dtype.is_floating:
-    raise ValueError('Labels must be floats if groundtruth is a matting map.')
-
-  # TODO:
-  scales_to_logits = {"1": scales_to_logits}
-  for scale, logits in six.iteritems(scales_to_logits):
-    loss_scope = None
-    if scope:
-      loss_scope = '%s_%s' % (scope, scale)
-
-    if upsample_logits:
-      # Label is not downsampled, and instead we upsample logits.
-      logits = tf.image.resize_bilinear(
-          logits,
-          preprocess_utils.resolve_shape(labels, 4)[1:3],
-          align_corners=True)
-      scaled_labels = labels
-    else:
-      # Label is downsampled to the same size as logits.
-      # When gt_is_matting_map = true, label downsampling with nearest neighbor
-      # method may introduce artifacts. However, to avoid ignore_label from
-      # being interpolated with other labels, we still perform nearest neighbor
-      # interpolation.
-      # TODO(huizhongc): Change to bilinear interpolation by processing padded
-      # and non-padded label separately.
-      if gt_is_matting_map:
-        tf.logging.warning(
-            'Label downsampling with nearest neighbor may introduce artifacts.')
-
-      scaled_labels = tf.image.resize_nearest_neighbor(
-          labels,
-          preprocess_utils.resolve_shape(logits, 4)[1:3],
-          align_corners=True)
-
-    scaled_labels = tf.reshape(scaled_labels, shape=[-1])
-    weights = utils.get_label_weight_mask(
-        scaled_labels, ignore_label, num_classes, label_weights=loss_weight)
-    # Dimension of keep_mask is equal to the total number of pixels.
-    keep_mask = tf.cast(
-        tf.not_equal(scaled_labels, ignore_label), dtype=tf.float32)
-
-    train_labels = None
-    logits = tf.reshape(logits, shape=[-1, num_classes])
-
-    if gt_is_matting_map:
-      # When the groundtruth is integer label mask, we can assign class
-      # dependent label weights to the loss. When the groundtruth is image
-      # matting confidence, we do not apply class-dependent label weight (i.e.,
-      # label_weight = 1.0).
-      if loss_weight != 1.0:
-        raise ValueError(
-            'loss_weight must equal to 1 if groundtruth is matting map.')
-
-      # Assign label value 0 to ignore pixels. The exact label value of ignore
-      # pixel does not matter, because those ignore_value pixel losses will be
-      # multiplied to 0 weight.
-      train_labels = scaled_labels * keep_mask
-
-      train_labels = tf.expand_dims(train_labels, 1)
-      train_labels = tf.concat([1 - train_labels, train_labels], axis=1)
-    else:
-      train_labels = tf.one_hot(
-          scaled_labels, num_classes, on_value=1.0, off_value=0.0)
-
-    default_loss_scope = ('softmax_all_pixel_loss'
-                          if top_k_percent_pixels == 1.0 else
-                          'softmax_hard_example_mining')
-    with tf.name_scope(loss_scope, default_loss_scope,
-                       [logits, train_labels, weights]):
-      # Compute the loss for all pixels.
-      pixel_losses = tf.nn.softmax_cross_entropy_with_logits_v2(
-          labels=tf.stop_gradient(
-              train_labels, name='train_labels_stop_gradient'),
-          logits=logits,
-          name='pixel_losses')
-      weighted_pixel_losses = tf.multiply(pixel_losses, weights)
-
-      if top_k_percent_pixels == 1.0:
-        total_loss = tf.reduce_sum(weighted_pixel_losses)
-        num_present = tf.reduce_sum(keep_mask)
-        loss = _div_maybe_zero(total_loss, num_present)
-        tf.losses.add_loss(loss)
-      else:
-        num_pixels = tf.to_float(tf.shape(logits)[0])
-        # Compute the top_k_percent pixels based on current training step.
-        if hard_example_mining_step == 0:
-          # Directly focus on the top_k pixels.
-          top_k_pixels = tf.to_int32(top_k_percent_pixels * num_pixels)
-        else:
-          # Gradually reduce the mining percent to top_k_percent_pixels.
-          global_step = tf.to_float(tf.train.get_or_create_global_step())
-          ratio = tf.minimum(1.0, global_step / hard_example_mining_step)
-          top_k_pixels = tf.to_int32(
-              (ratio * top_k_percent_pixels + (1.0 - ratio)) * num_pixels)
-        top_k_losses, _ = tf.nn.top_k(weighted_pixel_losses,
-                                      k=top_k_pixels,
-                                      sorted=True,
-                                      name='top_k_percent_pixels')
-        total_loss = tf.reduce_sum(top_k_losses)
-        num_present = tf.reduce_sum(
-            tf.to_float(tf.not_equal(top_k_losses, 0.0)))
-        loss = _div_maybe_zero(total_loss, num_present)
-        tf.losses.add_loss(loss)
 
 
 def get_model_init_fn(train_logdir,
@@ -583,21 +197,21 @@ def get_model_init_fn(train_logdir,
   exclude_list.append('resnet_v1_50/conv1_1/weights:0')
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
-  
+
   # Restore without Adam parameters
   new_v = []
   for v in variables_to_restore:
     if "Adam" not in v.name:
       new_v.append(v)
-    
+
   variables_to_restore = new_v
-      
+
   if variables_to_restore:
     init_op, init_feed_dict = contrib_framework.assign_from_checkpoint(
         tf_initial_checkpoint,
         variables_to_restore,
         ignore_missing_vars=ignore_missing_vars)
-    
+
     global_step = tf.train.get_or_create_global_step()
 
     def restore_fn(scaffold, sess):
