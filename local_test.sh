@@ -23,102 +23,30 @@
 #
 #
 
-# DATASET_NAME = ['2015_MICCAI_Abdominal']
+# DATASET_NAME = ['2013_MICCAI_Abdominal']
 # DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
+gpu_ids=0
 
-gpu_ids=2
 
+# T2 image decay=1e-3 out_node=64 conv_num=2 n=16 dice_loss
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2015_MICCAI_Abdominal \
+    --dataset_name 2019_ISBI_CHAOS_MR_T2 \
     --batch_size=16 \
     --train_split train \
     --guid_fuse mean_wo_back \
     --weight_decay=0.001 \
-    --training_number_of_steps=200000 \
     --validation_steps=500 \
+    --training_number_of_steps=50000 \
     --save_checkpoint_steps=500 \
-    --prior_num_subject=24 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --batch_size=16 \
-#     --train_split train \
-#     --guid_fuse mean_wo_back \
-#     --weight_decay=0.001 \
-#     --training_number_of_steps=200000 \
-#     --validation_steps=500 \
-#     --save_checkpoint_steps=500 \
-#     --prior_num_subject=24 \
-#     --fusions context_att context_att context_att guid_uni guid_uni \
-
-# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --batch_size=16 \
-#     --train_split train \
-#     --guid_fuse mean_wo_back \
-#     --weight_decay=0.001 \
-#     --training_number_of_steps=200000 \
-#     --validation_steps=500 \
-#     --save_checkpoint_steps=500 \
-#     --prior_num_subject=24 \
-#     --fusions self_att self_att self_att guid_uni guid_uni \
+    --guid_encoder image_only \
+    --min_resize_value=256 \
+    --max_resize_value=256 \
+    --fusions guid guid_uni guid_uni guid_uni guid_uni \
+    --weight_decay=0.001 \
+    --out_node=64 \
+    --guidance_loss False \
+    --stage_pred_loss False \
+    --guid_conv_nums=2 \
 
 
-# CUDA_VISIBLE_DEVICES=gpu_ids python train.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --training_number_of_steps=200000 \
-#     --validation_steps=500 \
-#     --save_checkpoint_steps=500 \
-#     --prior_num_subject=24 \
-#     --cell_type=BiConvGRU \
-#     --fusions self_att self_att self_att guid_uni guid_uni \
-
-
-# CUDA_VISIBLE_DEVICES=gpu_ids python train.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --training_number_of_steps=200000 \
-#     --validation_steps=500 \
-#     --save_checkpoint_steps=500 \
-#     --prior_num_subject=24 \
-#     --cell_type=BiConvGRU \
-#     --fusions context_att context_att context_att guid_uni guid_uni \
-
-
-# TODO: checkpoint_dir should select the latest one automatically
-# TODO: test empty img list
-# python eval.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_034/model.ckpt-128000 \
-#     --seq_length=3 \
-#     --eval_split val \
-#     --prior_num_subject=24 \
-#     --store_all_imgs=False
-
-# python eval.py \
-#     --dataset_name 2015_MICCAI_Abdominal \
-#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_032/model.ckpt-182000 \
-#     --seq_length=3 --eval_split val --prior_num_subject=24
-
-# python eval.py \
-#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-#     --checkpoint_dir=/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_073/model.ckpt-50000 \
-#     --seq_length=3 \
-#     --eval_split val \
-#     --prior_num_subject=16 \
-#     --store_all_imgs=True \
-#     --show_pred_only=True
-
-# python train.py --weight_decay=0.1
-# python train.py --weight_decay=0.001
-
-# python train.py --batch_size=8 --crop-size=513 --min_scale_factor=0.75 --max_scale_factor=1.25 scale_factor_step_size=0.125

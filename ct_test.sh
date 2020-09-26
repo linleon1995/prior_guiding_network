@@ -26,279 +26,561 @@
 # DATASET_NAME = ['2013_MICCAI_Abdominal']
 # DATASET_NAME = ['2019_ISBI_CHAOS_MR_T1', '2019_ISBI_CHAOS_MR_T2']
 # DATASET_NAME = ['2019_ISBI_CHAOS_CT']
-
 gpu_ids=0
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+# # prior single_image train
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image context_att train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions context_att context_att context_att guid_uni guid_uni \
+# # prior single_image context_att train
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse mean_wo_back \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+# # prior single_image train
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image train
+# # prior single_image train
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+#######################################################################################################################
+# T2 prior stage_pred_loss_weight 1.0 guid_loss_weight 1.0 drop_prob None pretrained None
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
     --batch_size=16 \
     --train_split train \
     --guid_fuse mean_wo_back \
+    --seg_loss_name softmax_generaled_dice_loss \
     --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
+    --validation_steps=40 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=40 \
     --prior_num_subject=16 \
     --min_resize_value=256 \
     --max_resize_value=256 \
     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+    --out_node=32 \
+    --guid_conv_nums=2 \
+    --stage_pred_loss_weight 1.0 \
+    --guid_loss_weight 1.0 \
 
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
-# prior single_image context_att train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=80000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions context_att context_att context_att guid_uni guid_uni \
-
-# prior single_image train
-CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
-    --dataset_name 2019_ISBI_CHAOS_MR_T1 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
-    --batch_size=16 \
-    --train_split train \
-    --guid_fuse conv \
-    --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
-    --prior_num_subject=16 \
-    --min_resize_value=256 \
-    --max_resize_value=256 \
-    --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# prior single_image train
+# T2 image stage_pred_loss_weight 1.0 guid_loss_weight 1.0 drop_prob None pretrained 057
 CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
-    --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_012/model.ckpt-best \
     --batch_size=16 \
     --train_split train \
-    --guid_fuse conv \
+    --guid_fuse mean_wo_back \
+    --seg_loss_name softmax_generaled_dice_loss \
     --weight_decay=0.001 \
-    --validation_steps=500 \
-    --training_number_of_steps=60000 \
-    --save_checkpoint_steps=500 \
+    --validation_steps=40 \
+    --training_number_of_steps=50000 \
+    --save_checkpoint_steps=40 \
     --prior_num_subject=16 \
     --min_resize_value=256 \
     --max_resize_value=256 \
     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+    --out_node=32 \
+    --guid_conv_nums=2 \
+    --stage_pred_loss_weight 1.0 \
+    --guid_loss_weight 1.0 \
+    --tf_initial_ /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best \
+
+
+#######################################################################################################################
+# # T2 image decay=1e-3 out_node=64 conv_num=2 n=16 generaled_dice_loss
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --seg_loss_name softmax_generaled_dice_loss \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --weight_decay=0.001 \
+#     --out_node=32 \
+#     --guid_conv_nums=2 \
+#     # --tf_initial_ /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best \
+
+
+# # T2 prior decay=1e-3 out_node=64 conv_num=2 n=16 generaled_dice_loss
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --seg_loss_name softmax_generaled_dice_loss \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --weight_decay=0.001 \
+#     --out_node=32 \
+#     --guid_conv_nums=2 \
+#     --tf_initial_ /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best \
+
+
+# # T2 image decay=1e-3 out_node=64 conv_num=2 n=16 dice_loss
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --weight_decay=0.001 \
+#     --out_node=32 \
+#     --guid_conv_nums=2 \
+#     --tf_initial_ /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best \
+
+
+# # T2 prior decay=1e-3 out_node=64 conv_num=2 n=16 dice_loss
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --weight_decay=0.001 \
+#     --out_node=32 \
+#     --guid_conv_nums=2 \
+#     --tf_initial_ /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best \
+
+
+#######################################################################################################################
+# # prior single_image train 107
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image context_att train 000
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+# # prior single_image train 040
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image train 046
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image train 053
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image context_att train 054
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+# # prior single_image train 051
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image train 055
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse mean_wo_back \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image train 058
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image context_att train 059
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=80000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+# # prior single_image train 060
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+
+# # prior single_image train 062
+# CUDA_VISIBLE_DEVICES=$gpu_ids python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=16 \
+#     --train_split train \
+#     --guid_fuse conv \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=60000 \
+#     --save_checkpoint_steps=500 \
+#     --guid_encoder image_only \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
 
 #######################################################################################################################
 # # prior bi train
 # python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --guid_fuse same \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --cell_type=BiConvGRU \
+#     --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --guid_loss_name softmax_dice_loss \
+#     --stage_pred_loss_name softmax_dice_loss \
+
+# # prior self_att bi train
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --guid_fuse same \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --cell_type=BiConvGRU \
+#     --tf_initial_checkpoint /home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_019/model.ckpt-200000 \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions self_att self_att self_att guid_uni guid_uni \
+#     --guid_loss_name softmax_dice_loss \
+#     --stage_pred_loss_name softmax_dice_loss \
+
+# # prior context_att bi train
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --guid_fuse same \
+#     --weight_decay=0.001 \
+#     --validation_steps=500 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=500 \
+#     --prior_num_subject=16 \
+#     --cell_type=BiConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+#     --guid_loss_name softmax_dice_loss \
+#     --stage_pred_loss_name softmax_dice_loss \
+
+# # prior bi train
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --train_split train \
 #     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
 #     --prior_num_subject=16 \
 #     --cell_type=BiConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
 # # image bi train
 # python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --guid_encoder=image_only \
 #     --train_split train \
 #     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
 #     --cell_type=BiConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-
-# # prior context single train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
-#     --batch_size=12 \
-#     --seq_length=1 \
-#     --guid_encoder=early \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
-#     --prior_num_subject=16 \
-#     --cell_type=BiConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
 #     --fusions context_att context_att context_att guid_uni guid_uni \
-
-
-# # prior context sequence train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --guid_encoder=early \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
-#     --prior_num_subject=16 \
-#     --cell_type=BiConvGRU \
-#     --fusions context_att context_att context_att guid_uni guid_uni \
-
 
 # # prior bi train val
 # python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --train_split train val \
 #     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
 #     --prior_num_subject=20 \
 #     --cell_type=BiConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
 # # image bi train val
 # python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --guid_encoder=image_only \
-#     --train_split train \
+#     --train_split train val \
 #     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
 #     --cell_type=BiConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# # image forward train val
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --guid_encoder=image_only \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
-#     --cell_type=ConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# # prior forward train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
-#     --prior_num_subject=16 \
-#     --cell_type=ConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
-
-# # image forward train
-# python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
-#     --batch_size=4 \
-#     --seq_length=3 \
-#     --guid_encoder=image_only \
-#     --train_split train \
-#     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
-#     --cell_type=ConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
 
 # # prior forward train val
 # python train.py \
-#     --dataset_name 2019_ISBI_CHAOS_CT \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
 #     --batch_size=4 \
 #     --seq_length=3 \
 #     --train_split train val \
 #     --weight_decay=0.001 \
-#     --validation_steps=1000 \
-#     --training_number_of_steps=30000 \
-#     --save_checkpoint_steps=1000 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
 #     --prior_num_subject=20 \
 #     --cell_type=ConvGRU \
-#     --fusions guid_uni guid_uni guid_uni guid_uni guid_uni \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+# # image forward train val
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --guid_encoder=image_only \
+#     --train_split train val \
+#     --weight_decay=0.001 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
+#     --cell_type=ConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+
+# # prior forward train
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --train_split train \
+#     --weight_decay=0.001 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
+#     --prior_num_subject=16 \
+#     --cell_type=ConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
+
+# # image forward train
+# python train.py \
+#     --dataset_name 2019_ISBI_CHAOS_MR_T1 2019_ISBI_CHAOS_MR_T2 \
+#     --batch_size=4 \
+#     --seq_length=3 \
+#     --guid_encoder=image_only \
+#     --train_split train \
+#     --weight_decay=0.001 \
+#     --validation_steps=2000 \
+#     --training_number_of_steps=50000 \
+#     --save_checkpoint_steps=2000 \
+#     --cell_type=ConvGRU \
+#     --min_resize_value=256 \
+#     --max_resize_value=256 \
+#     --fusions context_att context_att context_att guid_uni guid_uni \
