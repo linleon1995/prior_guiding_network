@@ -1,9 +1,11 @@
+import os
 import functools
 import six
 import numpy as np
 import nibabel as nib
 import glob
 import tensorflow as tf
+import argparse
 from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
 
@@ -13,24 +15,43 @@ from core import utils
 import common
 # from utils import loss_utils
 _EPSILON = 1e-5
-losses_map = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
-              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
-              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,
-              "sigmoid_dice_loss": losses.add_sigmoid_dice_loss_for_each_scale,
-              "softmax_generaled_dice_loss": losses.add_softmax_generaled_dice_loss_for_each_scale,}
+LOSSES_MAP = losses.LOSSES_MAP
 
 
 
 
-def get_loss_func(loss_name):
-  if loss_name not in losses_map:
-    raise ValueError('Unsupported loss %s.' % loss_name)
 
-  func = losses_map[loss_name]
+def create_training_path(train_logdir):
+    idx = 0
+    path = os.path.join(train_logdir, "run_{:03d}".format(idx))
+    while os.path.exists(path):
+        idx += 1
+        path = os.path.join(train_logdir, "run_{:03d}".format(idx))
+    os.makedirs(path)
+    return path
+
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Unsupported value encountered.')
+        
+
+def get_func(func):
   @functools.wraps(func)
   def network_fn(*args, **kwargs):
       return func(*args, **kwargs)
   return network_fn
+  
+         
+def get_loss_func(loss_name):
+  if loss_name not in LOSSES_MAPlosses_map:
+    raise ValueError('Unsupported loss %s.' % loss_name)
+  func = LOSSES_MAP[loss_name]
+  return get_func(func)
 
 
 def get_losses(output_dict,

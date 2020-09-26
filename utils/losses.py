@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 from core import preprocess_utils
 from core import utils
 _EPSILON = 1e-9
-
+LOSSES_MAP = {"softmax_cross_entropy": add_softmax_cross_entropy_loss_for_each_scale,
+              "softmax_dice_loss": add_softmax_dice_loss_for_each_scale,
+              "sigmoid_cross_entropy": add_sigmoid_cross_entropy_loss_for_each_scale,
+              "sigmoid_dice_loss": add_sigmoid_dice_loss_for_each_scale,
+              "softmax_generaled_dice_loss": add_softmax_generaled_dice_loss_for_each_scale,}
 
 
 def get_label_weight_mask(labels, ignore_label, num_classes, label_weights=1.0, keep_class_dims=False):
@@ -370,39 +374,4 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
         loss = _div_maybe_zero(total_loss, num_present)
         tf.losses.add_loss(loss)
 
-
-# TODO
-def binary_focal_sigmoid_loss(y_true, y_pred, alpha=0.25, gamma=2.0, from_logits=True):
-    ce = tf.nn.sigmoid_cross_entropy_with_logits(logits=y_true, labels=y_pred)
-
-    # If logits are provided then convert the predictions into probabilities
-    if from_logits:
-        pred_prob = tf.sigmoid(y_pred)
-    else:
-        pred_prob = y_pred
-
-    p_t = (y_true * pred_prob) + ((1 - y_true) * (1 - pred_prob))
-    alpha_factor = 1.0
-    modulating_factor = 1.0
-
-    if alpha:
-        alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
-
-    if gamma:
-        modulating_factor = tf.pow((1.0 - p_t), gamma)
-
-    # compute the final loss and return
-    return tf.reduce_sum(alpha_factor * modulating_factor * ce)
-
-  # p = tf.nn.sigmoid(labels)
-  # q = 1 - p
-
-  # p = tf.math.maximum(p, _EPSILON)
-  # q = tf.math.maximum(q, _EPSILON)
-
-  # pos_loss = -alpha * ((1-p)**gamma) * tf.log(p)
-  # neg_loss = -alpha * ((1-q)**gamma) * tf.log(q)
-  # focal_loss = labels*pos_loss + (1-labels)*neg_loss
-  # focal_loss = tf.reduce_sum(focal_loss)
-  # return focal_loss
 
