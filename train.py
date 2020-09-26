@@ -15,25 +15,11 @@ from utils import train_utils, eval_utils
 from core import features_extractor
 import input_preprocess
 colorize = train_utils.colorize
-
+create_training_path = train_utils.create_training_path
+str2bool = train_utils.str2bool
 
 LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
-def create_training_path(train_logdir):
-    idx = 0
-    path = os.path.join(train_logdir, "run_{:03d}".format(idx))
-    while os.path.exists(path):
-        idx += 1
-        path = os.path.join(train_logdir, "run_{:03d}".format(idx))
-    os.makedirs(path)
-    return path
 
-def str2bool(v):
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Unsupported value encountered.')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--fusions', nargs='+', required=True,
@@ -168,10 +154,10 @@ parser.add_argument('--stage_pred_loss_weight', type=float, default=1.0,
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
                     help='')
 
-parser.add_argument('--guid_loss_name', type=str, default="softmax_cross_entropy",
+parser.add_argument('--guid_loss_name', type=str, default="sigmoid_cross_entropy",
                     help='')
 
-parser.add_argument('--stage_pred_loss_name', type=str, default="softmax_cross_entropy",
+parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_entropy",
                     help='')
 
 
