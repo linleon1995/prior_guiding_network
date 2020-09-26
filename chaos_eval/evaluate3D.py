@@ -28,6 +28,7 @@ dicom_dir = os.path.normpath(cwd + '/Data_3D/DICOM_anon')
 # ======= Volume Reading =======
 Vref = png_series_reader(ground_dir)
 Vseg = png_series_reader(seg_dir)
+print(Vseg.shape)
 print('Volumes imported.')
 # ======= Evaluation =======
 print('Calculating...')

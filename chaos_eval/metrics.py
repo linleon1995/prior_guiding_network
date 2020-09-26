@@ -15,13 +15,36 @@ from sklearn.neighbors import KDTree
 import nibabel as nib
 import matplotlib.pyplot as plt
 from medpy import metric
-
+from mpl_toolkits.mplot3d import Axes3D
 """
 def evaluate(Vref,Vseg,dicom_dir):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
     return dice, ravd
 """
+# TODO: Align coordinate between Simple iTK and nibabel
+def show_3d(ref, seg):
+    Rx, Ry, Rz = [], [] , []
+    Sx, Sy, Sz = [], [] , []
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    
+    for r, s in zip(ref, seg):       
+        Rx.append(r[0])
+        Ry.append(r[1])
+        Rz.append(r[2])
+        
+        Sx.append(s[0])
+        Sy.append(s[1])
+        Sz.append(s[2])
+        
+    ax.scatter(Rx, Ry, Rz, c='r', marker='.')
+    ax.scatter(Sx, Sy, Sz, c='g', marker='.')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    plt.show()
+    
 def hausdorff_distance(test=None, reference=None, confusion_matrix=None, nan_for_nonexisting=True, voxel_spacing=None, connectivity=1, **kwargs):
 
     if confusion_matrix is None:
@@ -40,10 +63,10 @@ def hausdorff_distance(test=None, reference=None, confusion_matrix=None, nan_for
     return metric.hd(test, reference, voxel_spacing, connectivity)
     
     
-def evaluate(Vref,Vseg,dicom_dir):
+def evaluate(Vref,Vseg,dicom_dir, j, ax):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
-    [assd, mssd]=SSD(Vref,Vseg,dicom_dir)
+    [assd, mssd]=SSD(Vref,Vseg,dicom_dir, j, ax)
     return dice, ravd, assd ,mssd
 
 def DICE(Vref,Vseg):
@@ -54,7 +77,7 @@ def RAVD(Vref,Vseg):
     ravd=(abs(Vref.sum() - Vseg.sum())/Vref.sum())*100
     return ravd
 
-def SSD(Vref,Vseg,dicom_dir):  
+def SSD(Vref,Vseg,dicom_dir, j, ax):  
     struct = ndimage.generate_binary_structure(3, 1)  
     
     ref_border=Vref ^ ndimage.binary_erosion(Vref, structure=struct, border_value=1)
@@ -81,7 +104,10 @@ def SSD(Vref,Vseg,dicom_dir):
     
     ref_border_voxels_real=transformToRealCoordinates(ref_border_voxels,dicom_dir)
     seg_border_voxels_real=transformToRealCoordinates(seg_border_voxels,dicom_dir)    
-  
+    
+    
+    show_3d(ref_border_voxels_real, seg_border_voxels_real)
+      
     tree_ref = KDTree(np.array(ref_border_voxels_real))
     dist_seg_to_ref, ind = tree_ref.query(seg_border_voxels_real)
     tree_seg = KDTree(np.array(seg_border_voxels_real))
@@ -104,38 +130,14 @@ def transformToRealCoordinates(indexPoints,dicom_dir):
     TransformIndexToPhysicalPoint() function from SimpleITK library.
     """
     M = dicom_dir.affine.copy()
+    print(M)
     realPoints=[]
     for i in range(len(indexPoints[0])):
-        P=np.array([indexPoints[1,i],indexPoints[2,i],indexPoints[0,i],1])
+        # P=np.array([indexPoints[1,i],indexPoints[2,i],indexPoints[0,i],1])
+        P=np.array([indexPoints[0,i],indexPoints[1,i],indexPoints[2,i],1])
         R=np.matmul(M,P)
         realPoints.append(R[0:3])
-    """
-    dicom_file_list=glob.glob(dicom_dir + '/*.dcm')
-    dicom_file_list.sort()
-    #Read position and orientation info from first image
-    ds_first = pydicom.dcmread(dicom_file_list[0])
-    img_pos_first=list( map(float, list(ds_first.ImagePositionPatient)))
-    img_or=list( map(float, list(ds_first.ImageOrientationPatient)))
-    pix_space=list( map(float, list(ds_first.PixelSpacing)))
-    #Read position info from first image from last image
-    ds_last = pydicom.dcmread(dicom_file_list[-1])
-    img_pos_last=list( map(float, list(ds_last.ImagePositionPatient)))
-    print(img_pos_first, img_or, pix_space, img_pos_last)
-    T1=img_pos_first
-    TN=img_pos_last
-    X=img_or[:3]
-    Y=img_or[3:]
-    deltaI=pix_space[0]
-    deltaJ=pix_space[1]
-    N=len(dicom_file_list)
-    M=np.array([[X[0]*deltaI,Y[0]*deltaJ,(T1[0]-TN[0])/(1-N),T1[0]], [X[1]*deltaI,Y[1]*deltaJ,(T1[1]-TN[1])/(1-N),T1[1]], [X[2]*deltaI,Y[2]*deltaJ,(T1[2]-TN[2])/(1-N),T1[2]], [0,0,0,1]])
-
-    realPoints=[]
-    for i in range(len(indexPoints[0])):
-        P=np.array([indexPoints[1,i],indexPoints[2,i],indexPoints[0,i],1])
-        R=np.matmul(M,P)
-        realPoints.append(R[0:3])
-    """
+ 
     return realPoints
 
 def png_series_reader(dir):
@@ -171,14 +173,25 @@ if __name__ == '__main__':
       # image_arr = sitk.GetArrayFromImage(image)
       image_arr = nib.load(file).get_data()
       image_arr = np.int32(image_arr)
+      
       return image_arr
-    
+    def r(image_path):
+      # Read the medical image (.nii.gz .dcm) containing the volume with SimpleITK
+      image = sitk.ReadImage(image_path)
+      # Access the numpy array:
+      image_arr = sitk.GetArrayFromImage(image)
+      return np.int32(image_arr)
+      
     total_dd, total_rr, total_aa, total_mm = [], [], [], []
     for i in range(6):
       dd, rr, aa, mm = [], [], [], []
       Vref = read_medical_images("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/label/"+ground_dir[i])
       Vseg = read_medical_images("/home/user/DISK/data/Jing/model/Thesis/thesis_trained/run_057/model.ckpt-best/nii_files_val/"+seg_dir[i]) 
       ddd = nib.load("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/raw/"+dicom_dir[i]) 
+      # plt.imshow(Vref[...,60])
+      # plt.show()
+      # dd2 = r("/home/user/DISK/data/Jing/data/2015_MICCAI_BTCV/Train_Sets/raw/"+dicom_dir[i])
+      # print(dd2.shape, ddd.shape)
       """
       x = 60
       plt.imshow(Vref[...,x])
@@ -191,6 +204,8 @@ if __name__ == '__main__':
       """
       # hausdorff_distance(test=Vseg, reference=Vref, confusion_matrix=None, nan_for_nonexisting=True, voxel_spacing=None, connectivity=1, **kwargs)
       
+      fig = plt.figure()
+      ax = fig.add_subplot(111, projection='3d')
       for j in range(1,13):
         v_ref = Vref
         v_ref = np.int32(v_ref==j)
@@ -201,7 +216,9 @@ if __name__ == '__main__':
         print('Calculating...')
         if np.sum(v_seg) == 0 or np.sum(v_ref) == 0:
           continue
-        [dice, ravd, assd ,mssd]=evaluate(v_ref,v_seg,ddd)
+        print(v_ref.shape)
+        
+        [dice, ravd, assd ,mssd]=evaluate(v_ref,v_seg,ddd, j, ax)
         print('Class%d DICE=%.3f RAVD=%.3f ASSD=%.3f MSSD=%.3f' %(j, dice, ravd, assd ,mssd))
         dd.append(dice)
         rr.append(ravd)
