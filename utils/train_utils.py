@@ -1,24 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan 13 10:18:33 2020
+@author: Jing-Siang, Lin
+"""
+
 import os
 import functools
-import six
-import numpy as np
-import nibabel as nib
-import glob
 import tensorflow as tf
 import argparse
 from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
-
 from utils import losses
 from core import preprocess_utils
 from core import utils
 import common
-# from utils import loss_utils
-_EPSILON = 1e-5
-LOSSES_MAP = losses.LOSSES_MAP
-
-
-
+LOSSES_MAP = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
+              "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
+              "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,
+              "sigmoid_dice_loss": losses.add_sigmoid_dice_loss_for_each_scale,
+              "softmax_generalized_dice_loss": losses.add_softmax_generalized_dice_loss_for_each_scale,}
 
 
 def create_training_path(train_logdir):
@@ -48,7 +49,7 @@ def get_func(func):
   
          
 def get_loss_func(loss_name):
-  if loss_name not in LOSSES_MAPlosses_map:
+  if loss_name not in LOSSES_MAP:
     raise ValueError('Unsupported loss %s.' % loss_name)
   func = LOSSES_MAP[loss_name]
   return get_func(func)
@@ -61,7 +62,6 @@ def get_losses(output_dict,
                num_classes,
                seq_length,
                batch_size=None,
-               predict_without_background=None,
                z_class=None):
 
     # TODO: layers_dict and output_dict diff, should just input one of them
@@ -88,11 +88,6 @@ def get_losses(output_dict,
       loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
       scope=loss_dict[common.OUTPUT_TYPE]["scope"])
 
-    if predict_without_background:
-      original_label = tf.one_hot(original_label[...,0], depth=num_classes, off_value=0.0, on_value=1.0, axis=3)
-      original_label = original_label[...,1:]
-      num_classes -= 1
-
 
     # Calculate stage prediction loss
     if "stage_pred" in loss_dict:
@@ -112,7 +107,6 @@ def get_losses(output_dict,
 
     # Calculate guidance loss
     if common.GUIDANCE in loss_dict:
-        # TODO: modify g
         g = {"transform": output_dict[common.GUIDANCE]}
         get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
           scales_to_logits=g,
@@ -131,13 +125,6 @@ def get_losses(output_dict,
             loss_weight=loss_dict[common.OUTPUT_Z]["weights"],
             upsample_logits=False,
             scope=loss_dict[common.OUTPUT_Z]["scope"])
-
-
-def _div_maybe_zero(total_loss, num_present):
-    """Normalizes the total loss with the number of present pixels."""
-    return tf.to_float(num_present > 0) * tf.math.divide(
-        total_loss,
-        tf.maximum(1e-5, num_present))
 
 
 def colorize(value, vmin=None, vmax=None, cmap=None):
@@ -187,7 +174,9 @@ def colorize(value, vmin=None, vmax=None, cmap=None):
 
 def get_model_init_fn(train_logdir,
                       tf_initial_checkpoint,
+                      # initialize_first_layer,
                       initialize_last_layer,
+                      # first_layer,
                       last_layers=None,
                       ignore_missing_vars=False):
   """Gets the function initializing model variables from a checkpoint.
@@ -214,7 +203,7 @@ def get_model_init_fn(train_logdir,
   exclude_list = ['global_step']
   if not initialize_last_layer:
     exclude_list.extend(last_layers)
-  # TODO: parameter
+  # if not initialize_first_layer:
   exclude_list.append('resnet_v1_50/conv1_1/weights:0')
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)

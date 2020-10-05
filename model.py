@@ -119,8 +119,8 @@ def pgb_network(images,
                     #     z_pred = tf.nn.softmax(z_logits, axis=1)
 
                     # else:
-                    # prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
-                    prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
+                    prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
+                    # prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
                     # tf.add_to_collection("stage_pred", prior_pred)
                     output_dict[common.GUIDANCE] = prior_pred
 
@@ -146,7 +146,7 @@ def pgb_network(images,
     # Sequential Model for slice fusion
     if seq_length is not None:
         if seq_length > 1:
-            logits = tf.reshape(logits, [n, t, h, w, c])
+            logits = tf.reshape(logits, [n, t, h, w, num_class])
             logits = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
 
     if drop_prob is not None:

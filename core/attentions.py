@@ -1,69 +1,35 @@
 import tensorflow as  tf
 from tensorflow.contrib import slim
 from core import preprocess_utils
-# a = self_attention()
-# a.attention(x, 32, "x1")
-class self_attention(object):
-    def __init__(self):
-        pass
-        # [bs, h, w, c]
-        # self.n, self.h, self.w, self.c = resolve_shape(x, rank=4)
-        # self.n, self.h, self.w, self.c = x.get_shape.as_list()
-        # self.scope = scope
-        # self.attention(x, emb_c)
-    
-    def embedding(self, x, channel, scope):
-        return slim.conv2d(x, channel, kernel_size=[1, 1], stride=1, activation_fn=None, scope=scope)
-    
-    def get_attention(self, f, g, h):
-        s = tf.matmul(f, g, transpose_b=True)
-        beta = tf.nn.softmax(s)  # [bs, N, N]
-        o = tf.matmul(beta, h) # [bs, N, emb_c]
-        return o
-    
-    def flatten(self, x):
-        return tf.reshape(x, [-1, self.h*self.w, self.c])
-        
-    def attention(self, f, g, h, emb_c, scope):
-        with tf.variable_scope(scope, 'self_attention'):
-            self.n, self.h, self.w, self.c = preprocess_utils.resolve_shape(f, rank=4)
-            
-            f = self.embedding(f, emb_c, "f") # [bs, h, w, emb_c]
-            g = self.embedding(g, emb_c, "g")
-            h = self.embedding(h, emb_c, "h")
-            
-            # N = h * w
-            o = self.get_attention(self.flatten(f), self.flatten(g), self.flatten(h)) 
-            
-            o = tf.reshape(o, shape=tf.shape(f)) # [bs, h, w, emb_c]
-            y = f + self.embedding(o, emb_c, "y")
-            return y
-    
 
-# class channel_attention(self_attention):
-#     def __init__(self, x1, x2, emb_c, scope):
-#         super().__init__(x1, channel, scope)
-        
-#     def get_attention(self, f, g, h):
-#         s = tf.matmul(g, f, transpose_b=True)
-#         beta = tf.nn.softmax(s)  # [bs, N, N]
-#         o = tf.matmul(beta, h) # [bs, N, emb_c]
-#         return o
-    
-# class context_attention(self_attention):
-#     def attention(self, feat, context, emb_c, scope):
-#         with tf.variable_scope(scope, 'context_attention'):
-#             self.n, self.h, self.w, self.c = feat.get_shape().as_list()
-#             f = self.embedding(feat, emb_c, "f") # [bs, h, w, emb_c]
-#             g = self.embedding(context, emb_c, "g")
-#             h = self.embedding(feat, emb_c, "h")
-            
-#             # N = h * w
-#             o = self.get_attention(self.flatten(f), self.flatten(g), self.flatten(h)) 
-            
-#             o = tf.reshape(o, shape=tf.shape(f)) # [bs, h, w, emb_c]
-#             y = f + self.embedding(o, emb_c, "y")
-#             return y
-            
-# class object_attention(self_attention):
-#     pass
+
+class self_attention(object):
+	def __init__(self, embed_node):
+		self.embed_node = embed_node
+
+	def __call__(self, f, g, h, scope):
+		with tf.variable_scope(scope, 'self_attention'):
+			self.n, self.h, self.w, self.c = preprocess_utils.resolve_shape(f, rank=4)
+			f = self.embedding(f, "f") # [bs, h, w, emb_c]
+			g = self.embedding(g, "g")
+			h = self.embedding(h, "h")
+
+			# N = h * w
+			o = self.get_attention(self.flatten(f), self.flatten(g), self.flatten(h))
+
+			o = tf.reshape(o, shape=tf.shape(f)) # [bs, h, w, emb_c]
+			y = f + self.embedding(o, "y")
+			return y
+
+	def embedding(self, x, scope):
+		return slim.conv2d(x, self.embed_node, kernel_size=[1, 1], stride=1, activation_fn=None, scope=scope)
+
+	def get_attention(self, f, g, h):
+		s = tf.matmul(f, g, transpose_b=True)
+		beta = tf.nn.softmax(s)  # [bs, N, N]
+		o = tf.matmul(beta, h) # [bs, N, emb_c]
+		return o
+
+	def flatten(self, x):
+		return tf.reshape(x, [-1, self.h*self.w, self.embed_node])
+

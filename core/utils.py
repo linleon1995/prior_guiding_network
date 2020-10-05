@@ -98,7 +98,7 @@ class Refine(object):
     self.predict_without_background = predict_without_background
     self.num_class = num_class
     self.weight_decay = weight_decay
-    
+
     self.scope = scope
     # assert len(self.low_level) == len(self.fusions)
     self.num_stage = len(self.low_level)
@@ -107,13 +107,13 @@ class Refine(object):
 
     self.apply_sram2 = kwargs.pop("apply_sram2", False)
     self.guid_fuse = kwargs.pop("guid_fuse", "sum")
-    
+
     self.model_variants = kwargs.pop("model_variants", None)
     self.height = kwargs.pop("height", None)
     self.width = kwargs.pop("width", None)
     self.g = guidance_fusion_method
     # self.attention = utils.
-    
+
   def get_fusion_method(self, method):
     if method == "concat":
       return concat_convolution
@@ -127,7 +127,7 @@ class Refine(object):
       return context_attention
     elif method == "self_att":
       return self_attention
-    
+
   def simple_decoder(self):
     # TODO: without consider feature size
     for i in range(len(self.low_level)):
@@ -137,7 +137,7 @@ class Refine(object):
         net = fuse_func(net, fusion)
       fusion = slim.conv2d(net, self.embed_node, kernel_size=[3, 3], scope="transform%d" %(self.num_stage-i))
     return fusion
-  
+
   # def refine_decoder(self):
   #   # def func(x, fuse, guid=None, apply_second_att=True):
   #   #   embed = self.e(x)
@@ -151,10 +151,10 @@ class Refine(object):
 
   #   fuse_func = get_fusion_method(self.fusions[0])
   #   # f = fuse_func(self.low_level[0], self.e(self.low_level[0])) # feature_fusion_method
-    
+
   #   guid = self.g(self.e(self.low_level[0]), self.guid_fuse, self.num_class, self.embed_node, self.num_stage)
   #   fuse = self.t(f)
-    
+
   #   for i in range(1, len(self.low_level)):
   #     fuse_func = get_fusion_method(self.fusions[i])
   #     # f = fuse_func(self.low_level[i], fuse, guid)
@@ -166,7 +166,7 @@ class Refine(object):
   #   y = slim.conv2d(y, self.embed_node, scope="decoder_output")
   #   y = slim.conv2d(y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits_pred_class%d' %self.num_class)
   #   return y
-    
+
   def model(self):
     batch_norm = slim.batch_norm
     batch_norm_params = get_batch_norm_params(decay=0.9997,
@@ -198,7 +198,7 @@ class Refine(object):
           y = slim.conv2d(
             y, self.num_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='logits_pred_class%d' %self.num_class)
     return y
-    
+
 
 
 
@@ -271,8 +271,14 @@ class Refine(object):
 
     self.apply_sram2 = kwargs.pop("apply_sram2", False)
     self.guid_fuse = kwargs.pop("guid_fuse", "sum")
-  def embed(self, x, out_node, scope):
-    return slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
+
+  def embed(self, x, embed_method, out_node, scope):
+    if embed_method == "self_att":
+      sa_layer = attentions.self_attention(out_node)
+      net = sa_layer(x, x, x, scope)
+    else:
+      net = slim.conv2d(x, out_node, kernel_size=[1,1], scope=scope)
+    return net
 
   def model(self):
     # TODO: reolve_shape
@@ -312,7 +318,7 @@ class Refine(object):
           for i, v in enumerate(self.low_level):
             module_order = self.num_stage-i
             fuse_method = self.fusions[i]
-            embed = self.embed(v, out_node, scope="embed%d" %module_order)
+            embed = self.embed(v, fuse_method, out_node, scope="embed%d" %module_order)
             tf.add_to_collection("embed", embed)
 
             fuse_func = self.get_fusion_method(fuse_method)
@@ -462,9 +468,11 @@ class Refine(object):
     elif method == "guid_class":
       return self.guid_class_attention
     elif method == "context_att":
-      return self.context_attention
+      return self.guid_attention
+      # return self.context_attention
     elif method == "self_att":
-      return self.self_attention
+      return self.guid_attention
+      # return self.self_attention
 
   def concat_convolution(self, cur, last, out_node, scope):
     with tf.variable_scope(scope, "concat_conv"):
@@ -524,8 +532,8 @@ class Refine(object):
       context = slim_sram(x1, guid, self.guid_conv_nums, self.guid_conv_type, self.embed_node, "sram1")
       tf.add_to_collection("sram1", context)
       if x2 is not None:
-        ca_layer = attentions.self_attention()
-        net = ca_layer.attention(x2, context, x2, out_node, "context_att1")
+        ca_layer = attentions.self_attention(out_node)
+        net = ca_layer(x2, context, x2, "context_att1")
         tf.add_to_collection("context_att1", net)
       return net
 
@@ -540,8 +548,8 @@ class Refine(object):
       tf.add_to_collection("sram1", net)
       if x2 is not None:
         net = net + x2
-        sa_layer = attentions.self_attention()
-        net = sa_layer.attention(net, net, net, out_node, "self_att1")
+        sa_layer = attentions.self_attention(out_node)
+        net = sa_layer(net, net, net, "self_att1")
         tf.add_to_collection("self_att1", net)
       return net
 

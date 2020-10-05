@@ -102,7 +102,7 @@ def sram(in_node,
         for i in range(num_conv-1):
           net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+str(i+1))
         net = conv_op(net, conv_node, kernel_size=[3,3], scope=conv_type+"out", activation_fn=None)
-        
+
         guidance_filters = preprocess_utils.resolve_shape(guidance, rank=4)[3]
         if guidance_filters == 1:
             guidance_tile = tf.tile(guidance, [1,1,1,conv_node])
@@ -136,7 +136,7 @@ def sum_convolution(cur, last, out_node, scope=None):
 		return net
 
 
-def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2, 
+def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2,
                    guid_conv_type="conv2d", apply_sram2=True):
   """Guid attention module"""
   h, w = preprocess_utils.resolve_shape(cur, rank=4)[1:3]
@@ -145,7 +145,7 @@ def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2,
 		raise ValueError("Unknown guidance node number %d, should be 1 or out_node" %guid_node)
 
 	with tf.variable_scope(scope, 'guid_attention'):
-    
+
 		guid = resize_bilinear(guid, [h, w])
 		last = resize_bilinear(last, [h, w])
 		net = sram(cur, guid, guid_conv_nums, guid_conv_type, out_node, "sram1")
@@ -158,7 +158,7 @@ def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2,
 		return net
 
 
-  def guid_class_attention(cur, last, guid, num_class, out_node, scope=None, guid_conv_nums=2, 
+  def guid_class_attention(cur, last, guid, num_class, out_node, scope=None, guid_conv_nums=2,
                            guid_conv_type="conv2d", apply_sram2=True):
     """Guid class attention module"""
     h, w = preprocess_utils.resolve_shape(cur, rank=4)[1:3]
@@ -190,8 +190,8 @@ def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2,
       context = sram(cur, guid, guid_conv_nums, guid_conv_type, embed_node, "sram1")
       tf.add_to_collection("sram1", context)
       if last is not None:
-        ca_layer = attentions.self_attention()
-        net = ca_layer.attention(last, context, last, out_node, "context_att1")
+        ca_layer = attentions.self_attention(out_node)
+        net = ca_layer(last, context, last, "context_att1")
         tf.add_to_collection("context_att1", net)
       return net
 
@@ -207,8 +207,8 @@ def guid_attention(cur, last, guid, out_node, scope=None, guid_conv_nums=2,
       tf.add_to_collection("sram1", net)
       if last is not None:
         net = net + last
-        sa_layer = attentions.self_attention()
-        net = sa_layer.attention(net, net, net, out_node, "self_att1")
+        sa_layer = attentions.self_attention(out_node)
+        net = sa_layer(net, net, net, "self_att1")
         tf.add_to_collection("self_att1", net)
       return net
 

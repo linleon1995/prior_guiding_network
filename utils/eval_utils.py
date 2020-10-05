@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Apr  8 12:05:16 2019
-
-@author: acm528_02
+Created on Mon Jan 13 10:18:33 2020
+@author: Jing-Siang, Lin
 """
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
-class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader", 
-                  5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC", 
+class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader",
+                  5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC",
                   10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
 
 
@@ -19,10 +20,10 @@ def print_checkpoint_tensor_name(checkpoint_dir):
     """Print all tensor name from graph"""
     from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
     # List ALL tensors example output
-    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False, 
+    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False,
                                     all_tensor_names=True)
-    
-  
+
+
 def eval_flol_model(dsc_in_diff_th, threshold):
     """
     """
@@ -53,10 +54,10 @@ def print_checkpoint_tensor_name(checkpoint_dir):
     """Print all tensor name from graph"""
     from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
     # List ALL tensors example output
-    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False, 
+    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False,
                                     all_tensor_names=True)
-    
-  
+
+
 def eval_flol_model(dsc_in_diff_th, threshold):
     """
     """
@@ -100,7 +101,7 @@ class Build_Pyplot_Subplots(object):
         # TODO: remove coreordinate
         # TODO: Solve subplots(2,2)--> ax is a numpy array not suitble for using for loop directly
         # TODO: Make a judgement about existence of directory
-        
+
     def set_title(self, title_list):
         assert self.num_plot == len(title_list)
         # for x in range(self.x_axis):
@@ -112,12 +113,12 @@ class Build_Pyplot_Subplots(object):
     def set_axis_off(self,):
         for sub_ax in self.ax:
             sub_ax.set_axis_off()
-            
+
     def display_figure(self, file_name, value_list, parameters=None, saved_format='.png'):
         assert self.num_plot == len(value_list)
         if parameters is None:
             parameters = self.num_plot*[None]
-            
+
         for sub_ax, plot_type, value, p in zip(self.ax, self.type_list, value_list, parameters):
             if plot_type == "plot":
                 if p is not None:
@@ -135,7 +136,7 @@ class Build_Pyplot_Subplots(object):
             plt.show()
         if self.is_savefig:
             self.fig.savefig(self.saving_path+file_name+saved_format)
-        
+
         plt.close(self.fig)
 
 def plot_histogram(path):
@@ -147,14 +148,14 @@ def plot_box_diagram(path):
     # flier_high = np.random.rand(10) * 100 + 100
     # flier_low = np.random.rand(10) * -100
     # data = np.concatenate((spread, center, flier_high, flier_low))
-    
+
     # # Fixing random state for reproducibility
     # # np.random.seed(19680801)
 
     fig1, ax = plt.subplots(1,4)
     # ax1.set_title('Basic Plot')
     # ax1.boxplot(data)
-    
+
     # ?置?形的?示?格
     # plt.style.use('ggplot')
 
@@ -200,7 +201,7 @@ def display_classify_performance(label, pred):
     """
     return label + 2*pred
 
-    
+
 def compute_mean_dsc(total_cm):
     """Compute the mean intersection-over-union via the confusion matrix."""
     sum_over_row = np.sum(total_cm, axis=0).astype(float)
@@ -233,15 +234,15 @@ def compute_mean_dsc(total_cm):
         0)
     print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
     return m_dsc, dscs
-  
+
 def precision_and_recall(total_cm):
-    """"""    
+    """"""
     sum_over_row = np.sum(total_cm, axis=0).astype(float)
     sum_over_col = np.sum(total_cm, axis=1).astype(float)
     cm_diag = np.diagonal(total_cm).astype(float)
     precision = cm_diag / sum_over_row
     recall = cm_diag / sum_over_col
-    
+
     print('Recall and Precision')
     print(30*"=")
     i = 0
@@ -255,6 +256,28 @@ def precision_and_recall(total_cm):
     print('    precision: mean {:.4f}  std {:.4f}'.format(p_mean, p_std))
     print('    recall: mean {:.4f}  std {:.4f}'.format(r_mean, r_std))
     return  p_mean, p_std, r_mean, r_std
+
+
+def false_negative_rate(cm):
+    tp = np.diagonal(cm).astype(float)
+    fn = np.sum(cm, axis=1).astype(float) - tp
+    fnr = fn / (tp + fn)
+    for c, i in enumerate(fnr): print('    class {}: FNR: {:.4f}'.format(c, i))
+    return fnr
+
+
+def false_positive_rate(cm):
+    tp = np.diagonal(cm).astype(float)
+    fp = np.sum(cm, axis=0).astype(float) - tp
+    fpr = fp / (tp + fp)
+    for c, i in enumerate(fpr): print('    class {}: FPR: {:.4f}'.format(c, i))
+    return fpr
+
+
+def positive(cm):
+    p = np.sum(cm, axis=0).astype(float)
+    # for c, i in enumerate(p): print('    class {}: positive: {:.4f}'.format(c, i))
+    return p
 
 
 def compute_mean_iou(total_cm):
@@ -303,16 +326,16 @@ def compute_accuracy(total_cm):
         0)
     print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
     return accuracy
-    
-    
+
+
 def load_model(saver, sess, ckpt_path):
     '''Load trained weights.
-    
+
     Args:
       saver: TensorFlow saver object.
       sess: TensorFlow session.
       ckpt_path: path to checkpoint file with parameters.
-    ''' 
+    '''
     saver.restore(sess, ckpt_path)
     print("Restored model parameters from {}".format(ckpt_path))
 
@@ -343,12 +366,12 @@ def plot_confusion_matrix(cm, classes, filename,
 
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
-    plt.tight_layout()  
+    plt.tight_layout()
     if save_path is not None:
         plt.savefig(os.path.join(save_path, filename+".png"))
     else:
         plt.show()
-        
+
 def inference_segmentation(logits, dim):
     prediction = tf.nn.softmax(logits, axis=dim)
     # prediction = tf.identity(prediction, name=common.OUTPUT_TYPE)
@@ -367,7 +390,7 @@ def get_label_range(label, height, width):
         pass
     else:
         raise ValueError("Unknown label shape")
-    
+
     if np.sum(label) == 0:
         return 4*[0]
     else:
@@ -376,11 +399,10 @@ def get_label_range(label, height, width):
         h_max = np.max(fg[0])
         w_min = np.min(fg[1])
         w_max = np.max(fg[1])
-        
+
         # h_min = np.min(np.min(fg, axis=0))
         # w_min = np.min(np.min(fg, axis=1))
         # h_max = np.max(np.max(fg, axis=0))
         # w_max = np.max(np.max(fg, axis=1))
         return [h_min,w_min,h_max,w_max]
-        
-    
+

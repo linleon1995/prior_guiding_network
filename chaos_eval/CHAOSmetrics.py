@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on 09/07/2019
-
 @author: Ali Emre Kavur
 """
 import pydicom
@@ -11,12 +10,7 @@ import cv2
 import SimpleITK as sitk
 from scipy import ndimage
 from sklearn.neighbors import KDTree
-"""
-def evaluate(Vref,Vseg,dicom_dir):
-    dice=DICE(Vref,Vseg)
-    ravd=RAVD(Vref,Vseg)
-    return dice, ravd
-"""
+
 def evaluate(Vref,Vseg,dicom_dir):
     dice=DICE(Vref,Vseg)
     ravd=RAVD(Vref,Vseg)
@@ -36,24 +30,7 @@ def SSD(Vref,Vseg,dicom_dir):
     
     ref_border=Vref ^ ndimage.binary_erosion(Vref, structure=struct, border_value=1)
     ref_border_voxels=np.array(np.where(ref_border))
-    print(ref_border_voxels.shape, ref_border.shape)
-    print(Vseg.shape)
-    """
-    print(struct, ref_border)
-    for i in range(3):
-      for j in range(3):
-        for k in range(3):
-          print(struct[i,j,k])
-    print(struct.shape, ref_border.shape)    
-    import matplotlib.pyplot as plt
-    plt.imshow(np.int32(ref_border[30]), "gray")
-    plt.show()
-    plt.imshow(np.int32(Vref[30]), "gray")
-    plt.show()
-    plt.imshow(np.int32(ndimage.binary_erosion(Vref, structure=struct, border_value=1)[30]), "gray")
-    plt.show()
-    """
-    
+        
     seg_border=Vseg ^ ndimage.binary_erosion(Vseg, structure=struct, border_value=1)
     seg_border_voxels=np.array(np.where(seg_border))  
     
@@ -91,7 +68,7 @@ def transformToRealCoordinates(indexPoints,dicom_dir):
     #Read position info from first image from last image
     ds_last = pydicom.dcmread(dicom_file_list[-1])
     img_pos_last=list( map(float, list(ds_last.ImagePositionPatient)))
-    print(img_pos_first, img_or, pix_space, img_pos_last)
+
     T1=img_pos_first
     TN=img_pos_last
     X=img_or[:3]
@@ -100,13 +77,13 @@ def transformToRealCoordinates(indexPoints,dicom_dir):
     deltaJ=pix_space[1]
     N=len(dicom_file_list)
     M=np.array([[X[0]*deltaI,Y[0]*deltaJ,(T1[0]-TN[0])/(1-N),T1[0]], [X[1]*deltaI,Y[1]*deltaJ,(T1[1]-TN[1])/(1-N),T1[1]], [X[2]*deltaI,Y[2]*deltaJ,(T1[2]-TN[2])/(1-N),T1[2]], [0,0,0,1]])
-    
+
     realPoints=[]
     for i in range(len(indexPoints[0])):
         P=np.array([indexPoints[1,i],indexPoints[2,i],indexPoints[0,i],1])
         R=np.matmul(M,P)
         realPoints.append(R[0:3])
-    print(M, R, N, P)
+
     return realPoints
 
 def png_series_reader(dir):

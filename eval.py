@@ -431,7 +431,8 @@ def main(unused_argv):
     # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
     # print(60*"L", samples[common.HEIGHT], placeholder_dict[common.WIDTH])
-    logits = tf.image.resize_bilinear(logits, tf.concat([placeholder_dict[common.HEIGHT], placeholder_dict[common.WIDTH]],axis=0), align_corners=False)
+    if FLAGS.eval_split[0] == "test":
+      logits = tf.image.resize_bilinear(logits, tf.concat([placeholder_dict[common.HEIGHT], placeholder_dict[common.WIDTH]],axis=0), align_corners=False)
     prediction = eval_utils.inference_segmentation(logits, dim=3)
 
     if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
@@ -639,7 +640,7 @@ def main(unused_argv):
                   print("dice_mean: {}, ravd_mean: {}".format(dice_mean/attend_class, ravd_mean/attend_class))
                   total_dice_mean.append(dice_mean/attend_class)
                   total_ravd_mean.append(ravd_mean/attend_class)
-                  
+
                   # temporally
                   Vseg = np.array(Vseg,order='A')
                   file_list = os.listdir("/home/user/DISK/data/Jing/data/Training/raw/")
@@ -853,17 +854,25 @@ def main(unused_argv):
     # print("Width Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_max_total)))
 
     if split_name in ("train", "val"):
-      print(10*"=", "Volume DSC", 10*"=")
-      for i, d in enumerate(total_dice_mean):
-        print("Subject {} DICE {}".format(i+1, d))
-      for i, d in enumerate(total_ravd_mean):
-        print("Subject {} RAVD {}".format(i+1, d))
-      print("Volume DICE {}, Volume RAVD {}".format(sum(total_dice_mean)/len(total_dice_mean), sum(total_ravd_mean)/len(total_ravd_mean)))
+      if FLAGS._3d_metrics:
+        print(10*"=", "Volume DSC", 10*"=")
+        for i, d in enumerate(total_dice_mean):
+          print("Subject {} DICE {}".format(i+1, d))
+        for i, d in enumerate(total_ravd_mean):
+          print("Subject {} RAVD {}".format(i+1, d))
+        print("Volume DICE {}, Volume RAVD {}".format(sum(total_dice_mean)/len(total_dice_mean), sum(total_ravd_mean)/len(total_ravd_mean)))
       print(10*"=", "Segmentation Evaluation", 10*"=")
       mean_iou = eval_utils.compute_mean_iou(cm_total)
       mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
       pixel_acc = eval_utils.compute_accuracy(cm_total)
       p_mean, p_std, r_mean, r_std = eval_utils.precision_and_recall(cm_total)
+      fpr = eval_utils.false_positive_rate(cm_total)
+      print("FPR: {}".format(np.mean(fpr)))
+      fnr = eval_utils.false_negative_rate(cm_total)
+      for c, i in enumerate(fnr): print('    class {}: TPR: {:.4f}'.format(c, 1-i))
+      print("FNR: {}".format(np.mean(fnr)))
+      p = eval_utils.positive(cm_total)
+      for c, i in enumerate(p): print('    class {}: positive: {:.4f}'.format(c, i/np.sum(p)))
       # print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
 
       with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'a') as f:
@@ -952,6 +961,7 @@ def main(unused_argv):
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
+    
     """
     im = sitk.ReadImage("/home/user/DISK/data/Jing/data/Training/raw/img0040.nii.gz")
     spacing = im.GetSpacing()

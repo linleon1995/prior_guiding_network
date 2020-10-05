@@ -1,18 +1,20 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan 13 10:18:33 2020
+@author: Jing-Siang, Lin
+"""
+
+
 import six
 import numpy as np
-import nibabel as nib
 import tensorflow as tf
-from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
 
 from core import preprocess_utils
 from core import utils
 _EPSILON = 1e-9
-LOSSES_MAP = {"softmax_cross_entropy": add_softmax_cross_entropy_loss_for_each_scale,
-              "softmax_dice_loss": add_softmax_dice_loss_for_each_scale,
-              "sigmoid_cross_entropy": add_sigmoid_cross_entropy_loss_for_each_scale,
-              "sigmoid_dice_loss": add_sigmoid_dice_loss_for_each_scale,
-              "softmax_generaled_dice_loss": add_softmax_generaled_dice_loss_for_each_scale,}
+
 
 
 def get_label_weight_mask(labels, ignore_label, num_classes, label_weights=1.0, keep_class_dims=False):
@@ -116,7 +118,7 @@ def add_sigmoid_dice_loss_for_each_scale(scales_to_logits,
                                         scope=scope)
 
 
-def add_softmax_generaled_dice_loss_for_each_scale(scales_to_logits,
+def add_softmax_generalized_dice_loss_for_each_scale(scales_to_logits,
                                                    labels,
                                                    num_classes,
                                                    ignore_label,
@@ -124,7 +126,7 @@ def add_softmax_generaled_dice_loss_for_each_scale(scales_to_logits,
                                                    beta=0.5,
                                                    loss_weight=1.0,
                                                    scope=None):
-    """Adds softmax genraled dice loss (GDL) for logits of each scale."""
+    """Adds softmax genralized dice loss (GDL) for logits of each scale."""
     if labels is None:
         raise ValueError('No label for softmax dice loss.')
 
@@ -373,5 +375,3 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
             tf.to_float(tf.not_equal(top_k_losses, 0.0)))
         loss = _div_maybe_zero(total_loss, num_present)
         tf.losses.add_loss(loss)
-
-

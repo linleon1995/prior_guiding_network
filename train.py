@@ -43,10 +43,6 @@ parser.add_argument('--guid_fuse', type=str, default="sum_wo_back",
 parser.add_argument('--apply_sram2', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-# TODO: remove?
-parser.add_argument('--predict_without_background', type=str2bool, nargs='?', const=True, default=False,
-                    help='')
-
 parser.add_argument('--guid_encoder', type=str, default="early",
                     help='')
 
@@ -81,7 +77,7 @@ parser.add_argument('--initialize_last_layer', type=str2bool, nargs='?', const=T
 parser.add_argument('--training_number_of_steps', type=int, default=30000,
                     help='')
 
-# TODO:
+# TODO: test profile function
 parser.add_argument('--profile_logdir', type=str, default='',
                     help='Where the profile files are stored.')
 
@@ -127,15 +123,14 @@ parser.add_argument('--z_class', type=int, default=None,
                     help='')
 
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
-# , "adaptive" witch means decide adaptively by learning parameters or "come_from_featrue"
-# TODO
+# ,or "adaptive" witch means decide adaptively by learning
 parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
                     help='')
 
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=16,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 #tbc
@@ -145,21 +140,26 @@ parser.add_argument('--fusion_slice', type=float, default=3,
 parser.add_argument('--z_loss_weight', type=float, default=None,
                     help='')
 
-parser.add_argument('--guid_loss_weight', type=float, default=1.0,
-                    help='')
+parser.add_argument('--seg_loss_weight', nargs='+', type=float, default=1.0,
+                    help="")
+                    
+parser.add_argument('--guid_loss_weight', nargs='+', type=float, default=1.0,
+                    help="")
 
-parser.add_argument('--stage_pred_loss_weight', type=float, default=1.0,
-                    help='')
+parser.add_argument('--stage_pred_loss_weight', nargs='+', type=float, default=1.0,
+                    help="")
 
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
                     help='')
-
-parser.add_argument('--guid_loss_name', type=str, default="sigmoid_cross_entropy",
+                    
+parser.add_argument('--guid_loss_name', type=str, default=None,
                     help='')
 
-parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_entropy",
+parser.add_argument('--stage_pred_loss_name', type=str, default=None,
                     help='')
 
+parser.add_argument('--z_loss_name', type=str, default=None,
+                    help='')
 
 # Learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
@@ -215,12 +215,17 @@ parser.add_argument('--pre_crop_flag', type=str2bool, nargs='?', const=True, def
                     help='')
 
 
+def check_model_conflict():
+  # Different predict class amond datasets.
+  pass
+
+
 def get_session(sess):
-    session = sess
-    while type(session).__name__ != 'Session':
-        #pylint: disable=W0212
-        session = session._sess
-    return session
+  session = sess
+  while type(session).__name__ != 'Session':
+    #pylint: disable=W0212
+    session = session._sess
+  return session
 
 
 def _build_network(samples, outputs_to_num_classes, model_options, ignore_label, is_training):
@@ -284,7 +289,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
-                predict_without_background=FLAGS.predict_without_background,
                 apply_sram2=FLAGS.apply_sram2,
                 guid_fuse=FLAGS.guid_fuse,
                 seq_length=FLAGS.seq_length,
@@ -351,17 +355,33 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                                                 model_options, ignore_label, is_training=True)
 
     loss_dict = {}
-    loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "weights": 1.0, "scope": "segmenation"}
+    seg_loss_weight = FLAGS.seg_loss_weight
+    if isinstance(FLAGS.seg_loss_weight, list):
+      if len(FLAGS.seg_loss_weight) == 1:
+        seg_loss_weight = FLAGS.seg_loss_weight[0]
+        
+    loss_dict[common.OUTPUT_TYPE] = {"loss": FLAGS.seg_loss_name, "weights": seg_loss_weight, "scope": "segmenation"}
 
     if FLAGS.guid_loss_name is not None:
-      loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "weights": FLAGS.guid_loss_weight, "scope": "guidance"}
+      guid_loss_weight = FLAGS.guid_loss_weight
+      if isinstance(FLAGS.guid_loss_weight, list):
+        if len(FLAGS.guid_loss_weight) == 1:
+          guid_loss_weight = FLAGS.guid_loss_weight[0]
+      loss_dict[common.GUIDANCE] = {"loss": FLAGS.guid_loss_name, "weights": guid_loss_weight, "scope": "guidance"}
 
     if FLAGS.stage_pred_loss_name is not None:
-      loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "weights": FLAGS.stage_pred_loss_weight, "scope": "stage_pred"}
+      stage_pred_loss_weight = FLAGS.stage_pred_loss_weight
+      if isinstance(FLAGS.stage_pred_loss_weight, list):
+        if len(FLAGS.stage_pred_loss_weight) == 1:
+          stage_pred_loss_weight = FLAGS.stage_pred_loss_weight[0]
+      loss_dict["stage_pred"] = {"loss": FLAGS.stage_pred_loss_name, "weights": stage_pred_loss_weight, "scope": "stage_pred"}
 
-    # TODO: z loss condition
-    if common.OUTPUT_Z in output_dict:
-      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "weights": FLAGS.z_loss_weight, "scope": "z_pred"}
+    if FLAGS.z_loss_name is not None:
+      z_loss_weight = FLAGS.z_loss_weight
+      if isinstance(FLAGS.z_loss_weight, list):
+        if len(FLAGS.z_loss_weight) == 1:
+          z_loss_weight = FLAGS.z_loss_weight[0]
+      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "weights": z_loss_weight, "scope": "z_pred"}
       z_class = FLAGS.z_class
     else:
       z_class = None
@@ -373,26 +393,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                            num_of_classes,
                            FLAGS.seq_length,
                            FLAGS.batch_size,
-                           predict_without_background=FLAGS.predict_without_background,
                            z_class=z_class)
-
-    # if FLAGS.z_loss_decay is not None:
-    #     if FLAGS.z_label_method.split("_")[1] == 'regression':
-    #         loss_dict[common.OUTPUT_Z] = {"loss": "MSE", "decay": FLAGS.z_loss_decay}
-    #     elif FLAGS.z_label_method.split("_")[1] == 'classification':
-    #         loss_dict[common.OUTPUT_Z] = {"loss": "cross_entropy_zlabel", "decay": FLAGS.z_loss_decay}
-
-    # if FLAGS.guidance_loss is not None:
-    #     loss_dict[common.GUIDANCE] = {"loss": "mean_dice_coefficient", "decay": FLAGS.guidance_loss}
-
-    # if FLAGS.transform_loss_decay is not None:
-    #     loss_dict["transform"] = {"loss": "cross_entropy_sigmoid", "decay": FLAGS.transform_loss_decay}
-
-    # clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
-    # losses = train_utils.get_losses(output_dict, layers_dict, samples,
-    #                                 loss_dict=loss_dict,
-    #                                 batch_size=clone_batch_size)
-    # seg_loss = losses[0]
 
     losses = tf.compat.v1.losses.get_losses(scope=scope)
     seg_loss = losses[0]
@@ -405,6 +406,9 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
 def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_segs,
                    layers_dict, guidance_original, **kwargs):
   """Logs the summaries for the model.
+  The easiest way to add the summarirs for interesting feature is call
+  tf.add_to_collections() during model building, then call 
+  tf.get_collections() in this function.
   Args:
     input_image: Input image of the model. Its shape is [batch_size, height,
       width, channel].
@@ -439,14 +443,14 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
       tf.summary.image('low_level4/node%d' %n, colorize(layers_dict["low_level4"][...,n:n+1], cmap='viridis'))
       tf.summary.image('low_level5/node%d' %n, colorize(layers_dict["low_level5"][...,n:n+1], cmap='viridis'))
 
-    guid = tf.get_collection("guidance")
+    # guid = tf.get_collection("guidance")
     # TODO: validation issue
-    print(guid)
-    tf.summary.image('guidance/guid0', colorize(guid[0][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/guid1', colorize(guid[1][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/guid2', colorize(guid[2][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/guid3', colorize(guid[3][...,0:1], cmap='viridis'))
-    tf.summary.image('guidance/guid4', colorize(guid[4][...,0:1], cmap='viridis'))
+    # print(guid)
+    # tf.summary.image('guidance/guid0', colorize(guid[0][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/guid1', colorize(guid[1][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/guid2', colorize(guid[2][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/guid3', colorize(guid[3][...,0:1], cmap='viridis'))
+    # tf.summary.image('guidance/guid4', colorize(guid[4][...,0:1], cmap='viridis'))
     # tf.summary.image('guidance/guid5', colorize(guid[5][...,0:1], cmap='viridis'))
 
   # # if z_label is not None and z_pred is not None:
@@ -528,12 +532,7 @@ def _train_pgn_model(iterator, num_of_classes, model_options, ignore_label, reus
         grads = optimizer.compute_gradients(loss)
         tower_grads.append(grads)
 
-        # Retain the summaries from the first tower.
-        # if not i:
-          # TODO:
   tower_summaries = tf.summary.merge_all()
-          # tower_summaries = tf.summary.merge_all(scope=scope)
-
   summaries.append(tf.summary.scalar('learning_rate', learning_rate))
 
   with tf.device('/cpu:0'):
