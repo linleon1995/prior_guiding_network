@@ -18,7 +18,7 @@ colorize = train_utils.colorize
 create_training_path = train_utils.create_training_path
 str2bool = train_utils.str2bool
 
-LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
+LOGGING_PATH = common.LOGGING_PATH
 
 
 parser = argparse.ArgumentParser()
@@ -261,7 +261,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
 
   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-
   num_class = outputs_to_num_classes['semantic']
   output_dict, layers_dict = model.pgb_network(
                 samples[common.IMAGE],
@@ -387,7 +386,6 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       z_class = None
 
     train_utils.get_losses(output_dict,
-                           layers_dict,
                            samples,
                            loss_dict,
                            num_of_classes,
@@ -689,7 +687,7 @@ def main(unused_argv):
 
             steps = tf.compat.v1.placeholder(tf.int32, shape=[])
 
-            dataset1 = train_generator.get_one_shot_iterator()
+            dataset1 = train_generator.get_dataset()
             iter1 = dataset1.make_one_shot_iterator()
             train_samples = iter1.get_next()
 
@@ -698,7 +696,7 @@ def main(unused_argv):
                 train_generator.ignore_label)
 
             if "val" not in FLAGS.train_split:
-              dataset2 = val_generator.get_one_shot_iterator()
+              dataset2 = val_generator.get_dataset()
               iter2 = dataset2.make_one_shot_iterator()
               val_samples = iter2.get_next()
 

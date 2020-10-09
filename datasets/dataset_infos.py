@@ -1,7 +1,7 @@
 
 import collections
 
-BASE_DATA_DIR = "/home/user/DISK/data/Jing/data/"
+
 DatasetDescriptor = collections.namedtuple(
     'DatasetDescriptor',
     [

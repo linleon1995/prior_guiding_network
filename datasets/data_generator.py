@@ -24,7 +24,7 @@ _DATASETS_INFORMATION = {
     '2019_ISBI_CHAOS_MR_T2': dataset_infos._ISBI_CHAOS_INFORMATION_MR_T2,
 }
 
-BASE_DATA_DIR = dataset_infos.BASE_DATA_DIR
+BASE_DATA_DIR = common.BASE_DATA_DIR
 SPLIT_FOLDER_MAP = {"train": "Train_Sets",
                     "val": "Train_Sets",
                     "test": "Test_Sets"}
@@ -313,7 +313,7 @@ class Dataset(object):
         return prior_segs
 
 
-    def _preprocessing_seq(self, sample):
+    def _preprocessing(self, sample):
         """
         image: [num_frame, height, width, channel]
         label: [num_frame, height, width, 1]
@@ -404,7 +404,7 @@ class Dataset(object):
             sample[common.Z_LABEL] = mt_label
         return sample
 
-    def get_one_shot_iterator(self):
+    def get_dataset(self):
         """Gets an iterator that iterates across the dataset once.
         Returns:
           An iterator of type tf.data.Iterator.
@@ -424,13 +424,13 @@ class Dataset(object):
             dataset = (
                 tf.data.TFRecordDataset(files)
                 .map(self._parse_image, num_parallel_calls=self.num_readers)
-                .map(self._preprocessing_seq, num_parallel_calls=self.num_readers)
+                .map(self._preprocessing, num_parallel_calls=self.num_readers)
                 )
         elif self.seq_length > 1:
             dataset = (
                 tf.data.TFRecordDataset(files)
                 .map(self._parse_sequence, num_parallel_calls=self.num_readers)
-                .map(self._preprocessing_seq, num_parallel_calls=self.num_readers)
+                .map(self._preprocessing, num_parallel_calls=self.num_readers)
                 )
 
         if self.shuffle_data:

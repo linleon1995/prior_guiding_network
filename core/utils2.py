@@ -4,7 +4,7 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim as contrib_slim
 from core import resnet_v1_beta, preprocess_utils, cell, attentions
 slim = contrib_slim
-resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block
+resnet_v1_beta_block = resnet_v1_beta.resnet_v1_beta_block 
 
 
 def guidance_fusion_method(logits, guid_fuse, num_class, out_node, level, k_size_list=None):

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 13 10:18:33 2020
-@author: Jing-Siang, Lin
-"""
 
 
 import six

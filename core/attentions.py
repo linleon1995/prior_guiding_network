@@ -4,6 +4,12 @@ from core import preprocess_utils
 
 
 class self_attention(object):
+	"""
+	The class used for create spatial attention layer.
+	By modify the embedding and get_attention, the user
+	can define attention in different way, e.g., channel
+	attention.
+ 	"""
 	def __init__(self, embed_node):
 		self.embed_node = embed_node
 

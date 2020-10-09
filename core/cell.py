@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Jul  9 14:51:47 2019
 
-@author: acm528_02
-"""
 
 
 from __future__ import print_function, division, absolute_import, unicode_literals

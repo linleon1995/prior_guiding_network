@@ -23,6 +23,12 @@ parser.add_argument('--decoder_type', type=str, default='refine',
 
 FLAGS, unparsed = parser.parse_known_args()
 
+# The path for saving tensorflow checkpoint and tensorboard event
+LOGGING_PATH = '/home/user/DISK/data/Jing/model/Thesis/thesis_trained/'
+
+# The path for dataset directory. Each directory should contain raw data, 
+# and tfrrecord or prior if the converting process is run
+BASE_DATA_DIR = "/home/user/DISK/data/Jing/data/"
 
 # Semantic segmentation item names.
 LABELS_CLASS = 'labels_class'

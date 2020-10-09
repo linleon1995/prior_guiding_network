@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 13 10:18:33 2020
-@author: Jing-Siang, Lin
-"""
+
 
 import os
 import functools
@@ -12,9 +9,8 @@ import argparse
 from tensorflow.contrib import framework as contrib_framework
 import matplotlib.pyplot as plt
 from utils import losses
-from core import preprocess_utils
-from core import utils
 import common
+
 LOSSES_MAP = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for_each_scale,
               "softmax_dice_loss": losses.add_softmax_dice_loss_for_each_scale,
               "sigmoid_cross_entropy": losses.add_sigmoid_cross_entropy_loss_for_each_scale,
@@ -23,22 +19,22 @@ LOSSES_MAP = {"softmax_cross_entropy": losses.add_softmax_cross_entropy_loss_for
 
 
 def create_training_path(train_logdir):
-    idx = 0
+  idx = 0
+  path = os.path.join(train_logdir, "run_{:03d}".format(idx))
+  while os.path.exists(path):
+    idx += 1
     path = os.path.join(train_logdir, "run_{:03d}".format(idx))
-    while os.path.exists(path):
-        idx += 1
-        path = os.path.join(train_logdir, "run_{:03d}".format(idx))
-    os.makedirs(path)
-    return path
+  os.makedirs(path)
+  return path
 
 
 def str2bool(v):
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Unsupported value encountered.')
+  if v.lower() in ('yes', 'true', 't', 'y', '1'):
+    return True
+  elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+    return False
+  else:
+    raise argparse.ArgumentTypeError('Unsupported value encountered.')
         
 
 def get_func(func):
@@ -56,26 +52,24 @@ def get_loss_func(loss_name):
 
 
 def get_losses(output_dict,
-               layers_dict,
                samples,
                loss_dict,
                num_classes,
                seq_length,
                batch_size=None,
                z_class=None):
-
-    # TODO: layers_dict and output_dict diff, should just input one of them
-
+    """
+    The function define the objective function of model.
+    Each loss will added through tf.losses.add_loss().
+    Please refer to utils/losses.py for more details.
+    """
     # Calculate segmentation loss
     label = samples[common.LABEL]
 
     if seq_length > 1:
       _, t, h, w, c = label.shape.as_list()
       frame_label = tf.reshape(label, [-1, h, w, c])
-      # TODO: should be done in input_process
       label = label[:,seq_length//2]
-      # sel_indices = tf.range(seq_length//2, batch_size*seq_length, delta=seq_length, dtype=tf.int32)
-      # label = tf.gather(label, indices=sel_indices, axis=0)
     else:
       frame_label = label
 
@@ -88,12 +82,10 @@ def get_losses(output_dict,
       loss_weight=loss_dict[common.OUTPUT_TYPE]["weights"],
       scope=loss_dict[common.OUTPUT_TYPE]["scope"])
 
-
-    # Calculate stage prediction loss
+    # Calculate stage prediction (each stage guidance) loss
     if "stage_pred" in loss_dict:
         # i = 0
         stage_pred = tf.get_collection("stage_pred")
-        # for name, value in layers_dict.items():
         for i, value in enumerate(stage_pred):
           # if "guidance" in name:
             get_loss_func(loss_dict["stage_pred"]["loss"])(
@@ -105,7 +97,7 @@ def get_losses(output_dict,
               scope=loss_dict["stage_pred"]["scope"])
             # i+=1
 
-    # Calculate guidance loss
+    # Calculate guidance (initial) loss
     if common.GUIDANCE in loss_dict:
         g = {"transform": output_dict[common.GUIDANCE]}
         get_loss_func(loss_dict[common.GUIDANCE]["loss"])(
@@ -116,6 +108,7 @@ def get_losses(output_dict,
           loss_weight=loss_dict[common.GUIDANCE]["weights"],
           scope=loss_dict[common.GUIDANCE]["scope"])
 
+    # Calculate longitudinal classification loss
     if common.OUTPUT_Z in loss_dict:
         get_loss_func(loss_dict[common.OUTPUT_Z]["loss"])(
             scales_to_logits={common.OUTPUT_Z: output_dict[common.OUTPUT_Z]},

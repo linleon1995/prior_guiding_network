@@ -18,7 +18,6 @@ See model.py for more details and usage.
 
 import os
 import argparse
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -53,9 +52,6 @@ CT_TRAIN_SET = [1,2,5,6,8,10,14,16,18,19,21,22,23,24,25,26,27,28,29,30]
 CT_TEST_SET = [11,12,13,15,17,20,3,31,32,33,34,35,36,37,38,39,4,40,7,9,]
 MR_TRAIN_SET = [1,2,3,5,8,10,13,15,19,20,21,22,31,32,33,34,36,37,38,39]
 MR_TEST_SET = [11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,4,40,6,7,9]
-
-# FUSIONS = 5*["sum"]
-# FUSIONS = 5*["guid_uni"]
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -92,9 +88,6 @@ parser.add_argument('--predict_without_background', type=str2bool, nargs='?', co
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
-                    help='')
-
-parser.add_argument('--guid_method', type=str, default=None,
                     help='')
 
 parser.add_argument('--out_node', type=int, default=32,
@@ -196,9 +189,6 @@ parser.add_argument('--store_all_imgs', type=str2bool, nargs='?', const=True, de
 parser.add_argument('--show_pred_only', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--max_number_of_evaluations', type=int, default=1,
-                    help='')
-
 parser.add_argument('--_3d_metrics', type=str2bool, nargs='?', const=True,
                     help='')
 
@@ -225,112 +215,22 @@ def load_model(saver, sess, ckpt_path):
     print("Restored model parameters from {}".format(ckpt_path))
 
 
-def main(unused_argv):
-  # from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-  # import os
-  # checkpoint_path = FLAGS.checkpoint_dir
-
-  # # List ALL tensors example output: v0/Adam (DT_FLOAT) [3,3,1,80]
-  # print_tensors_in_checkpoint_file(file_name=checkpoint_path, tensor_name='', all_tensors=False,
-  #                                  all_tensor_names=True)
-  eval_logdir = FLAGS.checkpoint_dir+'-eval/'
-  # TODO: single data information --> multiple
-  data_information = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name[0]]
-
-  tf.gfile.MakeDirs(eval_logdir)
-
-  parameters_dict = vars(FLAGS)
-  with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'w') as f:
-    f.write("Start Evaluation\n")
-    f.write(60*"="+"\n")
-    for key in parameters_dict:
-      f.write( "{}: {}".format(str(key), str(parameters_dict[key])))
-      f.write("\n")
-    f.write("\n")
-
-
-  tf.logging.set_verbosity(tf.logging.INFO)
-
-  # TODO:
-  # model_options = common.ModelOptions(
-  #             outputs_to_num_classes=14,
-  #             crop_size=EVAL_CROP_SIZE,
-  #             output_stride=FLAGS.output_stride)
-
-  dataset = data_generator.Dataset(
-                dataset_name=FLAGS.dataset_name,
-                split_name=FLAGS.eval_split,
-                # dataset_dir=FLAGS.dataset_dir,
-                batch_size=1,
-                mt_label_method=FLAGS.z_label_method,
-                guidance_type=FLAGS.guidance_type,
-                mt_class=FLAGS.z_class,
-                mt_label_type="z_label",
-                crop_size=[data_information.height, data_information.width],
-                min_resize_value=data_information.height,
-                max_resize_value=data_information.height,
-                # resize_factor=FLAGS.resize_factor,
-                # min_scale_factor=FLAGS.min_scale_factor,
-                # max_scale_factor=FLAGS.max_scale_factor,
-                # scale_factor_step_size=FLAGS.scale_factor_step_size,
-                # model_variant=FLAGS.model_variant,
-                num_readers=2,
-                is_training=False,
-                shuffle_data=False,
-                repeat_data=False,
-                prior_num_slice=FLAGS.prior_num_slice,
-                prior_num_subject=FLAGS.prior_num_subject,
-                # prior_dir=FLAGS.prior_dir,
-                seq_length=FLAGS.seq_length,
-                seq_type="forward")
-  # TODO: make dirs?
-  # TODO: Add model name in dir to distinguish
-
-  tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
-
-  with tf.Graph().as_default() as graph:
-    iterator = dataset.get_one_shot_iterator().make_one_shot_iterator()
-    samples = iterator.get_next()
-
-    # Add name to input and label nodes so we can add to summary.
-    samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
-    if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
-      samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
-
-    model_options = common.ModelOptions(
-      outputs_to_num_classes=dataset.num_of_classes,
-      crop_size=[data_information.height, data_information.width],
-      output_stride=FLAGS.output_stride)
-
-    # Set shape in order for tf.contrib.tfprof.model_analyzer to work properly.
-    # print(60*"SHAPE", samples[common.IMAGE])
-    # if FLAGS.seq_length > 1:
-    #   [_, t, orig_height, orig_width, _] = preprocess_utils.resolve_shape(samples[common.IMAGE], rank=5)
-    #   samples[common.IMAGE].set_shape([FLAGS.eval_batch_size,t,orig_height,orig_width,1])
-    # else:
-    #   [_, orig_height, orig_width, _] = preprocess_utils.resolve_shape(samples[common.IMAGE], rank=4)
-    #   samples[common.IMAGE].set_shape([FLAGS.eval_batch_size,orig_height,orig_width,1])
+def get_placeholders(samples, data_information):
     placeholder_dict = {}
     placeholder_dict[common.HEIGHT] = tf.placeholder(tf.int32,shape=[1])
     placeholder_dict[common.WIDTH] = tf.placeholder(tf.int32,shape=[1])
     if FLAGS.seq_length > 1:
       # Shape specific for GRU cell
-      image_placeholder = tf.placeholder(tf.float32,
+      placeholder_dict[common.IMAGE] = tf.placeholder(tf.float32,
                                          shape=[1,FLAGS.seq_length,data_information.height,data_information.width,1])
     else:
-      image_placeholder = tf.placeholder(tf.float32, shape=[1,None,None,1])
-
-    num_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
-
-    placeholder_dict[common.IMAGE] = image_placeholder
-    placeholder_dict[common.NUM_SLICES] = num_slices_placeholder
+      placeholder_dict[common.IMAGE] = tf.placeholder(tf.float32, shape=[1,None,None,1])
+    placeholder_dict[common.NUM_SLICES] = tf.placeholder(tf.int64, shape=[None])
     if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
       if FLAGS.seq_length > 1:
-        label_placeholder = tf.placeholder(tf.int32, shape=[1,FLAGS.seq_length,data_information.height,data_information.width,1])
+        placeholder_dict[common.LABEL] = tf.placeholder(tf.int32, shape=[1,FLAGS.seq_length,data_information.height,data_information.width,1])
       else:
-        label_placeholder = tf.placeholder(tf.int32, shape=[None,None, None,1])
-      placeholder_dict[common.LABEL] = label_placeholder
-
+        placeholder_dict[common.LABEL] = tf.placeholder(tf.int32, shape=[None,None, None,1])
 
     if common.Z_LABEL in samples:
       samples[common.Z_LABEL] = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
@@ -339,19 +239,11 @@ def main(unused_argv):
     else:
       placeholder_dict[common.Z_LABEL] = None
 
-    if common.PRIOR_IMGS in samples:
-      samples[common.PRIOR_IMGS] = tf.identity(samples[common.PRIOR_IMGS], name=common.PRIOR_IMGS)
-      prior_img_placeholder = tf.placeholder(tf.float32,
-                                           shape=[None, None, None, None])
-      placeholder_dict[common.PRIOR_IMGS] = prior_img_placeholder
-    else:
-      placeholder_dict[common.PRIOR_IMGS] = None
-
     if FLAGS.guidance_type == "gt":
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
       # TODO: CHAOS MR case --> general way
-      if "2019_ISBI_CHAOS_MR_T1" in FLAGS.dataset_name and "2019_ISBI_CHAOS_MR_T2" in FLAGS.dataset_name:
+      if "2019_ISBI_CHAOS_MR_T1" == FLAGS.dataset_name and "2019_ISBI_CHAOS_MR_T2" == FLAGS.dataset_name:
         prior_seg_placeholder = tf.placeholder(
           tf.float32,shape=[None, data_information.height, data_information.width, 10, 1])
       else:
@@ -373,15 +265,69 @@ def main(unused_argv):
       placeholder_dict['prior_slices'] = prior_slices_placeholder
     else:
       placeholder_dict['prior_slices'] = None
+    return placeholder_dict
+  
+  
+def main(unused_argv):
+  eval_logdir = FLAGS.checkpoint_dir+'-eval/'
+  data_information = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name]
 
-    placeholder_dict['organ_label'] = tf.placeholder(tf.int32, shape=[None,dataset.num_of_classes])
+  tf.gfile.MakeDirs(eval_logdir)
+
+  parameters_dict = vars(FLAGS)
+  with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'w') as f:
+    f.write("Start Evaluation\n")
+    f.write(60*"="+"\n")
+    for key in parameters_dict:
+      f.write( "{}: {}".format(str(key), str(parameters_dict[key])))
+      f.write("\n")
+    f.write("\n")
 
 
-    if FLAGS.guid_method is not None:
-      FLAGS.fusions[0] = FLAGS.guid_method
+  tf.logging.set_verbosity(tf.logging.INFO)
+
+  dataset = data_generator.Dataset(
+                dataset_name=FLAGS.dataset_name,
+                split_name=FLAGS.eval_split,
+                batch_size=1,
+                mt_label_method=FLAGS.z_label_method,
+                guidance_type=FLAGS.guidance_type,
+                mt_class=FLAGS.z_class,
+                mt_label_type="z_label",
+                crop_size=[data_information.height, data_information.width],
+                min_resize_value=data_information.height,
+                max_resize_value=data_information.height,
+                num_readers=2,
+                is_training=False,
+                shuffle_data=False,
+                repeat_data=False,
+                prior_num_slice=FLAGS.prior_num_slice,
+                prior_num_subject=FLAGS.prior_num_subject,
+                seq_length=FLAGS.seq_length,
+                seq_type="forward")
+  
+  # TODO: Add model name in dir to distinguish
+
+  tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
+
+  with tf.Graph().as_default() as graph:
+    iterator = dataset.get_dataset().make_one_shot_iterator()
+    samples = iterator.get_next()
+
+    # Add name to input and label nodes so we can add to summary.
+    samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
+    if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
+      samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
+
+    model_options = common.ModelOptions(
+      outputs_to_num_classes=dataset.num_of_classes,
+      crop_size=[data_information.height, data_information.width],
+      output_stride=FLAGS.output_stride)
+
+    placeholder_dict = get_placeholders(samples, data_information)
 
     output_dict, layers_dict = model.pgb_network(
-                image_placeholder,
+                placeholder_dict[common.IMAGE],
                 placeholder_dict[common.HEIGHT],
                 placeholder_dict[common.WIDTH],
                 model_options=model_options,
@@ -428,12 +374,11 @@ def main(unused_argv):
         guidance_dict["guidance0"] = tf.nn.sigmoid(output_dict[common.GUIDANCE])
         pred_dict["guidance0"] = guidance_dict["guidance0"]
 
-    # Add name to graph node so we can add to summary.
     logits = output_dict[common.OUTPUT_TYPE]
-    # print(60*"L", samples[common.HEIGHT], placeholder_dict[common.WIDTH])
     if FLAGS.eval_split[0] == "test":
       logits = tf.image.resize_bilinear(logits, tf.concat([placeholder_dict[common.HEIGHT], placeholder_dict[common.WIDTH]],axis=0), align_corners=False)
     prediction = eval_utils.inference_segmentation(logits, dim=3)
+
 
     if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
       pred_flat = tf.reshape(prediction, shape=[-1,])
@@ -476,19 +421,9 @@ def main(unused_argv):
         label_z = placeholder_dict[common.Z_LABEL]
         cm_z = tf.confusion_matrix(label_z, pred_z, num_classes=dataset.mt_class)
 
-    summary_op = tf.summary.merge_all()
-    summary_hook = tf.contrib.training.SummaryAtEndHook(
-        log_dir=eval_logdir, summary_op=summary_op)
-    hooks = [summary_hook]
-
-    num_eval_iters = None
-    if FLAGS.max_number_of_evaluations > 0:
-      num_eval_iters = FLAGS.max_number_of_evaluations
-
     # Set up tf session and initialize variables.
     sess = tf.Session()
     init = tf.global_variables_initializer()
-
     sess.run(init)
     sess.run(tf.local_variables_initializer())
 
@@ -941,35 +876,7 @@ def main(unused_argv):
         # box_plot_figure(DSC_slice)
 
 
-    # tf.contrib.tfprof.model_analyzer.print_model_analysis(
-    #     tf.get_default_graph(),
-    #     tfprof_options=tf.contrib.tfprof.model_analyzer.
-    #     TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
-    # tf.contrib.tfprof.model_analyzer.print_model_analysis(
-    #     tf.get_default_graph(),
-    #     tfprof_options=tf.contrib.tfprof.model_analyzer.FLOAT_OPS_OPTIONS)
-    # tf.contrib.training.evaluate_repeatedly(
-    #     master=FLAGS.master,
-    #     checkpoint_dir=FLAGS.checkpoint_dir,
-    #     eval_ops=[miou, update_op],
-    #     max_number_of_evaluations=num_eval_iters,
-    #     hooks=hooks,
-    #     eval_interval_secs=FLAGS.eval_interval_secs)
-
-    # return mean_dice_score
-
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
     
-    """
-    im = sitk.ReadImage("/home/user/DISK/data/Jing/data/Training/raw/img0040.nii.gz")
-    spacing = im.GetSpacing()
-    print(spacing)
-
-    im2 = nib.load("/home/user/DISK/data/Jing/data/Training/raw/img0039.nii.gz")
-    header_info = im2.header
-    print(header_info)
-    print(len(header_info['pixdim']))
-    print(im2.affine)
-    """
