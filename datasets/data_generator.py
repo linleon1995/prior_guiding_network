@@ -25,6 +25,7 @@ _DATASETS_INFORMATION = {
 }
 
 BASE_DATA_DIR = common.BASE_DATA_DIR
+# TODO: separate for each dataset
 SPLIT_FOLDER_MAP = {"train": "Train_Sets",
                     "val": "Train_Sets",
                     "test": "Test_Sets"}

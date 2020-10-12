@@ -218,8 +218,12 @@ def _convert_dataset(out_dir, dataset_split, modality, seq_length, train_split_i
     if dataset_split in ("train", "val"):
       label_files = _get_files(path, modality, img_or_label="label")
       kwargs["label_files"] = label_files
-    shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (
-          dataset_split, modality, shard_id, num_shard)
+    if seq_length > 1:
+        img_or_seq = "seq"
+    else:
+        img_or_seq = "img"
+    shard_filename = '%s-%s-%s-%05d-of-%05d.tfrecord' % (
+          dataset_split, img_or_seq, modality, shard_id, num_shard)
     output_filename = os.path.join(out_dir, shard_filename)
 
     # Convert single subject

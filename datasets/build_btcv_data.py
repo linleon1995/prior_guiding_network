@@ -42,7 +42,7 @@ _SPLIT_MAP = {
 
 # A map from data type to folder name that saves the data.
 _FOLDERS_MAP = {
-    'image': 'raw',
+    'image': 'img',
     'label': 'label',
 }
 
@@ -105,13 +105,13 @@ def _convert_dataset(dataset_split, data_dir, seq_length, output_dir, extract_fg
   num_images = len(image_files)
   for shard_id in range(num_images):
     if seq_length > 1:
-        data_tag = "seq"
+        img_or_seq = "seq"
     else:
-        data_tag = "img"
+        img_or_seq = "img"
     if extract_fg_exist_slice:
-      shard_filename = '%s-%s-%s-%05d-of-%05d.tfrecord' % (dataset_split, data_tag, "fg", shard_id, num_images)
+      shard_filename = '%s-%s-%s-%05d-of-%05d.tfrecord' % (dataset_split, img_or_seq, "fg", shard_id, num_images)
     else:
-      shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (dataset_split, data_tag, shard_id, num_images)
+      shard_filename = '%s-%s-%05d-of-%05d.tfrecord' % (dataset_split, img_or_seq, shard_id, num_images)
     output_filename = os.path.join(output_dir, shard_filename)
     with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
       # Read the image.
@@ -200,7 +200,10 @@ def main(unused_argv):
                    "test": None}
   
   for split, indices in dataset_split.items():
-    out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split])
+    if FLAGS.seq_length > 1:
+      out_dir = os.path.join(FLAGS.output_dir, "seq"+str(FLAGS.seq_length), _SPLIT_MAP[split])
+    else:
+      out_dir = os.path.join(FLAGS.data_dir, FLAGS.output_dir, "img", _SPLIT_MAP[split])
     _convert_dataset(
       split, FLAGS.data_dir, FLAGS.seq_length, out_dir, FLAGS.extract_fg_exist_slice, indices)
       
