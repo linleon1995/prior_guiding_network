@@ -131,7 +131,7 @@ parser.add_argument('--output_stride', type=int, default=8,
 parser.add_argument('--prior_num_slice', type=int, default=1,
                     help='')
 
-parser.add_argument('--prior_num_subject', type=int, default=20,
+parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 parser.add_argument('--fusion_slice', type=int, default=3,

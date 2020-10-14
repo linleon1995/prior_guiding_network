@@ -49,6 +49,29 @@ def eval_flol_model(dsc_in_diff_th, threshold):
     plt.show()
 
 
+def show_3d(ref, seg):
+    Rx, Ry, Rz = [], [] , []
+    Sx, Sy, Sz = [], [] , []
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    for r, s in zip(ref, seg):
+        Rx.append(r[0])
+        Ry.append(r[1])
+        Rz.append(r[2])
+
+        Sx.append(s[0])
+        Sy.append(s[1])
+        Sz.append(s[2])
+
+    ax.scatter(Rx, Ry, Rz, c='r', marker='.')
+    ax.scatter(Sx, Sy, Sz, c='g', marker='.')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    plt.show()
+
+
 def print_checkpoint_tensor_name(checkpoint_dir):
     # TODO: all_tensors,  all_tensor_names for parameters
     """Print all tensor name from graph"""
@@ -340,7 +363,9 @@ def load_model(saver, sess, ckpt_path):
     print("Restored model parameters from {}".format(ckpt_path))
 
 
-def plot_confusion_matrix(cm, classes, filename,
+def plot_confusion_matrix(cm, 
+                          num_class, 
+                          filename='Confusion_Matrix',
                           normalize=False,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues,
@@ -360,9 +385,9 @@ def plot_confusion_matrix(cm, classes, filename,
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
+    tick_marks = np.arange(len(num_class))
+    plt.xticks(tick_marks, num_class, rotation=45)
+    plt.yticks(tick_marks, num_class)
 
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
@@ -371,6 +396,7 @@ def plot_confusion_matrix(cm, classes, filename,
         plt.savefig(os.path.join(save_path, filename+".png"))
     else:
         plt.show()
+
 
 def inference_segmentation(logits, dim):
     prediction = tf.nn.softmax(logits, axis=dim)
