@@ -4,6 +4,7 @@
 set -e
 
 CURRENT_DIR=$(pwd)
+# The directory that raw data saved
 WORK_DIR="/home/user/DISK/data/Jing/data"
 DATASET="2019_ISBI_CHAOS"
 

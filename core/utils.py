@@ -344,7 +344,12 @@ class Refine(object):
 
               fuse = fuse_func(embed, y_tm1, guid, out_node, fuse_method+str(module_order),
                             num_classes=self.num_class, apply_sram2=self.apply_sram2)
-
+              """
+              fuse = tf.reshape(fuse, [4, 3, h, w, out_node])
+              _, fuse = seq_model(fuse, h, w, out_node, self.weight_decay, self.is_training,
+                                  scope="gru"+str(i), cell_type='ConvGRU', output_wo_fuse=True)
+              fuse = tf.reshape(fuse, [-1, h, w, out_node])
+              """
               y = slim.conv2d(fuse, self.embed_node, scope='fuse'+str(i))
               tf.add_to_collection("refining", y)
 
@@ -796,43 +801,47 @@ def scale_dimension(dim, scale):
 #       net = tf.nn.sigmoid(net)
 #   return net
 
-def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, cell_type='ConvGRU'):
-  with slim.arg_scope([slim.batch_norm],
-                        is_training=is_training):
-    with slim.arg_scope([slim.conv2d],
-                      weights_initializer=tf.initializers.he_normal(),
-                      weights_regularizer=slim.l2_regularizer(weight_decay),
-                      normalizer_fn=slim.batch_norm):
-    # in_shape = inputs.get_shape().as_list()
-      in_shape = preprocess_utils.resolve_shape(inputs, rank=5)
-      batch_size = in_shape[0]
-      # seq_length = in_shape[1]
-      nx = in_shape[2]
-      ny = in_shape[3]
+def seq_model(inputs, ny, nx, n_class, weight_decay, is_training, scope, cell_type='ConvGRU', output_wo_fuse=False):
+  with tf.variable_scope(scope, "forward_cell"):
+    with slim.arg_scope([slim.batch_norm],
+                          is_training=is_training):
+      with slim.arg_scope([slim.conv2d],
+                        weights_initializer=tf.initializers.he_normal(),
+                        weights_regularizer=slim.l2_regularizer(weight_decay),
+                        normalizer_fn=slim.batch_norm):
+      # in_shape = inputs.get_shape().as_list()
+        in_shape = preprocess_utils.resolve_shape(inputs, rank=5)
+        batch_size = in_shape[0]
+        # seq_length = in_shape[1]
+        nx = in_shape[2]
+        ny = in_shape[3]
 
-      if cell_type =='ConvGRU':
-        with tf.variable_scope("forward_cell") as scope:
-            cell_forward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
-            outputs_forward, state_forward = tf.nn.dynamic_rnn(
-              cell=cell_forward, dtype=tf.float32, inputs=inputs,
-              initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
-        feats = state_forward
-      elif cell_type =='BiConvGRU':
-        with tf.variable_scope("forward_cell") as scope:
-            cell_forward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
-            outputs_forward, state_forward = tf.nn.dynamic_rnn(
-              cell=cell_forward, dtype=tf.float32, inputs=inputs,
-              initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
+        if cell_type =='ConvGRU':
+          with tf.variable_scope("forward_cell") as scope:
+              cell_forward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
+              outputs_forward, state_forward = tf.nn.dynamic_rnn(
+                cell=cell_forward, dtype=tf.float32, inputs=inputs,
+                initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
+          feats = state_forward
+          output = [outputs_forward]
+        elif cell_type =='BiConvGRU':
+          with tf.variable_scope("forward_cell") as scope:
+              cell_forward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
+              outputs_forward, state_forward = tf.nn.dynamic_rnn(
+                cell=cell_forward, dtype=tf.float32, inputs=inputs,
+                initial_state=cell_forward.zero_state(batch_size, dtype=tf.float32))
 
-        inputs_b = inputs[:,::-1]
-        with tf.variable_scope("backward_cell") as scope:
-            cell_backward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
-            outputs_backward, state_backward = tf.nn.dynamic_rnn(
-              cell=cell_backward, dtype=tf.float32, inputs=inputs_b,
-              initial_state=cell_backward.zero_state(batch_size, dtype=tf.float32))
+          inputs_b = inputs[:,::-1]
+          with tf.variable_scope("backward_cell") as scope:
+              cell_backward = cell.ConvGRUCell(shape=[ny, nx], filters=n_class, kernel=[3, 3])
+              outputs_backward, state_backward = tf.nn.dynamic_rnn(
+                cell=cell_backward, dtype=tf.float32, inputs=inputs_b,
+                initial_state=cell_backward.zero_state(batch_size, dtype=tf.float32))
 
-        feats = tf.concat([state_forward, state_backward], axis=3)
-
-      y = slim.conv2d(feats, n_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='fuse')
-    # print(60*"X", inputs, y, state_forward)
-    return y
+          feats = tf.concat([state_forward, state_backward], axis=3)
+          output = [outputs_forward, outputs_backward]
+        if output_wo_fuse:
+          y = None
+        else:
+          y = slim.conv2d(feats, n_class, kernel_size=[1, 1], stride=1, activation_fn=None, scope='fuse')
+    return y, output

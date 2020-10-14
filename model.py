@@ -98,30 +98,15 @@ def pgb_network(images,
                 # Refined by Decoder
                 if guid_encoder in ("early", "image_only"):
                     embed_latent = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
-                # elif guid_encoder in ("p_embed", "p_embed_prior"):
-                #     if z_class is None:
-                #         raise ValueError("Unknown Z class for prior embedding weighting")
-                #     with tf.variable_scope('encoded_priors', scope):
-                #         prior_list = []
-                #         for i in range(z_class):
-                #             prior_list.append(slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[3,3],
-                #                                           activation_fn=None, scope="prior_encoder"+str(i)))
-                #     tf.add_to_collection("prior_list", prior_list)
-                #     p = tf.stack(prior_list, axis=4)
-                #     z = tf.reshape(tf.nn.softmax(z_logits, axis=1), [-1,1,1,z_class,1])
-                #     embed_latent = tf.squeeze(tf.matmul(p, z), axis=4)
-
-                # tf.add_to_collection("guid_f", prior_seg)
 
                 if guidance_loss_name is not None:
                     # TODO: PGN_v1
-                    # if z_logits is not None and :
+                    # if guidance_from_prior:
                     #     z_pred = tf.nn.softmax(z_logits, axis=1)
-
+                        # prior_pred = prior * z_pred
                     # else:
                     prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
-                    # prior_pred = slim.conv2d(embed_latent, num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
-                    # tf.add_to_collection("stage_pred", prior_pred)
+
                     output_dict[common.GUIDANCE] = prior_pred
 
                     if "softmax" in guidance_loss_name:
@@ -140,14 +125,12 @@ def pgb_network(images,
                                 embed_node=out_node, weight_decay=weight_decay, is_training=is_training, num_class=num_class,
                                 **kwargs)
     logits = refine_model.model()
-    # logits, preds = refine_model.model()
-    # layers_dict.update(preds)
 
     # Sequential Model for slice fusion
     if seq_length is not None:
         if seq_length > 1:
             logits = tf.reshape(logits, [n, t, h, w, num_class])
-            logits = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
+            logits, _ = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
 
     if drop_prob is not None:
         logits = tf.nn.dropout(logits, rate=drop_prob)
@@ -165,7 +148,7 @@ def predict_z_dimension(feature, out_node, extractor_type):
             gap = tf.reduce_mean(feature, axis=[1,2], keep_dims=False)
             z_logits = mlp(gap, output_dims=out_node, num_layers=2,
                            decreasing_root=16, scope='z_info_extractor')
-        # TODO: region based extractor
+        # TODO: region based extractor, consider to add in spatial information
         elif extractor_type == "region":
             pass
         else:

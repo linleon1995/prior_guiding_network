@@ -69,44 +69,7 @@ class ModelOptions(
               crop_size=None,
               output_stride=8,
               preprocessed_images_dtype=tf.float32):
-    """Constructor to set default values.
-    Args:
-      outputs_to_num_classes: A dictionary from output type to the number of
-        classes. For example, for the task of semantic segmentation with 21
-        semantic classes, we would have outputs_to_num_classes['semantic'] = 21.
-      crop_size: A tuple [crop_height, crop_width].
-      atrous_rates: A list of atrous convolution rates for ASPP.
-      output_stride: The ratio of input to output spatial resolution.
-      preprocessed_images_dtype: The type after the preprocessing function.
-    Returns:
-      A new ModelOptions instance.
-    """
-    # dense_prediction_cell_config = None
-    # if FLAGS.dense_prediction_cell_json:
-    #   with tf.gfile.Open(FLAGS.dense_prediction_cell_json, 'r') as f:
-    #     dense_prediction_cell_config = json.load(f)
-    # decoder_output_stride = None
-    # if FLAGS.decoder_output_stride:
-    #   decoder_output_stride = [
-    #       int(x) for x in FLAGS.decoder_output_stride]
-    #   if sorted(decoder_output_stride, reverse=True) != decoder_output_stride:
-    #     raise ValueError('Decoder output stride need to be sorted in the '
-    #                      'descending order.')
-    # image_pooling_crop_size = None
-    # if FLAGS.image_pooling_crop_size:
-    #   image_pooling_crop_size = [int(x) for x in FLAGS.image_pooling_crop_size]
-    # image_pooling_stride = [1, 1]
-    # if FLAGS.image_pooling_stride:
-    #   image_pooling_stride = [int(x) for x in FLAGS.image_pooling_stride]
-    # label_weights = FLAGS.label_weights
-    # if label_weights is None:
-    #   label_weights = 1.0
-    # nas_architecture_options = {
-    #     'nas_stem_output_num_conv_filters': (
-    #         FLAGS.nas_stem_output_num_conv_filters),
-    #     'nas_use_classification_head': FLAGS.nas_use_classification_head,
-    #     'nas_remove_os32_stride': FLAGS.nas_remove_os32_stride,
-    # }
+    
     return super(ModelOptions, cls).__new__(
         cls, outputs_to_num_classes, crop_size, output_stride, preprocessed_images_dtype,
         MULTI_GRID,
