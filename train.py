@@ -25,8 +25,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--fusions', nargs='+', required=True,
                     help='')
 
-parser.add_argument('--dataset_name', nargs='+', required=True,
-                    help='The list contains all the datasets name in training')
+parser.add_argument('--dataset_name', required=True,
+                    help='The dataset name. Make sure the name is exist and correct.')
 
 parser.add_argument('--train_split', nargs='+', required=True,
                     help='The list contains the splitting apply in training process')
@@ -116,11 +116,11 @@ parser.add_argument('--model_variant', type=str, default=None,
 parser.add_argument('--z_model', type=str, default=None,
                     help='')
 
-parser.add_argument('--z_label_method', type=str, default=None,
-                    help='')
+# parser.add_argument('--z_label_method', type=str, default=None,
+#                     help='')
 
-parser.add_argument('--z_class', type=int, default=None,
-                    help='')
+parser.add_argument('--mt_output_node', type=int, default=None,
+                    help='The multi-task (logitudinal prediction) model output node.')
 
 # Input prior could be "zeros", "ground_truth", "training_data_fusion" (fixed)
 # ,or "adaptive" witch means decide adaptively by learning
@@ -138,28 +138,32 @@ parser.add_argument('--fusion_slice', type=float, default=3,
                     help='')
 
 parser.add_argument('--z_loss_weight', type=float, default=None,
-                    help='')
+                    help='The weight of z (longitudinal) prediction loss.')
 
 parser.add_argument('--seg_loss_weight', nargs='+', type=float, default=1.0,
-                    help="")
+                    help="The weight of multi-organ segementation loss (main loss).")
                     
 parser.add_argument('--guid_loss_weight', nargs='+', type=float, default=1.0,
-                    help="")
+                    help="The weight of guidance loss.")
 
 parser.add_argument('--stage_pred_loss_weight', nargs='+', type=float, default=1.0,
-                    help="")
+                    help="The weight of stage prediction loss.")
 
 parser.add_argument('--seg_loss_name', type=str, default="softmax_dice_loss",
-                    help='')
+                    help='The name of multi-organ segmentation loss. This loss used to constraint \
+                    final segmentation result.')
                     
 parser.add_argument('--guid_loss_name', type=str, default=None,
-                    help='')
+                    help='The name of guidance loss. This loss used to constraint \
+                    guidance produced in latent.')
 
 parser.add_argument('--stage_pred_loss_name', type=str, default=None,
-                    help='')
+                    help='The name of stage prediction loss. This loss used to constraint \
+                    segmentation result produced in each stage.')
 
 parser.add_argument('--z_loss_name', type=str, default=None,
-                    help='')
+                    help='The loss of z (longitudial) prediction task. Assign this value to \
+                    apply PGN-v1.')
 
 # Learning rate configuration
 parser.add_argument('--learning_policy', type=str, default='poly',
@@ -214,10 +218,17 @@ parser.add_argument('--resize_factor', type=int, default=None,
 parser.add_argument('--pre_crop_flag', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-
+  
 def check_model_conflict():
+  # Loss and multi-task model output-node are necessary for multi-task
+  assert (FLAGS.z_loss_name is not None) == (FLAGS.mt_output_node is not None)
+  
+  # mt_output_node could only smaller or equivalent to prior slice number
+  if FLAGS.mt_output_node is not None:
+    if FLAGS.mt_output_node > FLAGS.prior_num_slice:
+      raise ValueError("Multi-task output node bigger than slice number of prior")
+    
   # Different predict class amond datasets.
-  pass
 
 
 def get_session(sess):
@@ -242,17 +253,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   samples[common.IMAGE] = tf.identity(samples[common.IMAGE], name=common.IMAGE)
   samples[common.LABEL] = tf.identity(samples[common.LABEL], name=common.LABEL)
 
-  summary_img = samples[common.IMAGE]
-  summary_label = samples[common.LABEL]
-  if FLAGS.seq_length > 1:
-    summary_img = summary_img[:,1]
-    summary_label = summary_label[:,1]
-
-  if 'prior_slices' in samples:
-    prior_slices = samples['prior_slices']
-  else:
-    prior_slices = None
-
   if common.PRIOR_SEGS in samples:
     samples[common.PRIOR_SEGS] = tf.identity(
         samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
@@ -269,8 +269,6 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 model_options=model_options,
                 prior_segs=samples[common.PRIOR_SEGS],
                 num_class=num_class,
-                prior_slice=prior_slices,
-                batch_size=clone_batch_size,
                 fusion_slice=FLAGS.fusion_slice,
                 drop_prob=FLAGS.drop_prob,
                 stn_in_each_class=True,
@@ -281,10 +279,10 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
                 fusions=FLAGS.fusions,
                 out_node=FLAGS.out_node,
                 guid_encoder=FLAGS.guid_encoder,
-                z_label_method=FLAGS.z_label_method,
                 z_model=FLAGS.z_model,
-                z_class=FLAGS.z_class,
-                guidance_loss_name=FLAGS.guid_loss_name,
+                mt_output_node=FLAGS.mt_output_node,
+                z_loss_name=FLAGS.z_loss_name,
+                guid_loss_name=FLAGS.guid_loss_name,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
@@ -298,41 +296,43 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   output = output_dict[common.OUTPUT_TYPE]
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
-  if common.Z_LABEL in samples:
-    z_label = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
-  else:
-    z_label = None
+  # if common.Z_LABEL in samples:
+  #   z_label = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
+  # else:
+  #   z_label = None
 
-  if common.PRIOR_SEGS in output_dict:
-    prior_seg = output_dict[common.PRIOR_SEGS]
-  else:
-    prior_seg = None
+  # if common.PRIOR_SEGS in output_dict:
+  #   prior_seg = output_dict[common.PRIOR_SEGS]
+  # else:
+  #   prior_seg = None
 
-  if common.OUTPUT_Z in output_dict:
-    z_pred = output_dict[common.OUTPUT_Z]
-  else:
-    z_pred = None
+  # if common.OUTPUT_Z in output_dict:
+  #   z_pred = output_dict[common.OUTPUT_Z]
+  # else:
+  #   z_pred = None
 
-  if 'original_guidance' in output_dict:
-    guidance_original = output_dict['original_guidance']
-  else:
-    guidance_original = None
+  # if 'original_guidance' in output_dict:
+  #   guidance_original = output_dict['original_guidance']
+  # else:
+  #   guidance_original = None
 
   # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
   # if len(guidance_dict) == 0:
   #   guidance_dict = None
 
-  # TODO validation phase can use log_summaries?
   # Log the summary
-  _log_summaries(summary_img,
-                 summary_label,
-                 outputs_to_num_classes['semantic'],
-                 output_dict[common.OUTPUT_TYPE],
-                 z_label=z_label,
-                 z_pred=z_pred,
-                 prior_segs=prior_seg,
-                 layers_dict=layers_dict,
-                 guidance_original=guidance_original)
+  _log_summaries(samples,
+                 output_dict,
+                 layers_dict,
+                 num_class,
+                #  outputs_to_num_classes['semantic'],
+                #  output_dict[common.OUTPUT_TYPE],
+                #  z_label=z_label,
+                #  z_pred=z_pred,
+                #  prior_segs=prior_seg,
+                #  layers_dict=layers_dict,
+                #  guidance_original=guidance_original
+                 )
   return output_dict, layers_dict
 
 
@@ -380,10 +380,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
       if isinstance(FLAGS.z_loss_weight, list):
         if len(FLAGS.z_loss_weight) == 1:
           z_loss_weight = FLAGS.z_loss_weight[0]
-      loss_dict[common.OUTPUT_Z] = {"loss": "softmax_cross_entropy", "weights": z_loss_weight, "scope": "z_pred"}
-      z_class = FLAGS.z_class
-    else:
-      z_class = None
+      loss_dict[common.OUTPUT_Z] = {"loss": FLAGS.z_loss_name, "weights": z_loss_weight, "scope": "z_pred"}
 
     train_utils.get_losses(output_dict,
                            samples,
@@ -391,7 +388,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
                            num_of_classes,
                            FLAGS.seq_length,
                            FLAGS.batch_size,
-                           z_class=z_class)
+                           mt_output_node=FLAGS.mt_output_node)
 
     losses = tf.compat.v1.losses.get_losses(scope=scope)
     seg_loss = losses[0]
@@ -401,8 +398,7 @@ def _tower_loss(iterator, num_of_classes, model_options, ignore_label, scope, re
     return total_loss, seg_loss
 
 
-def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_segs,
-                   layers_dict, guidance_original, **kwargs):
+def _log_summaries(samples, output_dict, layers_dict, num_class, **kwargs):
   """Logs the summaries for the model.
   The easiest way to add the summarirs for interesting feature is call
   tf.add_to_collections() during model building, then call 
@@ -421,15 +417,22 @@ def _log_summaries(input_image, label, num_of_classes, output, z_pred, prior_seg
 
   # Add summaries for images, labels, semantic predictions.
   if FLAGS.save_summaries_images:
-    tf.summary.image('samples/%s' % common.IMAGE, colorize(input_image, cmap='viridis'))
+    if FLAGS.seq_length > 1:
+      image = samples[common.IMAGE][:,FLAGS.seq_length//2]
+      label = samples[common.LABEL][:,FLAGS.seq_length//2]
+    else:
+      image = samples[common.IMAGE]
+      label = samples[common.LABEL]
+      
+    tf.summary.image('samples/%s' % common.IMAGE, colorize(image, cmap='viridis'))
 
     # Scale up summary image pixel values for better visualization.
-    pixel_scaling = max(1, 255 // num_of_classes)
+    pixel_scaling = max(1, 255 // num_class)
 
     summary_label = tf.cast(label * pixel_scaling, tf.uint8)
     tf.summary.image('samples/%s' % common.LABEL, colorize(summary_label, cmap='viridis'))
 
-    predictions = tf.expand_dims(tf.argmax(output, 3), -1)
+    predictions = tf.expand_dims(tf.argmax(output_dict[common.OUTPUT_TYPE], 3), -1)
     summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
     tf.summary.image('samples/%s' % common.OUTPUT_TYPE, colorize(summary_predictions, cmap='viridis'))
 
@@ -596,8 +599,10 @@ def _val_pgn_model(iterator, num_of_classes, model_options, ignore_label, steps,
 
 
 def main(unused_argv):
-    # TODO: single data information --> multiple
-    data_inforamtion = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name[0]]
+    # Check model parameters
+    check_model_conflict()
+    
+    data_inforamtion = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name]
     tf.logging.set_verbosity(tf.logging.INFO)
 
     tf.gfile.MakeDirs(FLAGS.train_logdir)
@@ -620,7 +625,7 @@ def main(unused_argv):
                 'Training batch size not divisble by number of clones (GPUs).')
             clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
 
-            if '2019_ISBI_CHAOS_MR_T1' in FLAGS.dataset_name or '2019_ISBI_CHAOS_MR_T2' in FLAGS.dataset_name:
+            if FLAGS.dataset_name=='2019_ISBI_CHAOS_MR_T1' or FLAGS.dataset_name=='2019_ISBI_CHAOS_MR_T2':
               min_resize_value = data_inforamtion.height
               max_resize_value = data_inforamtion.height
             else:
@@ -640,9 +645,7 @@ def main(unused_argv):
                 guidance_type=FLAGS.guidance_type,
                 batch_size=clone_batch_size,
                 pre_crop_flag=FLAGS.pre_crop_flag,
-                mt_label_method=FLAGS.z_label_method,
-                mt_class=FLAGS.z_class,
-                mt_label_type="z_label",
+                mt_class=FLAGS.mt_output_node,
                 crop_size=data_inforamtion.train["train_crop_size"],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -657,7 +660,8 @@ def main(unused_argv):
                 prior_num_slice=FLAGS.prior_num_slice,
                 prior_num_subject=FLAGS.prior_num_subject,
                 seq_length=FLAGS.seq_length,
-                seq_type="bidirection")
+                seq_type="bidirection",
+                z_loss_name=FLAGS.z_loss_name,)
 
             if "val" not in FLAGS.train_split:
               val_generator = data_generator.Dataset(
@@ -665,9 +669,7 @@ def main(unused_argv):
                   split_name=["val"],
                   guidance_type=FLAGS.guidance_type,
                   batch_size=1,
-                  mt_label_method=FLAGS.z_label_method,
-                  mt_class=FLAGS.z_class,
-                  mt_label_type="z_label",
+                  mt_class=FLAGS.mt_output_node,
                   crop_size=[data_inforamtion.height, data_inforamtion.width],
                   min_resize_value=FLAGS.min_resize_value,
                   max_resize_value=FLAGS.max_resize_value,
@@ -678,7 +680,8 @@ def main(unused_argv):
                   prior_num_slice=FLAGS.prior_num_slice,
                   prior_num_subject=FLAGS.prior_num_subject,
                   seq_length=FLAGS.seq_length,
-                  seq_type="bidirection")
+                  seq_type="bidirection",
+                  z_loss_name=FLAGS.z_loss_name,)
 
             model_options = common.ModelOptions(
               outputs_to_num_classes=train_generator.num_of_classes,
@@ -748,8 +751,7 @@ def main(unused_argv):
                     if "val" not in FLAGS.train_split:
                       if global_step%FLAGS.validation_steps == 0:
                         cm_total = 0
-                        for sub_split in val_generator.splits_to_sizes.values():
-                          for j in range(sub_split["val"]):
+                        for j in range(val_generator.splits_to_sizes["val"]):
                             cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
                         mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)

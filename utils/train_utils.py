@@ -57,7 +57,7 @@ def get_losses(output_dict,
                num_classes,
                seq_length,
                batch_size=None,
-               z_class=None):
+               mt_output_node=None):
     """
     The function define the objective function of model.
     Each loss will added through tf.losses.add_loss().
@@ -113,7 +113,7 @@ def get_losses(output_dict,
         get_loss_func(loss_dict[common.OUTPUT_Z]["loss"])(
             scales_to_logits={common.OUTPUT_Z: output_dict[common.OUTPUT_Z]},
             labels=samples[common.Z_LABEL],
-            num_classes=z_class,
+            num_classes=mt_output_node,
             ignore_label=255,
             loss_weight=loss_dict[common.OUTPUT_Z]["weights"],
             upsample_logits=False,

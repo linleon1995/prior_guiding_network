@@ -1,5 +1,5 @@
 import tensorflow as tf
-from core import features_extractor, utils, resnet_v1_beta, preprocess_utils
+from core import features_extractor, utils, preprocess_utils
 import common
 
 slim = tf.contrib.slim
@@ -12,10 +12,8 @@ def pgb_network(images,
                 model_options,
                 prior_segs=None,
                 num_class=None,
-                prior_slice=None,
-                batch_size=None,
-                z_label_method=None,
-                z_class=None,
+                z_loss_name=None,
+                mt_output_node=None,
                 fusion_slice=None,
                 drop_prob=None,
                 reuse=None,
@@ -24,36 +22,34 @@ def pgb_network(images,
                 **kwargs,
                 ):
     """
-    VoxelMorph: A Learning Framework for Deformable Medical Image Registration
-    Args:
-        images:
-        prior_segs: [1,H,W,Class,Layer]
-    Returns:
-        segmentations:
+    Prior Guidiing Network
     """
     output_dict = {}
     weight_decay = kwargs.pop("weight_decay", None)
     fusions = kwargs.pop("fusions", None)
     out_node = kwargs.pop("out_node", None)
     guid_encoder = kwargs.pop("guid_encoder", None)
-    z_model = kwargs.pop("z_model", None)
-    guidance_loss_name = kwargs.pop("guidance_loss_name", None)
+    z_model = kwargs.pop("z_model", "simple")
+    guid_loss_name = kwargs.pop("guid_loss_name", None)
     stage_pred_loss_name = kwargs.pop("stage_pred_loss_name", None)
     guid_conv_nums = kwargs.pop("guid_conv_nums", None)
     guid_conv_type = kwargs.pop("guid_conv_type", None)
     seq_length = kwargs.pop("seq_length", None)
     cell_type = kwargs.pop("cell_type", None)
 
+    # Flatten time dimension for slice-wise feature extracting
     if seq_length > 1:
-        n, t, h, w, c = preprocess_utils.resolve_shape(images, rank=5)
-        images = tf.reshape(images, [-1, h, w, c])
+        images = tf.split(images, num_or_size_splits=seq_length, axis=1)
+        images = tf.concat(images, axis=0)
+        images = tf.squeeze(images, axis=1)
+        
     # Produce Prior
     if prior_segs is not None:
         prior_from_data = tf.tile(prior_segs[...,0], [seq_length,1,1,1])
 
-    if guid_encoder in ("early", "p_embed_prior"):
+    if guid_encoder in ("early"):
         in_node = tf.concat([images, prior_from_data], axis=3)
-    elif guid_encoder in ("late", "image_only", "p_embed"):
+    elif guid_encoder in ("image_only"):
         in_node = images
 
     # Feature Extractor (Encoder)
@@ -73,17 +69,9 @@ def pgb_network(images,
                    "low_level1": end_points["resnet_v1_50/conv1_3"]}
 
     # Multi-task
-    if z_label_method is not None and z_model is not None:
-        if z_label_method == "reg":
-            multi_task_node = 1
-        elif z_label_method == "cls":
-            if z_class is None:
-                raise ValueError("Unknown Z class")
-            multi_task_node = z_class
-        else:
-            raise ValueError("Unknown Z label method")
-        z_logits = predict_z_dimension(layers_dict["low_level5"], out_node=multi_task_node,
-                                       extractor_type="simple")
+    if z_loss_name is not None:
+        z_logits = predict_z_dimension(layers_dict["low_level5"], out_node=mt_output_node,
+                                       extractor_type=z_model)
         output_dict[common.OUTPUT_Z] = z_logits
 
     # Guidance Generating
@@ -95,23 +83,20 @@ def pgb_network(images,
                           weights_regularizer=slim.l2_regularizer(weight_decay),
                           normalizer_fn=slim.batch_norm):
             if "guid" in fusions or "guid_class" in fusions or "guid_uni" in fusions or "context_att" in fusions or "self_att" in fusions:
-                # Refined by Decoder
-                if guid_encoder in ("early", "image_only"):
-                    embed_latent = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
-
-                if guidance_loss_name is not None:
-                    # TODO: PGN_v1
-                    # if guidance_from_prior:
-                    #     z_pred = tf.nn.softmax(z_logits, axis=1)
-                        # prior_pred = prior * z_pred
-                    # else:
-                    prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
-
+                if guid_loss_name is not None:
+                    # Apply PGN-v1 if z (longitudinal) prediction exist
+                    if common.OUTPUT_Z in output_dict:
+                        z_pred = tf.nn.softmax(z_logits, axis=1)
+                        # TODO: get v1 prior and use fusion slices properly
+                        prior_pred = prior_from_data * z_pred
+                    else:
+                        prior_pred = slim.conv2d(layers_dict["low_level5"], num_class, kernel_size=[1,1], stride=1, activation_fn=None, scope='prior_pred_pred_class%d' %num_class)
+                        embed_latent = slim.conv2d(layers_dict["low_level5"], out_node, kernel_size=[1,1], scope="guidance_embedding")
                     output_dict[common.GUIDANCE] = prior_pred
 
-                    if "softmax" in guidance_loss_name:
+                    if "softmax" in guid_loss_name:
                         prior_pred = tf.nn.softmax(prior_pred, axis=3)
-                    elif "sigmoid" in guidance_loss_name:
+                    elif "sigmoid" in guid_loss_name:
                         prior_pred = tf.nn.sigmoid(prior_pred)
                 else:
                     prior_pred = None
@@ -129,7 +114,10 @@ def pgb_network(images,
     # Sequential Model for slice fusion
     if seq_length is not None:
         if seq_length > 1:
-            logits = tf.reshape(logits, [n, t, h, w, num_class])
+            # logits = tf.reshape(logits, [n, t, h, w, num_class])
+            logits = tf.expand_dims(logits, axis=1)
+            logits = tf.split(logits, num_or_size_splits=seq_length, axis=0)
+            logits  = tf.concat(logits , axis=1)
             logits, _ = utils.seq_model(logits, raw_height, raw_width, num_class, weight_decay, is_training, cell_type)
 
     if drop_prob is not None:

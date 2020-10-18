@@ -3,12 +3,11 @@ from tensorflow.contrib import slim
 from core import preprocess_utils
 
 
-class self_attention(object):
+class spatial_attention(object):
 	"""
 	The class used for create spatial attention layer.
-	By modify the embedding and get_attention, the user
-	can define attention in different way, e.g., channel
-	attention.
+	By modifying the function, the user can define attention
+ 	in different way, e.g., channel attention.
  	"""
 	def __init__(self, embed_node):
 		self.embed_node = embed_node
@@ -39,3 +38,15 @@ class self_attention(object):
 	def flatten(self, x):
 		return tf.reshape(x, [-1, self.h*self.w, self.embed_node])
 
+
+class channel_attention(spatial_attention):
+	def flatten(self, x):
+		x = tf.reshape(x, [self.n, self.h*self.w, self.embed_node])
+		return tf.transpose(x, [0, 2, 1])
+
+	def get_attention(self, f, g, h):
+		s = tf.matmul(f, g, transpose_b=True)
+		beta = tf.nn.softmax(s)  # [bs, emb_c, emb_c]
+		o = tf.matmul(beta, h) # [bs, emb_c, N]
+		o = tf.transpose(o, [0, 2, 1])
+		return o
