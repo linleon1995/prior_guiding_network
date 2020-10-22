@@ -10,6 +10,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
+from scipy import ndimage
+from evals import metrics
 class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader",
                   5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC",
                   10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
@@ -49,62 +51,62 @@ def eval_flol_model(dsc_in_diff_th, threshold):
     plt.show()
 
 
-def show_3d(ref, seg):
-    Rx, Ry, Rz = [], [] , []
-    Sx, Sy, Sz = [], [] , []
+# def show_3d(ref, seg):
+#     Rx, Ry, Rz = [], [] , []
+#     Sx, Sy, Sz = [], [] , []
+#     fig = plt.figure()
+#     ax = fig.add_subplot(111, projection='3d')
+
+#     for r, s in zip(ref, seg):
+#         Rx.append(r[0])
+#         Ry.append(r[1])
+#         Rz.append(r[2])
+
+#         Sx.append(s[0])
+#         Sy.append(s[1])
+#         Sz.append(s[2])
+
+#     ax.scatter(Rx, Ry, Rz, c='r', marker='.')
+#     ax.scatter(Sx, Sy, Sz, c='g', marker='.')
+#     ax.set_xlabel('x')
+#     ax.set_ylabel('y')
+#     ax.set_zlabel('z')
+#     plt.show()
+
+    
+def show_3d(volume_dict, affine, file_name=None):
+    """
+    Scatter plot for 3d visualization
+    Args:
+        volume_dict: Input dictionary contains all volumes that need to be visualized. 
+                     The key of volume_dict is the label of the plot, and the value of 
+                     volume_dict is a 3d NumPy array.
+        affine: Affine transform parameters extracted from raw data which helps to 
+                transform volume to real-world coordinate
+    """
+    struct = ndimage.generate_binary_structure(3, 1)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-
-    for r, s in zip(ref, seg):
-        Rx.append(r[0])
-        Ry.append(r[1])
-        Rz.append(r[2])
-
-        Sx.append(s[0])
-        Sy.append(s[1])
-        Sz.append(s[2])
-
-    ax.scatter(Rx, Ry, Rz, c='r', marker='.')
-    ax.scatter(Sx, Sy, Sz, c='g', marker='.')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
+    for label, v in volume_dict.items():
+        # Access border points to get better running performance
+        border=v ^ ndimage.binary_erosion(v, structure=struct, border_value=1)
+        border_voxels=np.array(np.where(border))  
+        border_voxels_real=metrics.transformToRealCoordinates(border_voxels,affine)
+        Sx, Sy, Sz = [], [], []
+        for s in  border_voxels_real:
+            Sx.append(s[0])
+            Sy.append(s[1])
+            Sz.append(s[2])
+        ax.scatter(Sx, Sy, Sz, marker='.', label=label)
+    ax.legend()
+    if file_name is not None:
+        plt.savefig(file_name+".png")
     plt.show()
-
-
-def print_checkpoint_tensor_name(checkpoint_dir):
-    # TODO: all_tensors,  all_tensor_names for parameters
-    """Print all tensor name from graph"""
-    from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-    # List ALL tensors example output
-    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False,
-                                    all_tensor_names=True)
-
-
-def eval_flol_model(dsc_in_diff_th, threshold):
-    """
-    """
-    ll = []
-    _, ax = plt.subplots(1,1)
-    num_class = len(dsc_in_diff_th)
-    for i, c in enumerate(dsc_in_diff_th):
-        if i < num_class-1:
-            label = class_to_organ[i+1]
-        else:
-            label = "mean"
-        if i+1 > 10:
-            ax.plot(threshold, c, "*-", label=label)
-        else:
-            ax.plot(threshold, c, label=label)
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, loc='upper right')
-    ax.set_xticks(threshold, minor=False)
-    ax.grid(True)
-    ax.set_title("Threshold to DSC for each calss")
-    ax.set_xlabel("Threshold")
-    ax.set_ylabel("Dice Score")
-    plt.show()
-
+    
+    
 class Build_Pyplot_Subplots(object):
     def __init__(self, saving_path, is_showfig, is_savefig, subplot_split, type_list):
         self.fig, self.ax = plt.subplots(figsize=(9,3),*subplot_split)
@@ -223,132 +225,6 @@ def display_classify_performance(label, pred):
     3: tp, 2: fp, 1: fn, 0: tn
     """
     return label + 2*pred
-
-
-def compute_mean_dsc(total_cm):
-    """Compute the mean intersection-over-union via the confusion matrix."""
-    sum_over_row = np.sum(total_cm, axis=0).astype(float)
-    sum_over_col = np.sum(total_cm, axis=1).astype(float)
-    cm_diag = np.diagonal(total_cm).astype(float)
-    denominator = sum_over_row + sum_over_col
-
-    # The mean is only computed over classes that appear in the
-    # label or prediction tensor. If the denominator is 0, we need to
-    # ignore the class.
-    num_valid_entries = np.sum((denominator != 0).astype(float))
-
-    # If the value of the denominator is 0, set it to 1 to avoid
-    # zero division.
-    denominator = np.where(
-        denominator > 0,
-        denominator,
-        np.ones_like(denominator))
-
-    dscs = 2*cm_diag / denominator
-
-    print('Dice Score Simililarity for each class:')
-    for i, dsc in enumerate(dscs):
-        print('    class {}: {:.4f}'.format(i, dsc))
-
-    # If the number of valid entries is 0 (no classes) we return 0.
-    m_dsc = np.where(
-        num_valid_entries > 0,
-        np.sum(dscs) / num_valid_entries,
-        0)
-    print('mean Dice Score Simililarity: {:.4f}'.format(float(m_dsc)))
-    return m_dsc, dscs
-
-def precision_and_recall(total_cm):
-    """"""
-    sum_over_row = np.sum(total_cm, axis=0).astype(float)
-    sum_over_col = np.sum(total_cm, axis=1).astype(float)
-    cm_diag = np.diagonal(total_cm).astype(float)
-    precision = cm_diag / sum_over_row
-    recall = cm_diag / sum_over_col
-
-    print('Recall and Precision')
-    print(30*"=")
-    i = 0
-    for p, r in zip(precision, recall):
-        print('    class {}: precision: {:.4f}  recall: {:.4f}'.format(i, p, r))
-        i += 1
-    p_mean = np.mean(precision)
-    p_std = np.std(precision)
-    r_mean = np.mean(recall)
-    r_std = np.std(recall)
-    print('    precision: mean {:.4f}  std {:.4f}'.format(p_mean, p_std))
-    print('    recall: mean {:.4f}  std {:.4f}'.format(r_mean, r_std))
-    return  p_mean, p_std, r_mean, r_std
-
-
-def false_negative_rate(cm):
-    tp = np.diagonal(cm).astype(float)
-    fn = np.sum(cm, axis=1).astype(float) - tp
-    fnr = fn / (tp + fn)
-    for c, i in enumerate(fnr): print('    class {}: FNR: {:.4f}'.format(c, i))
-    return fnr
-
-
-def false_positive_rate(cm):
-    tp = np.diagonal(cm).astype(float)
-    fp = np.sum(cm, axis=0).astype(float) - tp
-    fpr = fp / (tp + fp)
-    for c, i in enumerate(fpr): print('    class {}: FPR: {:.4f}'.format(c, i))
-    return fpr
-
-
-def positive(cm):
-    p = np.sum(cm, axis=0).astype(float)
-    # for c, i in enumerate(p): print('    class {}: positive: {:.4f}'.format(c, i))
-    return p
-
-
-def compute_mean_iou(total_cm):
-    """Compute the mean intersection-over-union via the confusion matrix."""
-    sum_over_row = np.sum(total_cm, axis=0).astype(float)
-    sum_over_col = np.sum(total_cm, axis=1).astype(float)
-    cm_diag = np.diagonal(total_cm).astype(float)
-    denominator = sum_over_row + sum_over_col - cm_diag
-
-    # The mean is only computed over classes that appear in the
-    # label or prediction tensor. If the denominator is 0, we need to
-    # ignore the class.
-    num_valid_entries = np.sum((denominator != 0).astype(float))
-
-    # If the value of the denominator is 0, set it to 1 to avoid
-    # zero division.
-    denominator = np.where(
-        denominator > 0,
-        denominator,
-        np.ones_like(denominator))
-
-    ious = cm_diag / denominator
-
-    print('Intersection over Union for each class:')
-    for i, iou in enumerate(ious):
-        print('    class {}: {:.4f}'.format(i, iou))
-
-    # If the number of valid entries is 0 (no classes) we return 0.
-    m_iou = np.where(
-        num_valid_entries > 0,
-        np.sum(ious) / num_valid_entries,
-        0)
-    print('mean Intersection over Union: {:.4f}'.format(float(m_iou)))
-    return m_iou
-
-
-def compute_accuracy(total_cm):
-    """Compute the accuracy via the confusion matrix."""
-    denominator = total_cm.sum().astype(float)
-    cm_diag_sum = np.diagonal(total_cm).sum().astype(float)
-
-    # If the number of valid entries is 0 (no classes) we return 0.
-    accuracy = np.where(
-        denominator > 0,
-        cm_diag_sum / denominator,
-        0)
-    print('Pixel Accuracy: {:.4f}'.format(float(accuracy)))
-    return accuracy
 
 
 def load_model(saver, sess, ckpt_path):

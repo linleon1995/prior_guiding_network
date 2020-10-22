@@ -1,21 +1,11 @@
-
-import argparse
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
-import SimpleITK as sitk
 import nibabel as nib
 import pydicom
 
-import common
-import model
-from evals import chaos_eval
 from evals import metrics
-# import experiments
-import cv2
-import math
-import nibabel as nib
+from evals import eval_utils
 
 
 _ALL_METRICS = {"RAVD": metrics.RAVD,
@@ -94,6 +84,10 @@ class build_evaluator(object):
                     raise ValueError("Incorrect shape for %s, this metrics require 3d data" %_3d_m)
                 break
 
+    def visualize_in_3d(self, ref, test, raw_data_path):
+        affine = self.get_affine(raw_data_path)
+        eval_utils.show_3d({"Reference": ref, "Segmentation": test}, affine)
+        
 
 class build_dicom_evaluator(build_evaluator):
     def get_affine(self, dicom_dir):

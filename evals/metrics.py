@@ -14,7 +14,6 @@ from scipy import ndimage
 from sklearn.neighbors import KDTree
 import nibabel as nib
 import matplotlib.pyplot as plt
-from medpy import metric
 
 from evals.chaos_eval import CHAOSmetrics
 ori_RAVD = CHAOSmetrics.RAVD
@@ -102,7 +101,7 @@ def transformToRealCoordinates(indexPoints, affine):
     return realPoints
 
 
-def precision(ref, test, **metrics_kwargs):
+def precision(ref=None, test=None, **metrics_kwargs):
     total_cm = metrics_kwargs.pop("total_cm")
     sum_over_row = np.sum(total_cm, axis=0).astype(float)
     cm_diag = np.diagonal(total_cm).astype(float)
@@ -110,7 +109,7 @@ def precision(ref, test, **metrics_kwargs):
     return precision
 
 
-def recall(ref, test, **metrics_kwargs):
+def recall(ref=None, test=None, **metrics_kwargs):
     total_cm = metrics_kwargs.pop("total_cm")
     sum_over_col = np.sum(total_cm, axis=1).astype(float)
     cm_diag = np.diagonal(total_cm).astype(float)
@@ -118,7 +117,7 @@ def recall(ref, test, **metrics_kwargs):
     return precision
 
 
-def compute_mean_dsc(ref, test, **metrics_kwargs):
+def compute_mean_dsc(ref=None, test=None, **metrics_kwargs):
     """Compute the mean intersection-over-union via the confusion matrix."""
     total_cm = metrics_kwargs.pop("total_cm")
     sum_over_row = np.sum(total_cm, axis=0).astype(float)

@@ -2,6 +2,7 @@ import os
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tensorflow as tf
 import SimpleITK as sitk
 import nibabel as nib
@@ -10,16 +11,17 @@ import common
 import model
 from evals import chaos_eval
 from datasets import data_generator, file_utils
-from utils import eval_utils, train_utils
+from utils import train_utils
 from core import preprocess_utils
 from evals import evaluator
+from evals import eval_utils
 # import experiments
 import cv2
 import math
 import nibabel as nib
 # spatial_transfom_exp = experiments.spatial_transfom_exp
 str2bool = train_utils.str2bool
-
+load_model = eval_utils.load_model
 IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254, 255, 256, 257, 258, 447, 448, 449, 571, 572, 573]
 
 
@@ -28,7 +30,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--fusions', nargs='+', required=True,
                     help='')
 
-parser.add_argument('--dataset_name', nargs='+', required=True,
+parser.add_argument('--dataset_name', required=True,
                     help='')
 
 parser.add_argument('--eval_split', nargs='+', required=True,
@@ -156,56 +158,25 @@ def get_pred_vis(eval_logdir, num_class, image, prediction, label=None):
     show_seg_results.set_axis_off()
     return show_seg_results
       
+      
+def aggregate_evaluation(total_results, metrics, path):
+    total_aggregate = {}
+    for m in metrics:
+        aggregate = []
+        for vol_results in total_results:
+            aggregate.append(vol_results[m])
+        total_aggregate[m] = sum(aggregate) / len(aggregate)
     
-    
-def aggregate_evaluation(total_results):
-    num_metrics = len(total_results[0].values())
-    a, b, c, d, e, f = [], [], [], [], [], []
-    
-    for vol_results in total_results:
-      for i, r in enumerate(vol_results.values()):
-        if i == 0:
-          a.append(r)
-        if i == 1:
-          b.append(r)
-        if i == 2:
-          c.append(r)
-        if i == 3:
-          d.append(r)
-        if i == 4:
-          e.append(r)
-        if i == 5:
-          f.append(r)
-    
-    for i, j in enumerate(total_results[0].keys()):
-      print(j)
-      if i == 0:
-        print(sum(a)/len(a))
-      if i == 1:
-        print(sum(b)/len(b))
-      if i == 2:
-        print(sum(c)/len(c))
-      if i == 3:
-        print(sum(d)/len(d))
-      if i == 4:
-        print(sum(e)/len(e))
-      if i == 5:
-        print(sum(f)/len(f))
-      # print("{} mean: {}".format(list(total_results[0].keys())[i], sum(a)/len(a)))  
-      print(30*"=")
+    with open(os.path.join(path, 'eval_logging.txt'), 'a') as f:
+        for m in total_aggregate:
+          if isinstance(total_aggregate[m], (int, float)):
+            f.write("\n{}: {:.4f}".format(m, total_aggregate[m]))
+          else:
+            for c, class_r in enumerate(total_aggregate[m]):
+              f.write("\n{} in class {}: {:.4f}".format(m, c+1, class_r))
+            
+    return total_aggregate
         
-        
-def load_model(saver, sess, ckpt_path):
-    '''Load trained weights.
-
-    Args:
-      saver: TensorFlow saver object.
-      sess: TensorFlow session.
-      ckpt_path: path to checkpoint file with parameters.
-    '''
-    saver.restore(sess, ckpt_path)
-    print("Restored model parameters from {}".format(ckpt_path))
-
 
 def get_placeholders(samples, data_information):
     placeholder_dict = {}
@@ -235,7 +206,7 @@ def get_placeholders(samples, data_information):
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
       # TODO: CHAOS MR case --> general way
-      if "2019_ISBI_CHAOS_MR_T1" == FLAGS.dataset_name and "2019_ISBI_CHAOS_MR_T2" == FLAGS.dataset_name:
+      if FLAGS.dataset_name == "2019_ISBI_CHAOS_MR_T1" and FLAGS.dataset_name == "2019_ISBI_CHAOS_MR_T2":
         prior_seg_placeholder = tf.placeholder(
           tf.float32,shape=[None, data_information.height, data_information.width, 10, 1])
       else:
@@ -254,7 +225,7 @@ def get_placeholders(samples, data_information):
 
 def main(unused_argv):
   eval_logdir = FLAGS.checkpoint_dir+'-eval/'
-  data_information = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name[0]]
+  data_information = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name]
 
   tf.gfile.MakeDirs(eval_logdir)
 
@@ -332,7 +303,7 @@ def main(unused_argv):
                 z_class=FLAGS.z_class,
                 guidance_loss=FLAGS.guidance_loss,
                 stage_pred_loss=FLAGS.stage_pred_loss,
-                guidance_loss_name=FLAGS.guid_loss_name,
+                guid_loss_name=FLAGS.guid_loss_name,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
@@ -344,6 +315,7 @@ def main(unused_argv):
                 )
 
     logits = output_dict[common.OUTPUT_TYPE]
+    # TODO: not general
     if FLAGS.eval_split[0] == "test":
       logits = tf.image.resize_bilinear(logits, tf.concat([placeholder_dict[common.HEIGHT], placeholder_dict[common.WIDTH]],axis=0), align_corners=False)
     prediction = eval_utils.inference_segmentation(logits, dim=3)
@@ -402,90 +374,96 @@ def main(unused_argv):
     raw_data_list = file_utils.get_file_list(raw_data_dir, fileExt=["nii.gz"], sort_files=True)
     # TODO
     raw_data_list = raw_data_list[16:]
-    dataset_name = FLAGS.dataset_name[0]
-    if "CHAOS" in dataset_name:
+    if "CHAOS" in FLAGS.dataset_name:
       evaluate = evaluator.build_dicom_evaluator(FLAGS.eval_metrics)
-    elif "MICCAI" in dataset_name:
+    elif "MICCAI" in FLAGS.dataset_name:
       evaluate = evaluator.build_evaluator(FLAGS.eval_metrics)
     else:
       raise ValueError("Unknown dataset name") 
     
-    for sub_dataset in FLAGS.dataset_name:
-      for split_name in FLAGS.eval_split:
-        num_sample = dataset.splits_to_sizes[sub_dataset][split_name]
-        if FLAGS.store_all_imgs:
-            display_imgs = np.arange(num_sample)
-        else:
-            display_imgs = IMG_LIST
+    for split_name in FLAGS.eval_split:
+      num_sample = dataset.splits_to_sizes[split_name]
+      if FLAGS.store_all_imgs:
+          display_imgs = np.arange(num_sample)
+      else:
+          display_imgs = IMG_LIST
 
-        for i in range(num_sample):
-            data = sess.run(samples)
-            _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-            if FLAGS.seq_length > 1:
-              depth = data[common.DEPTH][0,FLAGS.seq_length//2]
-              data[common.IMAGE] = data[common.IMAGE][:,FLAGS.seq_length//2]
-              if split_name in ("train", "val"):
-                data[common.LABEL] = data[common.LABEL][:,FLAGS.seq_length//2]
-            else:
-              depth = data[common.DEPTH][0]
-            num_slice = data[common.NUM_SLICES][0]
-            pred = sess.run(prediction, feed_dict=_feed_dict)
-            print(sub_dataset, 'Sample {} Slice {}/{}'.format(i, depth, num_slice))
-
-            # Segmentation Evaluation
+      for i in range(num_sample):
+          data = sess.run(samples)
+          _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
+          if FLAGS.seq_length > 1:
+            depth = data[common.DEPTH][0,FLAGS.seq_length//2]
+            data[common.IMAGE] = data[common.IMAGE][:,FLAGS.seq_length//2]
             if split_name in ("train", "val"):
-              cm_slice = sess.run(cm, feed_dict=_feed_dict)
-              cm_total += cm_slice
-              
-              
-              # affine parameters
-              # 3d metrics class results
-              # results aggregate
-              if use_3d_metrics:
-                cm_volume += cm_slice
-                if depth == 0:
-                  ref, seg = [], []
-                elif depth == num_slice-1:
-                  ref = np.concatenate(ref, axis=2)
-                  seg = np.concatenate(seg, axis=2)
-                  # only for disatance metrics
-                  results = evaluate(ref, seg, total_cm=cm_volume, raw_data_path=raw_data_list[j], num_class=num_class)
-                  total_results.append(results)
-                  print(results)
-                  j += 1
-                  cm_volume = 0
-                else:
-                  ref.append(data[common.LABEL][0])
-                  seg.append(pred[0][...,np.newaxis])
-              else:
-                ref = data[common.LABEL][0,...,0]
-                seg = pred[0]
-                results = evaluate(ref, seg, total_cm=cm_slice)
+              data[common.LABEL] = data[common.LABEL][:,FLAGS.seq_length//2]
+          else:
+            depth = data[common.DEPTH][0]
+          num_slice = data[common.NUM_SLICES][0]
+          pred = sess.run(prediction, feed_dict=_feed_dict)
+          print(FLAGS.dataset_name, 'Sample {} Slice {}/{}'.format(i, depth, num_slice))
+
+          # Segmentation Evaluation
+          if split_name in ("train", "val"):
+            cm_slice = sess.run(cm, feed_dict=_feed_dict)
+            cm_total += cm_slice
+            
+            
+            # affine parameters
+            # 3d metrics class results
+            # results aggregate
+            if use_3d_metrics:
+              cm_volume += cm_slice
+              if depth == 0:
+                ref, seg = [], []
+              elif depth == num_slice-1:
+                ref = np.concatenate(ref, axis=2)
+                seg = np.concatenate(seg, axis=2)
+                # only for disatance metrics
+                # evaluate.visualize_in_3d(np.int32(ref==1), np.int32(seg==1), raw_data_path=raw_data_list[j])
+                results = evaluate(ref, seg, total_cm=cm_volume, raw_data_path=raw_data_list[j], num_class=num_class)
+                total_results.append(results)
                 print(results)
-            
-            # 2D visualization
-            if FLAGS.store_all_imgs:
-                display_imgs = np.arange(num_sample)
+                
+                j += 1
+                cm_volume = 0
+              else:
+                ref.append(data[common.LABEL][0])
+                seg.append(pred[0][...,np.newaxis])
             else:
-                display_imgs = IMG_LIST
-            if i in display_imgs:
-              image, label, pred = data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]
-              show_seg_results  = get_pred_vis(eval_logdir, num_class, image, pred, label)
-              
-              parameters = [{"cmap": "gray"}]
-              parameters.extend(2*[{"vmin": 0, "vmax": num_class}])
-              show_seg_results.display_figure(
-                split_name+'_pred_%04d' %i, [image, label, pred], parameters=parameters)
+              ref = data[common.LABEL][0,...,0]
+              seg = pred[0]
+              results = evaluate(ref, seg, total_cm=cm_slice)
+              print(results)
+          
+          # 2D visualization
+          if FLAGS.store_all_imgs:
+              display_imgs = np.arange(num_sample)
+          else:
+              display_imgs = IMG_LIST
+          if i in display_imgs:
+            image, label, pred = data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]
+            show_seg_results  = get_pred_vis(eval_logdir, num_class, image, pred, label)
             
+            parameters = [{"cmap": "gray"}]
+            parameters.extend(2*[{"vmin": 0, "vmax": num_class}])
+            show_seg_results.display_figure(
+              split_name+'_pred_%04d' %i, [image, label, pred], parameters=parameters)
+            
+          # 3D visualization
               
     # Save confusion matrix in figure
     eval_utils.plot_confusion_matrix(
       cm_total, num_class=np.arange(num_class), filename="CM", normalize=True, save_path=eval_logdir)
 
     # Aggregate and log the evaluation
-    aggregate_evaluation(total_results)
+    agg = aggregate_evaluation(total_results, evaluate.metrics, path=eval_logdir)
+    # for a in agg:
+    #     print("{}: {}".format(a, agg[a]))
     
 
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
+    
+    evaluate = evaluator.build_evaluator(FLAGS.eval_metrics)
+    evaluate.visualize_in_3d(ref, test, raw_data_path)

@@ -11,7 +11,9 @@ from tensorflow.python.ops import math_ops
 import model
 import common
 from datasets import data_generator
-from utils import train_utils, eval_utils
+from utils import train_utils
+from evals import eval_utils
+from evals import metrics
 from core import features_extractor
 import input_preprocess
 colorize = train_utils.colorize
@@ -116,9 +118,6 @@ parser.add_argument('--model_variant', type=str, default=None,
 parser.add_argument('--z_model', type=str, default=None,
                     help='')
 
-# parser.add_argument('--z_label_method', type=str, default=None,
-#                     help='')
-
 parser.add_argument('--mt_output_node', type=int, default=None,
                     help='The multi-task (logitudinal prediction) model output node.')
 
@@ -134,7 +133,7 @@ parser.add_argument('--prior_num_subject', type=int, default=None,
                     help='')
 
 #tbc
-parser.add_argument('--fusion_slice', type=float, default=3,
+parser.add_argument('--fusion_slice', type=float, default=None,
                     help='')
 
 parser.add_argument('--z_loss_weight', type=float, default=None,
@@ -754,7 +753,7 @@ def main(unused_argv):
                         for j in range(val_generator.splits_to_sizes["val"]):
                             cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
-                        mean_dice_score, _ = eval_utils.compute_mean_dsc(cm_total)
+                        mean_dice_score, _ = metrics.compute_mean_dsc(total_cm=cm_total)
 
 
                         total_val_loss.append(mean_dice_score)
