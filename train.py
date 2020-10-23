@@ -222,13 +222,25 @@ def check_model_conflict():
   # Loss and multi-task model output-node are necessary for multi-task
   assert (FLAGS.z_loss_name is not None) == (FLAGS.mt_output_node is not None)
   
-  # mt_output_node could only smaller or equivalent to prior slice number
+  # multi-task model output-node could only smaller or equivalent to prior slice number
   if FLAGS.mt_output_node is not None:
-    if FLAGS.mt_output_node > FLAGS.prior_num_slice:
-      raise ValueError("Multi-task output node bigger than slice number of prior")
+      if FLAGS.mt_output_node > FLAGS.prior_num_slice:
+          raise ValueError("Multi-task output node bigger than slice number of prior")
     
   # Different predict class amond datasets.
-
+  
+  # # If multi-task exist, the guidance type can only be adaptive
+  if FLAGS.z_loss_name is not None:
+      if FLAGS.guidance_type != "training_data_fusion":
+          raise ValueError("Guidance type can only be training_data_fusion if multi-task exist")
+  # else:
+  #     if FLAGS.guidance_type == "adaptive":
+  #         raise ValueError("Guidance type can only be adaptive if multi-task exist")  
+  
+  if FLAGS.guidance_type == "training_data_fusion":
+      if None in (FLAGS.prior_num_slice, FLAGS.prior_num_subject):
+          raise ValueError("Please assign subject number and slice number to assign predefined prior.")
+    
 
 def get_session(sess):
   session = sess
@@ -444,7 +456,6 @@ def _log_summaries(samples, output_dict, layers_dict, num_class, **kwargs):
       tf.summary.image('low_level5/node%d' %n, colorize(layers_dict["low_level5"][...,n:n+1], cmap='viridis'))
 
     # guid = tf.get_collection("guidance")
-    # TODO: validation issue
     # print(guid)
     # tf.summary.image('guidance/guid0', colorize(guid[0][...,0:1], cmap='viridis'))
     # tf.summary.image('guidance/guid1', colorize(guid[1][...,0:1], cmap='viridis'))
@@ -711,16 +722,13 @@ def main(unused_argv):
             session_config = tf.ConfigProto(
                 allow_soft_placement=True, log_device_placement=False)
 
-            # TODO:
-            # last_layers = model.get_extra_layer_scopes(
-            #     FLAGS.last_layers_contain_logits_only)
             init_fn = None
             if FLAGS.tf_initial_checkpoint:
                 init_fn = train_utils.get_model_init_fn(
                     train_logdir=FLAGS.train_logdir,
                     tf_initial_checkpoint=FLAGS.tf_initial_checkpoint,
+                    initialize_first_layer=True,
                     initialize_last_layer=FLAGS.initialize_last_layer,
-                    # last_layers,
                     ignore_missing_vars=True)
 
             scaffold = tf.train.Scaffold(

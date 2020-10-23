@@ -167,17 +167,19 @@ def colorize(value, vmin=None, vmax=None, cmap=None):
 
 def get_model_init_fn(train_logdir,
                       tf_initial_checkpoint,
-                      # initialize_first_layer,
+                      initialize_first_layer,
                       initialize_last_layer,
-                      # first_layer,
                       last_layers=None,
+                      restore_adam=False,
                       ignore_missing_vars=False):
   """Gets the function initializing model variables from a checkpoint.
   Args:
     train_logdir: Log directory for training.
     tf_initial_checkpoint: TensorFlow checkpoint for initialization.
+    initialize_last_layer: Initialize first layer or not.
     initialize_last_layer: Initialize last layer or not.
     last_layers: Last layers of the model.
+    restore_adam: Restore Adam optimization parameters or not.
     ignore_missing_vars: Ignore missing variables in the checkpoint.
   Returns:
     Initialization function.
@@ -196,18 +198,20 @@ def get_model_init_fn(train_logdir,
   exclude_list = ['global_step']
   if not initialize_last_layer:
     exclude_list.extend(last_layers)
-  # if not initialize_first_layer:
-  exclude_list.append('resnet_v1_50/conv1_1/weights:0')
+    
+  if not initialize_first_layer:
+      exclude_list.append('resnet_v1_50/conv1_1/weights:0')
+      
   variables_to_restore = contrib_framework.get_variables_to_restore(
       exclude=exclude_list)
 
   # Restore without Adam parameters
-  new_v = []
-  for v in variables_to_restore:
-    if "Adam" not in v.name:
-      new_v.append(v)
-
-  variables_to_restore = new_v
+  if not restore_adam:
+      new_v = []
+      for v in variables_to_restore:
+        if "Adam" not in v.name:
+          new_v.append(v)
+      variables_to_restore = new_v
 
   if variables_to_restore:
     init_op, init_feed_dict = contrib_framework.assign_from_checkpoint(

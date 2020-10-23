@@ -18,8 +18,6 @@ import matplotlib.pyplot as plt
 from evals.chaos_eval import CHAOSmetrics
 ori_RAVD = CHAOSmetrics.RAVD
 ori_DICE = CHAOSmetrics.DICE
-# TODO: Align coordinate between Simple iTK and nibabel
-
 
 
 def RAVD(ref, test, **metrics_kwargs):

@@ -16,7 +16,8 @@ DatasetDescriptor = collections.namedtuple(
         'height', # raw data height
         'width', # raw data width
         'train', # training parameters
-        'HU_window',
+        'HU_window', # Haunsdorf Unit Window for value cutoff
+        'split_folder_map' # Folder name to split training or testing data
     ])
 
 
@@ -32,10 +33,13 @@ _ISBI_CHAOS_INFORMATION_CT = DatasetDescriptor(
     height=512,
     width=512,
     HU_window=[-125, 275],
-    train={
-        "train_crop_size": [256, 256],
-        "pre_crop_size": [None, None],
-    }
+    train={"train_crop_size": [256, 256],
+           "pre_crop_size": [None, None]
+           },
+    split_folder_map={"train": "Train_Sets",
+                      "val": "Train_Sets",
+                      "test": "Test_Sets"
+                      }
 )
 
 
@@ -51,10 +55,13 @@ _ISBI_CHAOS_INFORMATION_MR_T2 = DatasetDescriptor(
     height=256,
     width=256,
     HU_window=None,
-    train={
-        "train_crop_size": [256, 256],
-        "pre_crop_size": [None, None],
-    }
+    train={"train_crop_size": [256, 256],
+           "pre_crop_size": [None, None],
+          },
+    split_folder_map={"train": "Train_Sets",
+                      "val": "Train_Sets",
+                      "test": "Test_Sets"
+                      }
 )
 
 
@@ -70,10 +77,13 @@ _ISBI_CHAOS_INFORMATION_MR_T1 = DatasetDescriptor(
     height=256,
     width=256,
     HU_window=None,
-    train={
-        "train_crop_size": [256, 256],
-        "pre_crop_size": [None, None],
-    }
+    train={"train_crop_size": [256, 256],
+           "pre_crop_size": [None, None],
+          },
+    split_folder_map={"train": "Train_Sets",
+                      "val": "Train_Sets",
+                      "test": "Test_Sets"
+                      }
 )
 # height, width = 256, 288, 320, 400
 
@@ -89,8 +99,11 @@ _MICCAI_ABDOMINAL_INFORMATION = DatasetDescriptor(
     height=512,
     width=512,
     HU_window=[-125, 275],
-    train={
-        "train_crop_size": [256, 256],
-        "pre_crop_size": [460, 460],
-    }
+    train={"train_crop_size": [256, 256],
+           "pre_crop_size": [460, 460],
+          },
+    split_folder_map={"train": "Train_Sets",
+                      "val": "Train_Sets",
+                      "test": "Test_Sets"
+                      }
 )

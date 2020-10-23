@@ -4,7 +4,6 @@ import collections
 import argparse
 import tensorflow as tf
 
-# TODO: complete parameters which seldom using
 
 parser = argparse.ArgumentParser()
 
@@ -44,7 +43,6 @@ OUTPUT_TYPE = 'semantic'
 OUTPUT_Z = 'z_pred'
 GUIDANCE = 'guidance'
 Z_LABEL = 'z_label'
-PRIOR_IMGS = 'prior_imgs'
 PRIOR_SEGS = 'prior_segs'
 MULTI_GRID = None
 

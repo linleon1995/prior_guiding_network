@@ -25,19 +25,14 @@ _DATASETS_INFORMATION = {
 }
 
 BASE_DATA_DIR = common.BASE_DATA_DIR
-# TODO: simple process for shape checking
-# TODO: possible to remove
-SPLIT_FOLDER_MAP = {"train": "Train_Sets",
-                    "val": "Train_Sets",
-                    "test": "Test_Sets"}
-
+# TODO: shape check
 # Default file pattern of TFRecord of TensorFlow Example.
 _FILE_PATTERN = '%s-*'
 
 
 
 
-def get_data_dir(name, split, seq_length=None):
+def get_data_dir(dataset_infos, name, split, seq_length=None):
     if seq_length is not None:
         if seq_length > 1:
             img_or_seq = "seq" + str(seq_length)
@@ -48,11 +43,13 @@ def get_data_dir(name, split, seq_length=None):
         
     if name == "2015_MICCAI_Abdominal":
         return os.path.join(
-            BASE_DATA_DIR, "2015_MICCAI_BTCV", "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split])
+            BASE_DATA_DIR, "2015_MICCAI_BTCV", "tfrecord", img_or_seq, 
+            dataset_infos.split_folder_map[split])
     elif "2019_ISBI_CHAOS" in name:
         modality = name.split("CHAOS_")[1]
         return os.path.join(
-            BASE_DATA_DIR, "2019_ISBI_CHAOS", "tfrecord", img_or_seq, SPLIT_FOLDER_MAP[split], modality)
+            BASE_DATA_DIR, "2019_ISBI_CHAOS", "tfrecord", img_or_seq, 
+            dataset_infos.split_folder_map[split], modality)
     else:
         raise ValueError("Unknown Dataset Name")
 
@@ -103,9 +100,10 @@ class Dataset(object):
                  z_loss_name=None,
                  ):
         """Initializes the dataset."""
-        self.dataset_dir = [get_data_dir(dataset_name, split, seq_length) for split in split_name]
-        self.splits_to_sizes = _DATASETS_INFORMATION[dataset_name].splits_to_sizes
         self.dataset_infos = _DATASETS_INFORMATION[dataset_name]
+        self.dataset_dir = [get_data_dir(self.dataset_infos, dataset_name, split, seq_length) for split in split_name]
+        self.splits_to_sizes = self.dataset_infos.splits_to_sizes
+        
         self.dataset_name = dataset_name
         
         if model_variant is None:
@@ -115,7 +113,7 @@ class Dataset(object):
         self.batch_size = batch_size
         self.crop_size = crop_size
         if pre_crop_flag:
-            self.pre_crop_size = _DATASETS_INFORMATION[self.dataset_name].train["pre_crop_size"]
+            self.pre_crop_size = self.dataset_infos.train["pre_crop_size"]
         else:
             self.pre_crop_size = [None, None]
         self.min_resize_value = min_resize_value
@@ -135,8 +133,8 @@ class Dataset(object):
         self.prior_num_slice = prior_num_slice
         self.prior_num_subject = prior_num_subject
         self.guidance_type = guidance_type
-        self.num_of_classes = _DATASETS_INFORMATION[self.dataset_name].num_classes
-        self.ignore_label = _DATASETS_INFORMATION[self.dataset_name].ignore_label
+        self.num_of_classes = self.dataset_infos.num_classes
+        self.ignore_label = self.dataset_infos.ignore_label
         self.seq_length = seq_length
         self.seq_type = seq_type
         self.label_for_each_frame = label_for_each_frame
@@ -242,11 +240,10 @@ class Dataset(object):
 
 
     def load_prior_from_dir(self, height, width):
-        """
-        1. load prior
-        2. check spatial dimension among all priors
-        3. if different raise error
-        4 if all prior's spatial dimension are same concat all prior example: CHAOS task1 + MICCAI --> [512,512,16]
+        """Load pre-defined prior in shape [Height, Width, Class, Z] where 
+        Class is the segmentation categories, Z is the splitting number in longitudinal axis
+        Return:
+            prior_list: Contains all the prior from assign dataset.
         """
         def get_prior_dir(sub_data_dir):
             if self.dataset_name == "2019_ISBI_CHAOS":
@@ -263,48 +260,19 @@ class Dataset(object):
                 raise ValueError("Unknown Dataset Name") 
             return prior_dir
                 
-        if self.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
-            print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
-                self.prior_num_slice, self.prior_num_subject))
-            
-            prior_list = []
-            for data_dir in self.dataset_dir:
-                prior_dir = get_prior_dir(data_dir)
-                prior = np.load(
-                    os.path.join(prior_dir, "train-slice%03d-subject%03d.npy" %(self.prior_num_slice, self.prior_num_subject)))
-                prior = tf.convert_to_tensor(prior)
-                # Consider prior in shape [H,W,K,1]
-                prior = tf.image.resize_bilinear(tf.expand_dims(prior,axis=0)[...,0], [height,width])
-                prior_list.append(prior)
-            prior_segs = tf.concat(prior_list, axis=3)[0]
-                
-            # def load_prior(path):
-            #     prior_name = "train-slice%03d-subject%03d" %(self.prior_num_slice, self.prior_num_subject)
-            #     prior = np.load(os.path.join(path, prior_name+".npy"))
-            #     return prior
-
-            # prior_list = []
-            # for sub_dataset in self.dataset_name:
-            #     # TODO: fix
-            #     if "2019_ISBI_CHAOS" in sub_dataset:
-            #       if "CT" in sub_dataset:
-            #         modality = "CT"
-            #       elif "MR_T1" in sub_dataset:
-            #         modality = "MR_T1"
-            #       elif "MR_T2" in sub_dataset:
-            #         modality = "MR_T2"    
-            #       prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors", modality)
-            #     elif sub_dataset == "2015_MICCAI_Abdominal":
-            #       prior_dir = os.path.join(self.dataset_dir[sub_dataset].split("tfrecord")[0], "priors")
-            #     prior = load_prior(prior_dir)
-            #     prior = tf.convert_to_tensor(prior)
-            #     # Consider prior in shape [H,W,K,1]
-            #     prior = tf.image.resize_bilinear(tf.expand_dims(prior,axis=0)[...,0], [height,width])
-            #     prior_list.append(prior)
-            # # TODO: only consider first dataset prior
-            # prior_segs = tf.concat(prior_list, axis=3)[0]
-        else:
-            prior_segs = None
+        prior_list = []
+        for data_dir in self.dataset_dir:
+            prior_dir = get_prior_dir(data_dir)
+            prior = np.load(
+                os.path.join(prior_dir, "train-slice%03d-subject%03d.npy" %(self.prior_num_slice, self.prior_num_subject)))
+            # prior in shape [H,W,K,Z]
+            prior = tf.convert_to_tensor(prior)
+            # prior in shape [Z,H,W,K] for image resize
+            prior = tf.transpose(tf.expand_dims(prior,axis=0), [4,1,2,3,0])[...,0]
+            prior = tf.image.resize_bilinear(prior, [height,width])
+            prior_list.append(prior)
+        prior_segs = tf.concat(prior_list, axis=0)
+        prior_segs = tf.reshape(prior_segs, [height, width, self.prior_num_slice*self.num_of_classes])
         return prior_segs
 
 
@@ -316,7 +284,6 @@ class Dataset(object):
         """
         height = sample[common.HEIGHT]
         width = sample[common.WIDTH]
-
         image = tf.reshape(sample[common.IMAGE], [self.seq_length, height, width])
         image = tf.transpose(image, [1,2,0])
         if common.LABEL in sample:
@@ -324,20 +291,25 @@ class Dataset(object):
           label = tf.transpose(label, [1,2,0])
         else:
           label = None
-
         depth = sample[common.DEPTH]
         num_slices = sample[common.NUM_SLICES]
 
         # get prior
-        if None not in (self.prior_num_slice, self.prior_num_subject):
+        # TODO: prior for pgn-v1
+        if self.guidance_type == "training_data_fusion":
+            print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
+                self.prior_num_slice, self.prior_num_subject))
             prior_segs = self.load_prior_from_dir(height, width)
             [_, _, prior_channel] = preprocess_utils.resolve_shape(prior_segs, rank=3)
+        elif self.guidance_type == "ground_truth":
+            prior_segs = label
+        elif self.guidance_type == "zeros":
+            prior_segs = tf.zeros_like(label)
         else:
             prior_segs = None
 
-        # TODO: input prior shape should be [NHWC] but [HWKC]
         # Preprocessing for images, label and z_label
-        original_image, image, label, original_label, prior_segs = input_preprocess.preprocess_image_and_label_seq(
+        original_image, image, label, _, prior_segs = input_preprocess.preprocess_image_and_label_seq(
             image=image,
             label=label,
             prior_segs=prior_segs,
@@ -381,7 +353,6 @@ class Dataset(object):
         if self.z_loss_name is not None:
             mt_label = get_z_label(self.z_loss_name, num_slices, depth, z_class=self.mt_class)
             sample[common.Z_LABEL] = mt_label
-            
         return sample
 
     def get_dataset(self):
@@ -393,11 +364,6 @@ class Dataset(object):
         for sub_data_dir in self.dataset_dir:
             files.extend(file_utils.get_file_list(
                 sub_data_dir, fileStr=self.split_name, fileExt=["tfrecord"], sort_files=True))
-
-        # TODO: test T1 and T2 in the same time
-        # if "2019_ISBI_CHAOS_MR_T1" in self.dataset_name:
-        #     new_files = [f for f in files if "MR_T1_Out" not in f]
-        #     files = new_files
 
         self.files = files
         if self.seq_length == 1:
