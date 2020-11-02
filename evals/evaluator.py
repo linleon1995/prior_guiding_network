@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nib
 import pydicom
+import glob
 
 from evals import metrics
 from evals import eval_utils
@@ -84,15 +85,16 @@ class build_evaluator(object):
                     raise ValueError("Incorrect shape for %s, this metrics require 3d data" %_3d_m)
                 break
 
-    def visualize_in_3d(self, ref, test, raw_data_path):
-        affine = self.get_affine(raw_data_path)
-        eval_utils.show_3d({"Reference": ref, "Segmentation": test}, affine)
+    def visualize_in_3d(self, data_dict, raw_data_path=None):
+        if raw_data_path is not None:
+            affine = self.get_affine(raw_data_path)
+        eval_utils.show_3d(data_dict, affine)
         
 
 class build_dicom_evaluator(build_evaluator):
     def get_affine(self, dicom_dir):
-        # dicom_file_list=glob.glob(dicom_dir + '/*.dcm')
-        dicom_file_list = [f for f in os.listdir(dicom_dir) if f.endswith('.dcm')]
+        dicom_file_list=glob.glob(dicom_dir + '/*.dcm')
+        # dicom_file_list = [f for f in os.listdir(dicom_dir) if f.endswith('.dcm')]
         dicom_file_list.sort()
         #Read position and orientation info from first image
         ds_first = pydicom.dcmread(dicom_file_list[0])

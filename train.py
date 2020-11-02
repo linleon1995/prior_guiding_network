@@ -1,10 +1,30 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Image loader variants.
+Code branched out from https://github.com/tensorflow/models/tree/master/research/deeplab
+, and please refer to it for more details.
+"""
+
 import os
-import math
+import json
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import argparse
-import six
 import time
 from tensorflow.python.ops import math_ops
 
@@ -46,16 +66,16 @@ parser.add_argument('--apply_sram2', type=str2bool, nargs='?', const=True, defau
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
-                    help='')
+                    help='To determine whether input prior with image.')
 
 parser.add_argument('--out_node', type=int, default=32,
-                    help='')
+                    help='Unified channel number of decoder')
 
 parser.add_argument('--guid_conv_type', type=str, default="conv",
-                    help='')
+                    help='Convolutional type of SRAM')
 
 parser.add_argument('--guid_conv_nums', type=int, default=2,
-                    help='')
+                    help='Convolutional operation number of SRAM')
 
 parser.add_argument('--share', type=str2bool, nargs='?', const=True, default=True,
                     help='')
@@ -68,16 +88,16 @@ parser.add_argument('--train_logdir', type=str, default=create_training_path(LOG
                     help='')
 
 parser.add_argument('--batch_size', type=int, default=16,
-                    help='')
+                    help='Batch size of single data sample')
 
 parser.add_argument('--tf_initial_checkpoint', type=str, default=None,
-                    help='')
+                    help='Tensorflow checkpoint for model initialization.')
 
 parser.add_argument('--initialize_last_layer', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
 parser.add_argument('--training_number_of_steps', type=int, default=30000,
-                    help='')
+                    help='Training steps')
 
 # TODO: test profile function
 parser.add_argument('--profile_logdir', type=str, default='',
@@ -96,10 +116,11 @@ parser.add_argument('--save_summaries_secs', type=int, default=None,
                     help='')
 
 parser.add_argument('--save_summaries_images', type=str2bool, nargs='?', const=True, default=True,
-                    help='')
+                    help='To determine whether to record image in tensorflow summaries event')
 
 parser.add_argument('--save_checkpoint_steps', type=int, default=1000,
-                    help='')
+                    help='Steps for checkpoint saving, e.g., save_checkpoint_steps=100 means the \
+                    model saved in every 10 stpes')
 
 parser.add_argument('--validation_steps', type=int, default=1000,
                     help='')
@@ -108,10 +129,9 @@ parser.add_argument('--num_ps_tasks', type=int, default=0,
                     help='')
 
 parser.add_argument('--drop_prob', type=float, default=None,
-                    help='')
+                    help='Drop out probablity for dropout layer in the last of encoder')
 
 # Model configuration
-#tbc
 parser.add_argument('--model_variant', type=str, default=None,
                     help='')
 
@@ -127,12 +147,11 @@ parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
                     help='')
 
 parser.add_argument('--prior_num_slice', type=int, default=1,
-                    help='')
+                    help='The slice number of prior')
 
 parser.add_argument('--prior_num_subject', type=int, default=None,
-                    help='')
+                    help='The subject using of prior')
 
-#tbc
 parser.add_argument('--fusion_slice', type=float, default=None,
                     help='')
 
@@ -189,7 +208,6 @@ parser.add_argument('--slow_start_learning_rate', type=float, default=1e-4,
 parser.add_argument('--momentum', type=float, default=0.9,
                     help='')
 
-#tbc
 parser.add_argument('--output_stride', type=int, default=None,
                     help='')
 
@@ -307,43 +325,11 @@ def _build_network(samples, outputs_to_num_classes, model_options, ignore_label,
   output = output_dict[common.OUTPUT_TYPE]
   output = tf.identity(output, name=common.OUTPUT_TYPE)
 
-  # if common.Z_LABEL in samples:
-  #   z_label = tf.identity(samples[common.Z_LABEL], name=common.Z_LABEL)
-  # else:
-  #   z_label = None
-
-  # if common.PRIOR_SEGS in output_dict:
-  #   prior_seg = output_dict[common.PRIOR_SEGS]
-  # else:
-  #   prior_seg = None
-
-  # if common.OUTPUT_Z in output_dict:
-  #   z_pred = output_dict[common.OUTPUT_Z]
-  # else:
-  #   z_pred = None
-
-  # if 'original_guidance' in output_dict:
-  #   guidance_original = output_dict['original_guidance']
-  # else:
-  #   guidance_original = None
-
-  # guidance_dict = {dict_key: layers_dict[dict_key] for dict_key in layers_dict if 'guidance' in dict_key}
-  # if len(guidance_dict) == 0:
-  #   guidance_dict = None
-
   # Log the summary
   _log_summaries(samples,
                  output_dict,
                  layers_dict,
-                 num_class,
-                #  outputs_to_num_classes['semantic'],
-                #  output_dict[common.OUTPUT_TYPE],
-                #  z_label=z_label,
-                #  z_pred=z_pred,
-                #  prior_segs=prior_seg,
-                #  layers_dict=layers_dict,
-                #  guidance_original=guidance_original
-                 )
+                 num_class)
   return output_dict, layers_dict
 
 
@@ -455,27 +441,11 @@ def _log_summaries(samples, output_dict, layers_dict, num_class, **kwargs):
       tf.summary.image('low_level4/node%d' %n, colorize(layers_dict["low_level4"][...,n:n+1], cmap='viridis'))
       tf.summary.image('low_level5/node%d' %n, colorize(layers_dict["low_level5"][...,n:n+1], cmap='viridis'))
 
-    # guid = tf.get_collection("guidance")
-    # print(guid)
-    # tf.summary.image('guidance/guid0', colorize(guid[0][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/guid1', colorize(guid[1][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/guid2', colorize(guid[2][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/guid3', colorize(guid[3][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/guid4', colorize(guid[4][...,0:1], cmap='viridis'))
-    # tf.summary.image('guidance/guid5', colorize(guid[5][...,0:1], cmap='viridis'))
-
-  # # if z_label is not None and z_pred is not None:
-  # #   clone_batch_size = FLAGS.batch_size // FLAGS.num_clones
-
-  # #   z_label = tf.reshape(z_label, [1,clone_batch_size,1,1])
-  # #   z_label = tf.tile(z_label, [1,1,clone_batch_size,1])
-  # #   tf.summary.image('samples/%s' % 'z_label', colorize(z_label, cmap='viridis'))
-
-  # #   z_pred = tf.reshape(z_pred, [1,clone_batch_size,1,1])
-  # #   z_pred = tf.tile(z_pred, [1,1,clone_batch_size,1])
-  # #   tf.summary.image('samples/%s' % 'z_pred', colorize(z_pred, cmap='viridis'))
-
-
+    guid_list = tf.get_collection("guidance")
+    for i in range(len(list(guid_list))):
+      tf.summary.image('guidance/guid%d' %i, colorize(guid_list[i][...,0:1], cmap='viridis'))
+      
+      
 def _average_gradients(tower_grads):
   """Calculates average of gradient for each shared variable across all towers.
   Note that this function provides a synchronization point across all towers.
@@ -499,6 +469,7 @@ def _average_gradients(tower_grads):
     average_grads.append((grad, variables[0]))
 
   return average_grads
+
 
 def _train_pgn_model(iterator, num_of_classes, model_options, ignore_label, reuse=None):
   """Trains the pgn model.
@@ -621,6 +592,9 @@ def main(unused_argv):
 
     path = FLAGS.train_logdir
     parameters_dict = vars(FLAGS)
+    with open(os.path.join(path, 'json.txt'), 'w', encoding='utf-8') as f:
+        json.dump(parameters_dict, f, indent=3)
+        
     with open(os.path.join(path, 'logging.txt'), 'w') as f:
         for key in parameters_dict:
             f.write( "{}: {}".format(str(key), str(parameters_dict[key])))
@@ -762,7 +736,6 @@ def main(unused_argv):
                             cm_total += sess.run(val_tensor, feed_dict={steps: j})
 
                         mean_dice_score, _ = metrics.compute_mean_dsc(total_cm=cm_total)
-
 
                         total_val_loss.append(mean_dice_score)
                         total_val_steps.append(global_step)

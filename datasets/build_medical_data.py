@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 13 10:18:03 2020
 
-@author: Jing-Siang, Lin
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Image loader variants.
+Code branched out from https://github.com/tensorflow/models/tree/master/research/deeplab
+, and please refer to it for more details.
 """
 
 import collections
@@ -14,21 +27,18 @@ import numpy as np
 import SimpleITK as sitk
 
 
-# TODO: Return one reader for reading all 3D data under given path
 class ImageReader(object):
   """Helper class that provides TensorFlow image coding utilities."""
 
   def __init__(self, image_format='nii.gz', channels=1):
     """Class constructor.
     Args:
-      image_format: Image format. Only 'jpeg', 'jpg', or 'png' are supported.
+      image_format: Image format.
       channels: Image channels.
     """
     self._image_format = image_format
 
   def decode_image(self, image_path):
-      """
-      """
       # Read the medical image (.nii.gz .dcm) containing the volume with SimpleITK
       image = sitk.ReadImage(image_path)
 
@@ -39,8 +49,6 @@ class ImageReader(object):
       return self._decode
 
   def read_image_dims(self, image):
-      """
-      """
       if len(image.shape) == 3:
           depth, height, width = image.shape
       elif len(image.shape) == 2:

@@ -5,4 +5,7 @@ nibabel==3.0.1
 SimpleITK==1.2.4
 tensorboard==1.14.0
 tensorflow==1.14.0
-
+scipy==1.4.1
+sklearn
+glob
+pydicom

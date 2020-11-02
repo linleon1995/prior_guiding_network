@@ -12,66 +12,6 @@ import tensorflow as tf
 import os
 from scipy import ndimage
 from evals import metrics
-class_to_organ = {0: "background", 1: "spleen", 2: "right kidney", 3: "left kidney", 4: "gallblader",
-                  5: "esophagus", 6: "liver", 7: "stomach", 8: "aorta", 9: "IVC",
-                  10: "PS", 11: "pancreas", 12: "RAG", 13: "LAG"}
-
-
-def print_checkpoint_tensor_name(checkpoint_dir):
-    # TODO: all_tensors,  all_tensor_names for parameters
-    """Print all tensor name from graph"""
-    from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-    # List ALL tensors example output
-    print_tensors_in_checkpoint_file(file_name=checkpoint_dir, tensor_name='', all_tensors=False,
-                                    all_tensor_names=True)
-
-
-def eval_flol_model(dsc_in_diff_th, threshold):
-    """
-    """
-    ll = []
-    _, ax = plt.subplots(1,1)
-    num_class = len(dsc_in_diff_th)
-    for i, c in enumerate(dsc_in_diff_th):
-        if i < num_class-1:
-            label = class_to_organ[i+1]
-        else:
-            label = "mean"
-        if i+1 > 10:
-            ax.plot(threshold, c, "*-", label=label)
-        else:
-            ax.plot(threshold, c, label=label)
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, loc='upper right')
-    ax.set_xticks(threshold, minor=False)
-    ax.grid(True)
-    ax.set_title("Threshold to DSC for each calss")
-    ax.set_xlabel("Threshold")
-    ax.set_ylabel("Dice Score")
-    plt.show()
-
-
-# def show_3d(ref, seg):
-#     Rx, Ry, Rz = [], [] , []
-#     Sx, Sy, Sz = [], [] , []
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111, projection='3d')
-
-#     for r, s in zip(ref, seg):
-#         Rx.append(r[0])
-#         Ry.append(r[1])
-#         Rz.append(r[2])
-
-#         Sx.append(s[0])
-#         Sy.append(s[1])
-#         Sz.append(s[2])
-
-#     ax.scatter(Rx, Ry, Rz, c='r', marker='.')
-#     ax.scatter(Sx, Sy, Sz, c='g', marker='.')
-#     ax.set_xlabel('x')
-#     ax.set_ylabel('y')
-#     ax.set_zlabel('z')
-#     plt.show()
 
     
 def show_3d(volume_dict, affine, file_name=None):
@@ -83,6 +23,7 @@ def show_3d(volume_dict, affine, file_name=None):
                      volume_dict is a 3d NumPy array.
         affine: Affine transform parameters extracted from raw data which helps to 
                 transform volume to real-world coordinate
+        file_name: The file name for figure saving
     """
     struct = ndimage.generate_binary_structure(3, 1)
     fig = plt.figure()
@@ -164,48 +105,9 @@ class Build_Pyplot_Subplots(object):
 
         plt.close(self.fig)
 
-def plot_histogram(path):
-    pass
-
-def plot_box_diagram(path):
-    # spread = np.random.rand(50) * 100
-    # center = np.ones(25) * 50
-    # flier_high = np.random.rand(10) * 100 + 100
-    # flier_low = np.random.rand(10) * -100
-    # data = np.concatenate((spread, center, flier_high, flier_low))
-
-    # # Fixing random state for reproducibility
-    # # np.random.seed(19680801)
-
-    fig1, ax = plt.subplots(1,4)
-    # ax1.set_title('Basic Plot')
-    # ax1.boxplot(data)
-
-    # ?置?形的?示?格
-    # plt.style.use('ggplot')
-
-    # ?置中文和??正常?示
-    plt.rcParams['font.sans-serif'] = 'Microsoft YaHei'
-    plt.rcParams['axes.unicode_minus'] = False
-
-    # ??：整体乘客的年?箱??
-    ax[0].boxplot(x = np.arange(2,20), # 指定???据
-                patch_artist=False, # 要求用自定??色填充盒形?，默?白色填充
-                showmeans=True, # 以?的形式?示均值
-                boxprops = {'color':'black'}, # ?置箱体?性，填充色和?框色
-                flierprops = {'marker':'o','markerfacecolor':'red','color':'black'}, # ?置异常值?性，?的形?、填充色和?框色
-                meanprops = {'marker':'D','markerfacecolor':'indianred'}, # ?置均值?的?性，?的形?、填充色
-                medianprops = {'linestyle':'-','color':'orange'}) # ?置中位??的?性，?的?型和?色
-    # ?置y?的范?
-    plt.ylim(0,85)
-
-    # 去除箱??的上?框与右?框的刻度??
-    plt.tick_params(top='off', right='off', left='off')
-    # ?示?形
-    plt.show()
-
 
 def compute_params_and_flops(graph):
+    """Measure the model parameter and operation"""
     flops_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.float_operation())
     params_proto = tf.profiler.profile(graph, options=tf.profiler.ProfileOptionBuilder.trainable_variables_parameter())
     flops = flops_proto.total_float_ops
@@ -213,18 +115,6 @@ def compute_params_and_flops(graph):
     print("FLOPs: {}; GFLOPs: {}".format(flops, flops/1e9))
     print("Trainable params:{} MB".format(params))
     return flops, params
-
-
-def save_evaluation():
-    pass
-
-def display_classify_performance(label, pred):
-    """
-    label: binary mask in shape [N,H,W,C]
-    pred: corresponding shape and data_type with label
-    3: tp, 2: fp, 1: fn, 0: tn
-    """
-    return label + 2*pred
 
 
 def load_model(saver, sess, ckpt_path):
@@ -275,36 +165,37 @@ def plot_confusion_matrix(cm,
 
 
 def inference_segmentation(logits, dim):
+    """To get classification result by using softmax and argmax"""
     prediction = tf.nn.softmax(logits, axis=dim)
-    # prediction = tf.identity(prediction, name=common.OUTPUT_TYPE)
     prediction = tf.argmax(prediction, axis=dim)
     prediction = tf.cast(prediction, tf.int32)
     return prediction
 
 
-def get_label_range(label, height, width):
+def get_label_range(image):
     """
-    HW1, HW
+    This function help to make user understand the nonzero range of input image.
+    By given one image, the function will extract the height and with of nonzero range.
+    Args:
+        image: image in shape [height,width] or [height,width,1].
+    Returns:
+        nonzero_range: The List contains nonzero range of input image.
     """
-    if len(np.shape(label)) == 3:
-        label = label[...,0]
-    elif len(np.shape(label)) == 2:
+    if len(np.shape(image)) == 3:
+        image = image[...,0]
+    elif len(np.shape(image)) == 2:
         pass
     else:
-        raise ValueError("Unknown label shape")
+        raise ValueError("Unknown image shape")
 
-    if np.sum(label) == 0:
-        return 4*[0]
+    if np.sum(image) == 0:
+        nonzero_range = 4*[0]
     else:
-        fg = np.where(label!=0)
+        fg = np.where(image!=0)
         h_min = np.min(fg[0])
         h_max = np.max(fg[0])
         w_min = np.min(fg[1])
         w_max = np.max(fg[1])
-
-        # h_min = np.min(np.min(fg, axis=0))
-        # w_min = np.min(np.min(fg, axis=1))
-        # h_max = np.max(np.max(fg, axis=0))
-        # w_max = np.max(np.max(fg, axis=1))
-        return [h_min,w_min,h_max,w_max]
+        nonzero_range = [h_min,w_min,h_max,w_max]
+    return nonzero_range
 

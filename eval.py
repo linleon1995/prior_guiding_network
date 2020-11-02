@@ -1,72 +1,36 @@
-# Copyright 2018 The TensorFlow Authors All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Evaluation script for the DeepLab model.
-See model.py for more details and usage.
-"""
-
 import os
+import json
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tensorflow as tf
 import SimpleITK as sitk
 import nibabel as nib
 
 import common
 import model
-from chaos_eval import CHAOSmetrics
+from evals import chaos_eval
 from datasets import data_generator, file_utils
-from utils import eval_utils, train_utils
+from utils import train_utils
 from core import preprocess_utils
-# import experiments
+from evals import evaluator
+from evals import eval_utils
 import cv2
 import math
 import nibabel as nib
 # spatial_transfom_exp = experiments.spatial_transfom_exp
-SSD = CHAOSmetrics.SSD
-DICE = CHAOSmetrics.DICE
-RAVD = CHAOSmetrics.RAVD
-
-# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
-
-# TODO: if dir not exist. Don't build new one
-IMG_LIST = [50, 60, 64, 70, 82, 222,226, 227, 228, 350, 481]
+str2bool = train_utils.str2bool
+load_model = eval_utils.load_model
 IMG_LIST = [136, 137, 138, 143, 144, 145, 161, 162, 163, 248, 249, 250, 253, 254, 255, 256, 257, 258, 447, 448, 449, 571, 572, 573]
-# IMG_LIST = []
-
-# TODO: do it correctly
-CT_TRAIN_SET = [1,2,5,6,8,10,14,16,18,19,21,22,23,24,25,26,27,28,29,30]
-CT_TEST_SET = [11,12,13,15,17,20,3,31,32,33,34,35,36,37,38,39,4,40,7,9,]
-MR_TRAIN_SET = [1,2,3,5,8,10,13,15,19,20,21,22,31,32,33,34,36,37,38,39]
-MR_TEST_SET = [11,12,14,16,17,18,23,24,25,26,27,28,29,30,35,4,40,6,7,9]
-
-def str2bool(v):
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Unsupported value encountered.')
-
+IMG_LIST = [136]
 
 parser = argparse.ArgumentParser()
+# Model Parameters, keep it same as the checkpoint used
 parser.add_argument('--fusions', nargs='+', required=True,
                     help='')
 
-parser.add_argument('--dataset_name', nargs='+', required=True,
+parser.add_argument('--dataset_name', required=True,
                     help='')
 
 parser.add_argument('--eval_split', nargs='+', required=True,
@@ -82,9 +46,6 @@ parser.add_argument('--cell_type', type=str, default="ConvGRU",
                     help='')
 
 parser.add_argument('--apply_sram2', type=str2bool, nargs='?', const=True, default=True,
-                    help='')
-
-parser.add_argument('--predict_without_background', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
 parser.add_argument('--guid_encoder', type=str, default="early",
@@ -137,7 +98,7 @@ parser.add_argument('--prior_num_subject', type=int, default=None,
 parser.add_argument('--fusion_slice', type=int, default=3,
                     help='')
 
-parser.add_argument('--guidance_type', type=str, default="training_data_fusion",
+parser.add_argument('--guidance_type', type=str, default=None,
                     help='')
 
 # Change to True for adding flipped images during test.
@@ -171,13 +132,8 @@ parser.add_argument('--stage_pred_loss_name', type=str, default="sigmoid_cross_e
 parser.add_argument('--zero_guidance', type=str2bool, nargs='?', const=True, default=False,
                     help='')
 
-parser.add_argument('--vis_guidance', type=str2bool, nargs='?', const=True, default=False,
-                    help='')
-
-parser.add_argument('--vis_features', type=str2bool, nargs='?', const=True, default=False,
-                    help='')
-
-parser.add_argument('--vis_prior', type=str2bool, nargs='?', const=True, default=False,
+# Evaluation Parameters
+parser.add_argument('--eval_metrics', nargs='+', default=None,
                     help='')
 
 parser.add_argument('--display_box_plot', type=str2bool, nargs='?', const=True, default=False,
@@ -189,31 +145,44 @@ parser.add_argument('--store_all_imgs', type=str2bool, nargs='?', const=True, de
 parser.add_argument('--show_pred_only', type=str2bool, nargs='?', const=True, default=True,
                     help='')
 
-parser.add_argument('--_3d_metrics', type=str2bool, nargs='?', const=True,
+parser.add_argument('--raw_data_dir', type=str,
                     help='')
 
-# TODO: boxplot
-# TODO: MSE for z information
-# TODO: Automatically output --> mean_iou, mean_dsc, pixel_acc as text file,
-# TODO: image, label, prediciton for subplots and full image
+parser.add_argument('--use_3d_metrics', type=str2bool, nargs='?', const=True, default=True,
+                    help='')
 
-# TODO: Warning for dataset_split, guidance and procedure of guidance, MSE for z information
-# TODO: testing mode for online eval
-# TODO: add run_xxx in  feature, guidance folder name
-
-
-
-def load_model(saver, sess, ckpt_path):
-    '''Load trained weights.
-
-    Args:
-      saver: TensorFlow saver object.
-      sess: TensorFlow session.
-      ckpt_path: path to checkpoint file with parameters.
-    '''
-    saver.restore(sess, ckpt_path)
-    print("Restored model parameters from {}".format(ckpt_path))
-
+                    
+def get_pred_vis(eval_logdir, num_class, image, prediction, label=None):
+    subplot_split=(1,3)
+    show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir,
+                                                        is_showfig=False,
+                                                        is_savefig=True,
+                                                        subplot_split=subplot_split,
+                                                        type_list=3*['img'])
+    show_seg_results.set_title(["image", "label", "prediction"])
+    show_seg_results.set_axis_off()
+    return show_seg_results
+      
+      
+def aggregate_evaluation(total_results, metrics, path):
+    total_aggregate = {}
+    for m in metrics:
+        aggregate = []
+        for vol_results in total_results:
+            aggregate.append(vol_results[m])
+    print(total_aggregate)
+    #     total_aggregate[m] = sum(aggregate) / len(aggregate)
+    
+    # with open(os.path.join(path, 'eval_logging.txt'), 'a') as f:
+    #     for m in total_aggregate:
+    #       if isinstance(total_aggregate[m], (int, float)):
+    #         f.write("\n{}: {:.4f}".format(m, total_aggregate[m]))
+    #       else:
+    #         for c, class_r in enumerate(total_aggregate[m]):
+    #           f.write("\n{} in class {}: {:.4f}".format(m, c+1, class_r))
+            
+    return total_aggregate
+        
 
 def get_placeholders(samples, data_information):
     placeholder_dict = {}
@@ -243,22 +212,16 @@ def get_placeholders(samples, data_information):
       prior_seg_placeholder = tf.placeholder(tf.int32,shape=[None,None, None, 1])
     elif FLAGS.guidance_type in ("training_data_fusion", "training_data_fusion_h"):
       # TODO: CHAOS MR case --> general way
-      if "2019_ISBI_CHAOS_MR_T1" == FLAGS.dataset_name and "2019_ISBI_CHAOS_MR_T2" == FLAGS.dataset_name:
+      if FLAGS.dataset_name == "2019_ISBI_CHAOS_MR_T1" and FLAGS.dataset_name == "2019_ISBI_CHAOS_MR_T2":
         prior_seg_placeholder = tf.placeholder(
           tf.float32,shape=[None, data_information.height, data_information.width, 10, 1])
       else:
         prior_seg_placeholder = tf.placeholder(
           tf.float32,shape=[None, data_information.height, data_information.width, data_information.num_classes, 1])
       # prior_seg_placeholder = tf.placeholder(tf.float32,shape=[None,None, None, 1])
+    else:
+      prior_seg_placeholder = None
     placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
-    # if common.PRIOR_SEGS in samples:
-    #   samples[common.PRIOR_SEGS] = tf.identity(samples[common.PRIOR_SEGS], name=common.PRIOR_SEGS)
-    #   prior_seg_placeholder = tf.placeholder(tf.float32,
-    #                                        shape=[None, EVAL_CROP_SIZE[0],
-    #                                               EVAL_CROP_SIZE[1], dataset.num_of_classes])
-    #   placeholder_dict[common.PRIOR_SEGS] = prior_seg_placeholder
-    # else:
-    #   placeholder_dict[common.PRIOR_SEGS] = None
 
     if 'prior_slices' in samples:
       prior_slices_placeholder = tf.placeholder(tf.int64, shape=[None])
@@ -266,8 +229,8 @@ def get_placeholders(samples, data_information):
     else:
       placeholder_dict['prior_slices'] = None
     return placeholder_dict
-  
-  
+
+
 def main(unused_argv):
   eval_logdir = FLAGS.checkpoint_dir+'-eval/'
   data_information = data_generator._DATASETS_INFORMATION[FLAGS.dataset_name]
@@ -278,9 +241,6 @@ def main(unused_argv):
   with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'w') as f:
     f.write("Start Evaluation\n")
     f.write(60*"="+"\n")
-    for key in parameters_dict:
-      f.write( "{}: {}".format(str(key), str(parameters_dict[key])))
-      f.write("\n")
     f.write("\n")
 
 
@@ -305,8 +265,6 @@ def main(unused_argv):
                 prior_num_subject=FLAGS.prior_num_subject,
                 seq_length=FLAGS.seq_length,
                 seq_type="forward")
-  
-  # TODO: Add model name in dir to distinguish
 
   tf.logging.info('Evaluating on %s set', FLAGS.eval_split)
 
@@ -350,11 +308,10 @@ def main(unused_argv):
                 z_class=FLAGS.z_class,
                 guidance_loss=FLAGS.guidance_loss,
                 stage_pred_loss=FLAGS.stage_pred_loss,
-                guidance_loss_name=FLAGS.guid_loss_name,
+                guid_loss_name=FLAGS.guid_loss_name,
                 stage_pred_loss_name=FLAGS.stage_pred_loss_name,
                 guid_conv_nums=FLAGS.guid_conv_nums,
                 guid_conv_type=FLAGS.guid_conv_type,
-                predict_without_background=FLAGS.predict_without_background,
                 reuse=tf.AUTO_REUSE,
                 apply_sram2=FLAGS.apply_sram2,
                 guid_fuse=FLAGS.guid_fuse,
@@ -362,23 +319,11 @@ def main(unused_argv):
                 cell_type=FLAGS.cell_type
                 )
 
-    if FLAGS.vis_guidance:
-      if "softmax" in FLAGS.guid_loss_name:
-        guidance_dict = {dict_key: tf.nn.softmax(layers_dict[dict_key],3) for dict_key in layers_dict if 'guidance' in dict_key}
-        pred_dict = {dict_key: tf.arg_max(guidance_dict[dict_key],3) for dict_key in guidance_dict}
-        guidance_dict["guidance0"] = tf.nn.softmax(output_dict[common.GUIDANCE], 3)
-        pred_dict["guidance0"] = tf.argmax(guidance_dict["guidance0"], 3)
-      elif "sigmoid" in FLAGS.guid_loss_name:
-        guidance_dict = {dict_key: tf.nn.sigmoid(layers_dict[dict_key]) for dict_key in layers_dict if 'guidance' in dict_key}
-        pred_dict = guidance_dict
-        guidance_dict["guidance0"] = tf.nn.sigmoid(output_dict[common.GUIDANCE])
-        pred_dict["guidance0"] = guidance_dict["guidance0"]
-
     logits = output_dict[common.OUTPUT_TYPE]
+    # TODO: not general
     if FLAGS.eval_split[0] == "test":
       logits = tf.image.resize_bilinear(logits, tf.concat([placeholder_dict[common.HEIGHT], placeholder_dict[common.WIDTH]],axis=0), align_corners=False)
     prediction = eval_utils.inference_segmentation(logits, dim=3)
-
 
     if "train" in FLAGS.eval_split or "val" in FLAGS.eval_split:
       pred_flat = tf.reshape(prediction, shape=[-1,])
@@ -395,31 +340,6 @@ def main(unused_argv):
       labels_flat = tf.reshape(labels, shape=[-1,])
       # Define Confusion Maxtrix
       cm = tf.confusion_matrix(labels_flat, pred_flat, num_classes=dataset.num_of_classes)
-      if FLAGS.vis_guidance:
-        def cm_in_each_stage(pred):
-          cm_list = []
-          pred = tf.image.resize(pred, [data_information.height, data_information.width], align_corners=False)
-          pred = tf.nn.sigmoid(pred)
-          pred = tf.cast(tf.round(pred), tf.int32)
-          pred_flat = tf.reshape(pred, shape=[-1,dataset.num_of_classes])
-          label_onehot_flat = tf.reshape(label_onehot, [-1,dataset.num_of_classes])
-          for i in range(dataset.num_of_classes):
-            cm = tf.confusion_matrix(label_onehot_flat[:,i], pred_flat[:,i], num_classes=2)
-            cm_list.append(cm)
-          cm_for_all_classes = tf.stack(cm_list, axis=2)
-          return cm_for_all_classes
-
-        cm_g0 = cm_in_each_stage(output_dict[common.GUIDANCE])
-        cm_g1 = cm_in_each_stage(layers_dict["guidance1"])
-        cm_g2 = cm_in_each_stage(layers_dict["guidance2"])
-        cm_g3 = cm_in_each_stage(layers_dict["guidance3"])
-        cm_g4 = cm_in_each_stage(layers_dict["guidance4"])
-        cm_guid = [cm_g0, cm_g4, cm_g3, cm_g2, cm_g1]
-
-      if common.OUTPUT_Z in output_dict:
-        pred_z = eval_utils.inference_segmentation(output_dict[common.OUTPUT_Z], dim=1)
-        label_z = placeholder_dict[common.Z_LABEL]
-        cm_z = tf.confusion_matrix(label_z, pred_z, num_classes=dataset.mt_class)
 
     # Set up tf session and initialize variables.
     sess = tf.Session()
@@ -435,448 +355,96 @@ def main(unused_argv):
         raise ValueError("model checkpoint not exist")
 
 
-    cm_total = 0
-    cm_g_total = 5*[0]
-    _cm_g1_t, _cm_g2_t, _cm_g3_t, _cm_g4_t = 0, 0, 0, 0
+    cm_total, cm_volume  = 0, 0
     j = 0
-    h_min_total = []
-    w_min_total = []
-    h_max_total = []
-    w_max_total = []
-    g1_dsc_t = 0
-    total_eval_z = 0
-    foreground_pixel = 0
-    DSC_slice = []
-    total_resnet_activate = {}
-    total_z_label = []
-    total_z_pred = []
-    total_dice_mean, total_ravd_mean =[], []
-    file_idx = 0
-
-    # TODO: Determine saving path while display? remove the dependency then show_guidance and show_seg_results could be the same one
-    if FLAGS.vis_guidance:
-        if not os.path.isdir(eval_logdir+"guidance"):
-          os.mkdir(eval_logdir+"guidance")
-
-        show_guidance = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir+"guidance/",
-                                                            is_showfig=False,
-                                                            is_savefig=True,
-                                                            subplot_split=(1,3),
-                                                            type_list=3*['img'])
-    # Build up Pyplot displaying tool
-    # TODO: Image could only show once
-    if FLAGS.show_pred_only:
-        subplot_split=(1,3)
-    else:
-        subplot_split=(1,3)
-    show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir,
-                                                        is_showfig=False,
-                                                        is_savefig=True,
-                                                        subplot_split=subplot_split,
-                                                        type_list=3*['img'])
-    # Start Evaluate
-    # TODO: The order of subject
-
-    if FLAGS.vis_features:
-        if not os.path.isdir(eval_logdir+"feature"):
-            os.mkdir(eval_logdir+"feature")
-
-        show_feature = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir+"feature/",
-                                                            is_showfig=False,
-                                                            is_savefig=True,
-                                                            subplot_split=(1,3),
-                                                            type_list=3*['img'])
-    if FLAGS.vis_prior:
-        if not os.path.isdir(eval_logdir+"prior"):
-            os.mkdir(eval_logdir+"prior")
-
-        show_prior = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir+"prior/",
-                                                      is_showfig=False,
-                                                      is_savefig=True,
-                                                      subplot_split=(1,3),
-                                                      type_list=3*['img'])
-    sram_conv = tf.get_collection("/sram_embed")
-
-
-    flops, params = eval_utils.compute_params_and_flops(graph)
-    with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'a') as f:
-      f.write("\nFLOPs: {}".format(flops))
-      f.write("\nGFLOPs: {}".format(flops/1e9))
-      f.write("\nParameters: {} MB".format(params))
-      f.write("\n")
-
+    total_results = []
     num_class = dataset.num_of_classes
-    if FLAGS.predict_without_background:
-      num_class -= 1
+    
+    raw_data_list = file_utils.get_file_list(FLAGS.raw_data_dir, fileExt=["nii.gz"], sort_files=True)
+    raw_data_list = raw_data_list[16:]
+    if "CHAOS" in FLAGS.dataset_name:
+      evaluate = evaluator.build_dicom_evaluator(FLAGS.eval_metrics)
+    elif "MICCAI" in FLAGS.dataset_name:
+      evaluate = evaluator.build_evaluator(FLAGS.eval_metrics)
+    else:
+      raise ValueError("Unknown dataset name") 
+    
+    for split_name in FLAGS.eval_split:
+      num_sample = dataset.splits_to_sizes[split_name]
+      if FLAGS.store_all_imgs:
+          display_imgs = np.arange(num_sample)
+      else:
+          display_imgs = IMG_LIST
 
-    # TODO:
-    print(dataset.files)
-    print(FLAGS.dataset_name)
-    for sub_dataset in FLAGS.dataset_name:
-      for split_name in FLAGS.eval_split:
-        num_sample = dataset.splits_to_sizes[sub_dataset][split_name]
-        if FLAGS.store_all_imgs:
-            display_imgs = np.arange(num_sample)
-        else:
-            display_imgs = IMG_LIST
-
-        for i in range(num_sample):
-            data = sess.run(samples)
-            _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
-            if FLAGS.seq_length > 1:
-              depth = data[common.DEPTH][0,FLAGS.seq_length//2]
-              data[common.IMAGE] = data[common.IMAGE][:,FLAGS.seq_length//2]
-              if split_name in ("train", "val"):
-                data[common.LABEL] = data[common.LABEL][:,FLAGS.seq_length//2]
-            else:
-              depth = data[common.DEPTH][0]
-            num_slice = data[common.NUM_SLICES][0]
-            print(sub_dataset, 'Sample {} Slice {}/{}'.format(i, depth, num_slice))
-
-            # Segmentation Evaluation
-            pred = sess.run(prediction, feed_dict=_feed_dict)
+      for i in range(num_sample):
+          data = sess.run(samples)
+          _feed_dict = {placeholder_dict[k]: v for k, v in data.items() if k in placeholder_dict}
+          if FLAGS.seq_length > 1:
+            depth = data[common.DEPTH][0,FLAGS.seq_length//2]
+            data[common.IMAGE] = data[common.IMAGE][:,FLAGS.seq_length//2]
             if split_name in ("train", "val"):
-              cm_slice = sess.run(cm, feed_dict=_feed_dict)
-              if FLAGS.vis_guidance:
-                cm_g_slice = sess.run(cm_guid, feed_dict=_feed_dict)
-                for stage in range(len(cm_g_slice)):
-                  cm_g_total[stage] = cm_g_total[stage] + cm_g_slice[stage]
-              # cm_slice, cm_g_slice, pred = sess.run([cm, cm_guid, prediction], feed_dict=_feed_dict)
+              data[common.LABEL] = data[common.LABEL][:,FLAGS.seq_length//2]
+          else:
+            depth = data[common.DEPTH][0]
+          num_slice = data[common.NUM_SLICES][0]
+          pred = sess.run(prediction, feed_dict=_feed_dict)
+          print(FLAGS.dataset_name, 'Sample {} Slice {}/{}'.format(i, depth, num_slice))
 
-              _, dscs = eval_utils.compute_mean_dsc(cm_slice)
-              DSC_slice.append(dscs)
-              cm_total += cm_slice
-
-              if common.OUTPUT_Z in output_dict:
-                eval_z = sess.run(cm_z, feed_dict=_feed_dict)
-                total_eval_z += eval_z
-
-              if FLAGS._3d_metrics:
-                if depth == 0:
-                  Vref = []
-                  Vseg = []
-                  Vref.append(data[common.LABEL][0,...,0])
-                  Vseg.append(pred[0])
-                elif depth == num_slice-1:
-                  Vref.append(data[common.LABEL][0,...,0])
-                  Vseg.append(pred[0])
-                  dice_mean, ravd_mean, attend_class = 0, 0, 0
-                  # TODO: optimize
-                  for i in range(1, num_class):
-                    Vref_c = np.array(Vref,order='A')
-                    Vseg_c = np.array(Vseg,order='A')
-                    if np.sum(Vref_c==i) > 0:
-                      dice = DICE(Vref_c==i,Vseg_c==i)
-                      ravd = RAVD(Vref_c==i,Vseg_c==i)
-                      print("class {}   dice: {}, ravd: {}".format(i, dice, ravd))
-                      dice_mean += dice
-                      ravd_mean += ravd
-                      attend_class += 1
-                  print("dice_mean: {}, ravd_mean: {}".format(dice_mean/attend_class, ravd_mean/attend_class))
-                  total_dice_mean.append(dice_mean/attend_class)
-                  total_ravd_mean.append(ravd_mean/attend_class)
-
-                  # temporally
-                  Vseg = np.array(Vseg,order='A')
-                  file_list = os.listdir("/home/user/DISK/data/Jing/data/Training/raw/")
-                  file_list.sort()
-                  file_list = file_list[24:]
-                  nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Training/raw/", file_list[file_idx]))
-                  affine = nii_img.affine.copy()
-                  hdr = nii_img.header.copy()
-                  Vseg = np.swapaxes(Vseg,0,2)
-                  Vseg = Vseg[:,::-1]
-                  print(nii_img.get_data().shape, Vseg.shape)
-                  new_nii = nib.Nifti1Image(Vseg, affine, hdr)
-                  out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files_val")
-                  if not os.path.exists(out_dir):
-                    os.makedirs(out_dir, exist_ok=True)
-                  nib.save(new_nii, os.path.join(out_dir, 'img%04d.nii.gz' %(file_idx+61)))
-                  file_idx += 1
-                else:
-                  Vref.append(data[common.LABEL][0,...,0])
-                  Vseg.append(pred[0])
-            else:
-              # TODO: optimize
-              if sub_dataset == "2013_MICCAI_Abdominal":
-                if depth == 0:
-                  Vseg = []
-                  Vseg.append(pred[0])
-                elif depth == num_slice-1:
-                  Vseg.append(pred[0])
-                  Vseg = np.array(Vseg,order='A')
-                  file_list = os.listdir("/home/user/DISK/data/Jing/data/Testing/raw/")
-                  file_list.sort()
-                  nii_img = nib.load(os.path.join("/home/user/DISK/data/Jing/data/Testing/raw/", file_list[file_idx]))
-                  affine = nii_img.affine.copy()
-                  hdr = nii_img.header.copy()
-                  Vseg = np.swapaxes(Vseg,0,2)
-                  Vseg = Vseg[:,::-1]
-                  new_nii = nib.Nifti1Image(Vseg, affine, hdr)
-                  out_dir = os.path.join(FLAGS.checkpoint_dir, "nii_files")
-                  if not os.path.exists(out_dir):
-                    os.makedirs(out_dir, exist_ok=True)
-                  nib.save(new_nii, os.path.join(out_dir, 'img%04d.nii.gz' %(file_idx+61)))
-                  file_idx += 1
-                else:
-                  Vseg.append(pred[0])
-
-            if i in display_imgs:
-              if FLAGS.show_pred_only:
-                file_name = "result{:03d}.png".format(depth)
-                if "CT" in sub_dataset:
-                  task2_path = os.path.join(eval_logdir, "task2_pred", str(CT_TEST_SET[j]), "Results")
-                  task2 = file_utils.convert_label_value(pred[0], {1: 255})
-                  file_utils.save_in_image(task2, task2_path, file_name)
-                elif "MR" in sub_dataset:
-                  if "T1" in sub_dataset:
-                    task3_path = os.path.join(eval_logdir, "task3_pred", str(MR_TEST_SET[j]), "T1DUAL", "Results")
-                    task5_path = os.path.join(eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T1DUAL", "Results")
-                  elif "T2" in sub_dataset:
-                    task3_path = os.path.join(eval_logdir, "task3_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
-                    task5_path = os.path.join(eval_logdir, "task5_pred", str(MR_TEST_SET[j]), "T2SPIR", "Results")
-                  task3 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 0, 3: 0, 4: 0})
-                  task5 = file_utils.convert_label_value(pred[0].copy(), {1: 63, 2: 126, 3: 189, 4: 252})
-
-                  file_utils.save_in_image(task3, task3_path, file_name)
-                  file_utils.save_in_image(task5, task5_path, file_name)
-
-                if depth == data[common.NUM_SLICES][0]-1:
-                  j += 1
-                if i == num_sample-1:
-                  j = 0
+          # Segmentation Evaluation
+          if split_name in ("train", "val"):
+            cm_slice = sess.run(cm, feed_dict=_feed_dict)
+            cm_total += cm_slice
+            
+            if FLAGS.use_3d_metrics:
+              cm_volume += cm_slice
+              if depth == 0:
+                ref, seg = [], []
+              elif depth == num_slice-1:
+                ref = np.concatenate(ref, axis=2)
+                seg = np.concatenate(seg, axis=2)
+                # 3D visualization
+                ref, seg = np.int32(ref==1), np.int32(seg==1)
+                data_dict = {"Reference": ref, "Segmentation": seg}
+                # evaluate.visualize_in_3d(data_dict, raw_data_path=raw_data_list[j])
+                results = evaluate(ref, seg, total_cm=cm_volume, raw_data_path=raw_data_list[j], num_class=num_class)
+                total_results.append(results)
+                print(results)
+                
+                j += 1
+                cm_volume = 0
               else:
-                parameters = [{"cmap": "gray"}]
-                parameters.extend(2*[{"vmin": 0, "vmax": dataset.num_of_classes}])
-                show_seg_results.set_title(["image", "label","prediction"])
-                show_seg_results.set_axis_off()
-                show_seg_results.display_figure(split_name+'_pred_%04d' %i,
-                                                [data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]],
-                                                parameters=parameters)
-              if FLAGS.vis_prior:
-                prior_list = sess.run(tf.get_collection("prior_list"), feed_dict=_feed_dict)
-                for z in range(FLAGS.z_class):
-                  for node in range(0, FLAGS.out_node, 4):
-                    filename = "{}-prior-sample{}-z{}-feature{}".format(split_name, i, z, node)
-                    show_prior.set_title(["prior_z_feature{}".format(node),
-                                          "prior_z_feature{}".format(node+1),
-                                          "prior_z_feature{}".format(node+2)])
-                    show_prior.display_figure(filename, [prior_list[0][z][0,...,node],
-                                                          prior_list[0][z][0,...,node+1],
-                                                          prior_list[0][z][0,...,node+2]])
+                ref.append(data[common.LABEL][0])
+                seg.append(pred[0][...,np.newaxis])
+            else:
+              ref = data[common.LABEL][0,...,0]
+              seg = pred[0]
+              results = evaluate(ref, seg, total_cm=cm_slice)
+              print(results)
+          
+          # 2D visualization
+          if FLAGS.store_all_imgs:
+              display_imgs = np.arange(num_sample)
+          else:
+              display_imgs = IMG_LIST
+          if i in display_imgs:
+            image, label, pred = data[common.IMAGE][0,...,0], data[common.LABEL][0,...,0], pred[0]
+            show_seg_results  = get_pred_vis(eval_logdir, num_class, image, pred, label)
+            
+            parameters = [{"cmap": "gray"}]
+            parameters.extend(2*[{"vmin": 0, "vmax": num_class}])
+            show_seg_results.display_figure(
+              split_name+'_pred_%04d' %i, [image, label, pred], parameters=parameters)
+            
+    # Save confusion matrix in figure
+    eval_utils.plot_confusion_matrix(
+      cm_total, num_class=np.arange(num_class), filename="CM", normalize=True, save_path=eval_logdir)
 
-                # h_min,w_min,h_max,w_max = eval_utils.get_label_range(data[common.LABEL][0], 512, 512)
-
-                # h_min_total.append(h_min)
-                # w_min_total.append(w_min)
-                # h_max_total.append(h_max)
-                # w_max_total.append(w_max)
-
-
-
-              # Guidance Visualization
-              if FLAGS.vis_guidance:
-                guid_avg = tf.get_collection("guid_avg")
-                guid_avgs = sess.run(guid_avg, feed_dict=_feed_dict)
-                layers, pred_layers, gg = sess.run([guidance_dict, pred_dict, guidance_dict["guidance0"]], feed_dict=_feed_dict)
-
-                # if i == 64:
-                #   for ii in range(5):
-                #     plt.imshow(guid_avgs[ii][0,...,0])
-                #     plt.show()
-                # plt.imshow(guid_avgs[2][0,...,0], cmap="jet")
-                # plt.show()
-                parameters = 3*[{"cmap": "jet"}]
-                show_guidance.set_title(["guid_avg0", "guid_avg1", "guid_avg2"])
-                show_guidance.display_figure(split_name+'-guid_avg012-%04d' %i,
-                                              [guid_avgs[0][0,...,0],
-                                              guid_avgs[1][0,...,0],
-                                              guid_avgs[2][0,...,0]],
-                                              parameters=parameters)
-
-                show_guidance.set_title(["guid_avg3", "guid_avg4", "guid_avg5"])
-                show_guidance.display_figure(split_name+'-guid_avg345-%04d' %i,
-                                              [guid_avgs[3][0,...,0],
-                                              guid_avgs[4][0,...,0],
-                                              guid_avgs[4][0,...,0]],
-                                              parameters=parameters)
-
-                # show_guidance.set_title(["pred0", "pred1", "pred2"])
-                # show_guidance.display_figure(split_name+'-pred012-%04d' %i,
-                #                               [pred_layers["guidance0"][0],
-                #                               pred_layers["guidance5"][0],
-                #                               pred_layers["guidance4"][0]])
-
-                # show_guidance.set_title(["pred3", "pred4", "pred5"])
-                # show_guidance.display_figure(split_name+'-pred345-%04d' %i,
-                #                               [pred_layers["guidance3"][0],
-                #                               pred_layers["guidance2"][0],
-                #                               pred_layers["guidance1"][0]])
-
-                for c in range(num_class):
-                  show_guidance.set_title(["guidance0", "guidance1", "guidance2"])
-                  show_guidance.display_figure(split_name+'-guid012-%04d-%03d' % (i,c),
-                                                [layers["guidance0"][0,...,c],
-                                                layers["guidance5"][0,...,c],
-                                                layers["guidance4"][0,...,c]])
-
-                  show_guidance.set_title(["guidance3", "guidance4", "guidance5"])
-                  show_guidance.display_figure(split_name+'-guid345-%04d-%03d' % (i,c),
-                                                [layers["guidance3"][0,...,c],
-                                                layers["guidance2"][0,...,c],
-                                                layers["guidance1"][0,...,c]])
-
-
-
-
-              # Features Visualization
-              if FLAGS.vis_features:
-                sram1, sram2, embed, feature, refining, sram1_guided_f, sram2_guided_f, guid_f = sess.run([tf.get_collection("sram1"),
-                                                                  tf.get_collection("sram2"),
-                                                                  tf.get_collection("embed"),
-                                                                  tf.get_collection("feature"),
-                                                                  tf.get_collection("refining"),
-                                                                  tf.get_collection("sram1_guided_feature"),
-                                                                  tf.get_collection("sram2_guided_feature"),
-                                                                  #  tf.get_collection("feature"),
-                                                                  tf.get_collection("guid_f")], feed_dict=_feed_dict)
-
-                for cc in range(0, FLAGS.out_node, 4):
-                  for w in range(5):
-                    filename = "{}-sram1_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                    show_feature.set_title(["embed", "sram1", "sram1_guided_feature"])
-                    # show_feature.set_axis_off()
-                    show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], sram1_guided_f[w][0,...,cc]])
-
-                    # filename = "{}-sram2_guided_feature-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                    # show_feature.set_title(["sram1+feature", "sram2", "sram2_guided_featurel"])
-                    # # show_feature.set_axis_off()
-                    # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], sram2_guided_f[w][0,...,cc]])
-
-
-                    # filename = "{}-feature1-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                    # show_feature.set_title(["embed", "sram1", "feature"])
-                    # # show_feature.set_axis_off()
-                    # show_feature.display_figure(filename, [embed[w][0,...,cc], sram1[w][0,...,cc], feature[w][0,...,cc]])
-
-                    # filename = "{}-feature2-sample{}-stage{}-feature{}".format(split_name, i, w+1, cc)
-                    # show_feature.set_title(["sram1+feature", "sram2", "refine"])
-                    # # show_feature.set_axis_off()
-                    # show_feature.display_figure(filename, [sram1[w][0,...,cc]+feature[w][0,...,cc], sram2[w][0,...,cc], refining[w][0,...,cc]])
-
-                  # filename = "{}-guidingf-sample{}-feature{}".format(FLAGS.eval_split, i, cc)
-                  # show_feature.set_title(["guiding_feature{}".format(cc),
-                  #                         "guiding_feature{}".format(cc+1),
-                  #                         "guiding_feature{}".format(cc+2)])
-                  # # show_feature.set_axis_off()
-                  # show_feature.display_figure(filename, [guid_f[0][0,...,cc],
-                  #                                       guid_f[0][0,...,cc+1],
-                  #                                       guid_f[0][0,...,cc+2]])
-
-                # features, sram_layers = sess.run([feature_dict, sram_dict], feed_dict=_feed_dict)
-
-    # def get_list_stats(value):
-    #   val_arr = np.stack(value)
-    #   return np.mean(val_arr), np.std(val_arr), np.min(val_arr), np.max(val_arr)
-    # h_min_total = [v for v in h_min_total if v!=0]
-    # h_max_total = [v for v in h_max_total if v!=0]
-    # w_min_total = [v for v in w_min_total if v!=0]
-    # w_max_total = [v for v in w_max_total if v!=0]
-
-    # print("Height Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_min_total)))
-    # print("Height Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(h_max_total)))
-    # print("Width Minimum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_min_total)))
-    # print("Width Maximum mean: {:5.3f} std: {:5.3f} min: {:5.3f} max: {:5.3f}".format(*get_list_stats(w_max_total)))
-
-    if split_name in ("train", "val"):
-      if FLAGS._3d_metrics:
-        print(10*"=", "Volume DSC", 10*"=")
-        for i, d in enumerate(total_dice_mean):
-          print("Subject {} DICE {}".format(i+1, d))
-        for i, d in enumerate(total_ravd_mean):
-          print("Subject {} RAVD {}".format(i+1, d))
-        print("Volume DICE {}, Volume RAVD {}".format(sum(total_dice_mean)/len(total_dice_mean), sum(total_ravd_mean)/len(total_ravd_mean)))
-      print(10*"=", "Segmentation Evaluation", 10*"=")
-      mean_iou = eval_utils.compute_mean_iou(cm_total)
-      mean_dice_score, dice_score = eval_utils.compute_mean_dsc(cm_total)
-      pixel_acc = eval_utils.compute_accuracy(cm_total)
-      p_mean, p_std, r_mean, r_std = eval_utils.precision_and_recall(cm_total)
-      fpr = eval_utils.false_positive_rate(cm_total)
-      print("FPR: {}".format(np.mean(fpr)))
-      fnr = eval_utils.false_negative_rate(cm_total)
-      for c, i in enumerate(fnr): print('    class {}: TPR: {:.4f}'.format(c, 1-i))
-      print("FNR: {}".format(np.mean(fnr)))
-      p = eval_utils.positive(cm_total)
-      for c, i in enumerate(p): print('    class {}: positive: {:.4f}'.format(c, i/np.sum(p)))
-      # print(foreground_pixel, foreground_pixel/(256*256*dataset.splits_to_sizes[FLAGS.eval_split]))
-
-      with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'a') as f:
-        f.write("\nPixel ACC: {:.4f}".format(pixel_acc))
-        f.write("\nMean IoU: {:.4f}".format(mean_iou))
-
-        for i, dsc in enumerate(dice_score):
-            f.write("\n    class {}: {:.4f}".format(i, dsc))
-        f.write("\nMean DSC: {:.4f}".format(mean_dice_score))
-        f.write("\nPrecision mean: {:.4f} std: {:.4f}".format(p_mean, p_std))
-        f.write("\nRecall mean: {:.4f} std: {:.4f}".format(r_mean, r_std))
-        f.write("\n")
-        f.write(60*"="+"\n")
-        f.write("End Evaluation\n")
-
-      eval_utils.plot_confusion_matrix(cm_total, classes=np.arange(dataset.num_of_classes), filename="CM",
-                                       normalize=True, title='Confusion matrix, without normalization', save_path=eval_logdir)
-
-      if FLAGS.vis_guidance:
-        print(10*"=", "Guidance Evaluation", 10*"=")
-        for stage, cm_g in enumerate(cm_g_total):
-          for _ in range(num_class):
-            print("---Stage {} Class {}".format(stage+1, _))
-            eval_utils.compute_mean_dsc(cm_g[...,_])
-
-      if common.Z_LABEL in samples:
-        print(10*"=", "Z Evaluation", 10*"=")
-        mean_iou = eval_utils.compute_mean_iou(total_eval_z)
-        mean_dice_score, dice_score = eval_utils.compute_mean_dsc(total_eval_z)
-        pixel_acc = eval_utils.compute_accuracy(total_eval_z)
-        p_mean, p_std, r_mean, r_std = eval_utils.precision_and_recall(total_eval_z)
-
-        with open(os.path.join(eval_logdir, 'eval_logging.txt'), 'a') as f:
-          f.write("\nPixel ACC: {:.4f}".format(pixel_acc))
-          f.write("\nMean IoU: {:.4f}".format(mean_iou))
-
-          for i, dsc in enumerate(dice_score):
-              f.write("\n    class {}: {:.4f}".format(i, dsc))
-          f.write("\nMean DSC: {:.4f}".format(mean_dice_score))
-          f.write("\nPrecision mean: {:.4f} std: {:.4f}".format(p_mean, p_std))
-          f.write("\nRecall mean: {:.4f} std: {:.4f}".format(r_mean, r_std))
-          f.write("\n")
-          f.write(60*"="+"\n")
-          f.write("End Evaluation\n")
-
-        eval_utils.plot_confusion_matrix(total_eval_z, classes=np.arange(dataset.mt_class), filename="CM_z",
-                                         normalize=True, title='Confusion matrix, without normalization', save_path=eval_logdir)
-
-
-        # total_eval_z /= dataset.splits_to_sizes[split_name]
-        # print("MSE of z prediction {}".format(total_eval_z))
-        # plt.plot(total_z_label, total_z_pred, ".")
-        # plt.hold(True)
-        # plt.plot(total_z_label, total_z_label, "r")
-        # plt.title("Z labeld and prediction")
-        # plt.xlabel("z_label")
-        # plt.ylabel("z_prediction")
-        # plt.savefig(eval_logdir+"z_information.png")
-
-    if FLAGS.display_box_plot:
-        show_seg_results = eval_utils.Build_Pyplot_Subplots(saving_path=eval_logdir,
-                                                            is_showfig=False,
-                                                            is_savefig=False,
-                                                            subplot_split=(1,1),
-                                                            type_list=['plot'])
-        # box_plot_figure(DSC_slice)
-
+    # Aggregate and log the evaluation
+    agg = aggregate_evaluation(total_results, evaluate.metrics, path=eval_logdir)
+    # for a in agg:
+    #     print("{}: {}".format(a, agg[a]))
+    
 
 if __name__ == '__main__':
     FLAGS, unparsed = parser.parse_known_args()
     main(unparsed)
-    

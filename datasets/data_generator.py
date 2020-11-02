@@ -297,8 +297,8 @@ class Dataset(object):
         # get prior
         # TODO: prior for pgn-v1
         if self.guidance_type == "training_data_fusion":
-            print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
-                self.prior_num_slice, self.prior_num_subject))
+            # print("Input Prior Infomrmation: Slice=%d, Subject=%d" % (
+            #     self.prior_num_slice, self.prior_num_subject))
             prior_segs = self.load_prior_from_dir(height, width)
             [_, _, prior_channel] = preprocess_utils.resolve_shape(prior_segs, rank=3)
         elif self.guidance_type == "ground_truth":
