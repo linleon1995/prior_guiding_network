@@ -21,8 +21,8 @@ sh local_test.sh
 
 ### Evaluation
 ```
-sh local_test.sh
-ˋˋˋ
+sh eval.sh
+```
 
 ## LICENSE
 
