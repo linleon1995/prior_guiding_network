@@ -1,7 +1,7 @@
 
 ## Prior guiding based multiple organ segmentation (PGN)
 
-![This is a alt text.](/image/sample.png "This is a sample image.")
+![This is a alt text.](/images/PGN_v1.png "PGN architecture")
 
 
 
