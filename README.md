@@ -51,7 +51,7 @@ sh local_test.sh
 ```
 
 ### Evaluation
-After training, you can use the pre-trained model by loading the checkpoint. You can evaluate the result by using the script.
+After training, you can use the pre-trained model by loading the checkpoint. You can evaluate the result by using the Shell script.
 ```
 sh eval.sh
 ```
