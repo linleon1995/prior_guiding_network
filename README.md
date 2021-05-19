@@ -23,19 +23,19 @@ pip install -r requirements.txt
 ```
 
 3. Set up path
-Change these paths
 ```
 common.py
-  LOGGGING_PATH
-  BASE_DATA_DIR
+  LOGGGING_PATH = "The path for saving tensorflow checkpoint and tensorboard event"
+  BASE_DATA_DIR = "The path for dataset directory. Each directory should contain raw data, and tfrrecord or prior if the converting process is run"
 build_btcv_data.sh, build_chaos_data.sh
-  WORK_DIR
+  WORK_DIR = "The directory that raw data saved"
 ```
 
 ### Build up dataset
 Two multi-organ segmentation datasets are used in this work, including Multi- Atlas Labeling Beyond the Cranial Vault [MICCAI2015 challenge](https://www.synapse.org/#!Synapse:syn3193805/wiki/217789) and Combined (CT-MR) Healthy Abdominal Organ Segmentation ([CHAOS challenge](https://chaos.grand-challenge.org/)) (See Fig. 4). Please check the references for more detail.
 
 4. Set up raw data
+Download and unzip the raw data under the path you have set up in common.py.
 
 5. Build up tfrecord and prior
 ```
@@ -51,6 +51,7 @@ sh local_test.sh
 ```
 
 ### Evaluation
+After training, you can use the pre-trained model by loading the checkpoint. You can evaluate the result by using the script.
 ```
 sh eval.sh
 ```
