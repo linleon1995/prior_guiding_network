@@ -2,7 +2,7 @@
 ## Prior guiding based multiple organ segmentation (PGN)
 
 ## Introduction
-This is the official code of [Prior guiding based multiple organ segmentation](/docs/Thesis.pdf). We combine three sub-modules in our network, including Prior-based guidance generator, Guidance based FCN and Recurrent Neural Network. We produce prior based on our knowledge on the observation of human organs distribution, and these prior are used to guide the learning status of our network. We evaluate our result on 2015 MICCAI dataset and 2019 CHAOS dataset.
+This is the official code of [Prior guiding based multiple organ segmentation](/docs/Thesis_JS_Lin_final.pdf). We combine three sub-modules in our network, including Prior-based guidance generator, Guidance based FCN and Recurrent Neural Network. We produce prior based on our knowledge on the observation of human organs distribution, and these prior are used to guide the learning status of our network. We evaluate our result on 2015 MICCAI dataset and 2019 CHAOS dataset.
 
 ![This is a alt text.](/images/PGN_v1.png "PGN_v1")
 
