@@ -42,7 +42,6 @@ Download and unzip the raw data under the path you have set up in common.py.
 sh build datasets/build_btcv_data.sh 
 sh build datasets/build_chaos_data.sh
 ```
-![This is a alt text.](/image/sample.png "This is a sample image.")
 
 ### Training
 6. Start training
