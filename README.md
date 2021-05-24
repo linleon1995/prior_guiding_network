@@ -57,7 +57,7 @@ sh eval.sh
 ```
 
 ## LICENSE
-All the codes is covered by the [LICENSE](/LICENSE). Please refer to the LICENSE for details
+All the codes is covered by the [LICENSE](LICENSE). Please refer to the LICENSE for details
 
 ## Contacts
 Feel free to contact me in l84328g@gmail.com if you have any questions.
